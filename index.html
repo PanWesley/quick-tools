@@ -750,22 +750,42 @@ function saveHistory(history) {
 function addToHistory(leftText, rightText) {
   if (!leftText && !rightText) return;
   
+  // Limit text size to prevent localStorage overflow
+  const MAX_TEXT_SIZE = 50000; // 50KB per side
+  const left = leftText.length > MAX_TEXT_SIZE ? leftText.substring(0, MAX_TEXT_SIZE) : leftText;
+  const right = rightText.length > MAX_TEXT_SIZE ? rightText.substring(0, MAX_TEXT_SIZE) : rightText;
+  
   const history = getHistory();
   const now = new Date();
   const item = {
     id: Date.now(),
     timestamp: now.toISOString(),
-    leftText: leftText,
-    rightText: rightText,
-    name: generateHistoryName(leftText, rightText)
+    leftText: left,
+    rightText: right,
+    name: generateHistoryName(left, right),
+    truncated: leftText.length > MAX_TEXT_SIZE || rightText.length > MAX_TEXT_SIZE
   };
   
   // Check for duplicate (same content as most recent)
   if (history.length > 0) {
     const last = history[0];
-    if (last.leftText === leftText && last.rightText === rightText) {
+    if (last.leftText === left && last.rightText === right) {
       return;
     }
+  }
+  
+  // Check localStorage size before saving
+  try {
+    const testData = JSON.stringify([item, ...history]);
+    if (testData.length > 2 * 1024 * 1024) { // 2MB limit
+      // Remove oldest items until it fits
+      while (history.length > 0 && JSON.stringify([item, ...history]).length > 2 * 1024 * 1024) {
+        history.pop();
+      }
+    }
+  } catch (e) {
+    console.warn('localStorage quota exceeded, skipping history save');
+    return;
   }
   
   // Add to beginning, limit to MAX_HISTORY_ITEMS
@@ -1146,7 +1166,13 @@ function highlightCode(code, language) {
 // ==================== Rendering ====================
 function escapeHtml(str) {
   if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/`/g, '&#96;');
 }
 
 function renderCharDiff(charDiff, side) {
@@ -1228,6 +1254,14 @@ function runDiff() {
   if (!oldText && !newText) {
     alert('请输入或粘贴要对比的文本');
     return;
+  }
+
+  // Warn for very large texts
+  const lineCount = Math.max(oldText.split('\n').length, newText.split('\n').length);
+  if (lineCount > 5000) {
+    if (!confirm('文本行数较多（' + lineCount + ' 行），可能导致浏览器卡顿。是否继续？')) {
+      return;
+    }
   }
 
   // Save to history
