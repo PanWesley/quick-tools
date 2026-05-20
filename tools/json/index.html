@@ -343,8 +343,14 @@ function formatJSON() {
     return;
   }
   
+  // 检查文件大小
+  const sizeCheck = checkFileSize(input);
+  if (sizeCheck.warning) {
+    console.warn(sizeCheck.message);
+  }
+  
   try {
-    const obj = JSON.parse(input);
+    const obj = safeJSONParse(input);
     const formatted = JSON.stringify(obj, null, 2);
     document.getElementById('output').innerHTML = syntaxHighlight(formatted);
     showStatus('✓ 格式化成功', 'valid');
@@ -363,7 +369,7 @@ function compressJSON() {
   }
   
   try {
-    const obj = JSON.parse(input);
+    const obj = safeJSONParse(input);
     const compressed = JSON.stringify(obj);
     document.getElementById('output').textContent = compressed;
     showStatus('✓ 压缩成功', 'valid');
@@ -382,7 +388,7 @@ function validateJSON() {
   }
   
   try {
-    JSON.parse(input);
+    safeJSONParse(input);
     showStatus('✓ JSON 格式正确', 'valid');
     document.getElementById('output').textContent = 'JSON 格式正确！';
   } catch (e) {
@@ -392,31 +398,108 @@ function validateJSON() {
 }
 
 function escapeJSON() {
-  const input = document.getElementById('input').value;
-  if (!input) return;
+  // 获取输出区的内容（格式化后的 JSON）进行转义
+  const outputEl = document.getElementById('output');
+  const text = outputEl.textContent || outputEl.innerText;
   
-  const escaped = JSON.stringify(input).slice(1, -1);
-  document.getElementById('output').textContent = escaped;
+  if (!text || text === 'JSON 格式正确！') {
+    // 如果输出区为空，尝试使用输入区的内容
+    const input = document.getElementById('input').value.trim();
+    if (!input) {
+      showStatus('没有可转义的内容', 'invalid');
+      return;
+    }
+    // 先格式化再转义
+    try {
+      const obj = safeJSONParse(input);
+      const formatted = JSON.stringify(obj, null, 2);
+      const escaped = JSON.stringify(formatted).slice(1, -1);
+      outputEl.textContent = escaped;
+      showStatus('✓ 格式化并转义完成', 'valid');
+      updateStats(escaped);
+    } catch (e) {
+      // 输入不是有效 JSON，直接转义原始文本
+      const escaped = JSON.stringify(input).slice(1, -1);
+      outputEl.textContent = escaped;
+      showStatus('✓ 转义完成（输入非标准 JSON）', 'valid');
+      updateStats(escaped);
+    }
+    return;
+  }
+  
+  // 对输出区的内容进行转义
+  const escaped = JSON.stringify(text).slice(1, -1);
+  outputEl.textContent = escaped;
   showStatus('✓ 转义完成', 'valid');
   updateStats(escaped);
 }
 
 function unescapeJSON() {
-  const input = document.getElementById('input').value;
-  if (!input) return;
+  // 对输入区的转义字符串进行去转义，然后格式化显示
+  const input = document.getElementById('input').value.trim();
+  if (!input) {
+    showStatus('请输入需要去除转义的文本', 'invalid');
+    return;
+  }
   
   try {
-    const unescaped = JSON.parse('"' + input + '"');
-    document.getElementById('output').textContent = unescaped;
-    showStatus('✓ 去转义完成', 'valid');
-    updateStats(unescaped);
+    // 方法1: 使用 JSON.parse 解析被转义的字符串
+    // 需要确保输入被正确包裹在引号中
+    let unescaped;
+    try {
+      // 尝试直接解析（如果输入是完整的 JSON 字符串字面量）
+      unescaped = JSON.parse('"' + input.replace(/"/g, '\\"').replace(/\\"/g, '"') + '"');
+    } catch (e1) {
+      // 方法2: 尝试直接解析输入
+      try {
+        unescaped = JSON.parse(input);
+      } catch (e2) {
+        // 方法3: 替换常见的转义序列
+        unescaped = input
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\')
+          .replace(/\\n/g, '\n')
+          .replace(/\\r/g, '\r')
+          .replace(/\\t/g, '\t')
+          .replace(/\\b/g, '\b')
+          .replace(/\\f/g, '\f');
+      }
+    }
+    
+    // 尝试将去转义后的内容作为 JSON 格式化显示
+    try {
+      const obj = JSON.parse(unescaped);
+      const formatted = JSON.stringify(obj, null, 2);
+      document.getElementById('output').innerHTML = syntaxHighlight(formatted);
+      showStatus('✓ 去转义并格式化完成', 'valid');
+      updateStats(formatted);
+    } catch (e) {
+      // 去转义后的内容不是有效 JSON，直接显示
+      document.getElementById('output').textContent = unescaped;
+      showStatus('✓ 去转义完成（结果非标准 JSON）', 'valid');
+      updateStats(unescaped);
+    }
   } catch (e) {
-    showStatus('✗ 去转义失败', 'invalid');
+    showStatus('✗ 去转义失败: ' + e.message, 'invalid');
+    document.getElementById('output').textContent = e.message;
   }
 }
 
+// 常量配置
+const CONFIG = {
+  MAX_SIZE_FOR_HIGHLIGHT: 500 * 1024,  // 超过 500KB 不进行语法高亮
+  MAX_SIZE_FOR_PROCESSING: 5 * 1024 * 1024,  // 超过 5MB 警告
+  MAX_NESTING_DEPTH: 100  // 最大嵌套深度
+};
+
 function syntaxHighlight(json) {
-  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 大文件跳过语法高亮，避免性能问题
+  if (json.length > CONFIG.MAX_SIZE_FOR_HIGHLIGHT) {
+    console.log('文件较大，跳过语法高亮以提升性能');
+    return escapeHtml(json);
+  }
+  
+  json = escapeHtml(json);
   return json.replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, function(match, string, colon, boolean) {
     if (colon) return '<span class="json-key">' + string + '</span>' + colon;
     if (boolean) return '<span class="json-boolean">' + match + '</span>';
@@ -424,6 +507,46 @@ function syntaxHighlight(json) {
     if (/^-?\d/.test(match)) return '<span class="json-number">' + match + '</span>';
     return '<span class="json-string">' + string + '</span>';
   });
+}
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// 安全的 JSON 解析，带深度限制
+function safeJSONParse(str) {
+  // 检查嵌套深度
+  let maxDepth = 0;
+  let currentDepth = 0;
+  for (const char of str) {
+    if (char === '{' || char === '[') {
+      currentDepth++;
+      maxDepth = Math.max(maxDepth, currentDepth);
+    } else if (char === '}' || char === ']') {
+      currentDepth--;
+    }
+  }
+  
+  if (maxDepth > CONFIG.MAX_NESTING_DEPTH) {
+    throw new Error(`JSON 嵌套层级过深 (${maxDepth} 层)，最大支持 ${CONFIG.MAX_NESTING_DEPTH} 层`);
+  }
+  
+  return JSON.parse(str);
+}
+
+// 检查文件大小并警告
+function checkFileSize(text) {
+  const bytes = new Blob([text]).size;
+  if (bytes > CONFIG.MAX_SIZE_FOR_PROCESSING) {
+    return {
+      warning: true,
+      message: `文件较大 (${formatBytes(bytes)})，处理可能需要一些时间`
+    };
+  }
+  return { warning: false };
 }
 
 function showStatus(message, type) {
@@ -468,10 +591,20 @@ function handleFile(event) {
   const file = event.target.files[0];
   if (!file) return;
   
+  // 检查文件大小
+  if (file.size > CONFIG.MAX_SIZE_FOR_PROCESSING) {
+    if (!confirm(`文件较大 (${formatBytes(file.size)})，处理可能需要一些时间，是否继续？`)) {
+      return;
+    }
+  }
+  
   const reader = new FileReader();
   reader.onload = function(e) {
     document.getElementById('input').value = e.target.result;
     formatJSON();
+  };
+  reader.onerror = function() {
+    showStatus('✗ 文件读取失败', 'invalid');
   };
   reader.readAsText(file);
 }
