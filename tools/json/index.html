@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON 工具 - Quick Tools</title>
+<style>
+  :root {
+    --primary: #2DBAA3;
+    --primary-hover: #25A08C;
+    --bg: #f5f7fa;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --text-secondary: #7f8c8d;
+    --border: #e1e8ed;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --radius: 10px;
+    --code-bg: #f8f9fa;
+    --success: #28a745;
+    --error: #dc3545;
+  }
+
+  [data-theme="dark"] {
+    --bg: #0d1117;
+    --card-bg: #161b22;
+    --text: #c9d1d9;
+    --text-secondary: #8b949e;
+    --border: #30363d;
+    --shadow: 0 2px 12px rgba(0,0,0,0.3);
+    --code-bg: #0d1117;
+    --success: #238636;
+    --error: #da3633;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  header {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .back-btn {
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+
+  .back-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+  .theme-toggle {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s;
+  }
+
+  .theme-toggle:hover { border-color: var(--primary); }
+
+  main {
+    flex: 1;
+    padding: 24px 32px;
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .btn.primary:hover { background: var(--primary-hover); }
+
+  .editor-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    height: calc(100vh - 200px);
+    min-height: 400px;
+  }
+
+  .panel {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .panel-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-small {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card-bg);
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-small:hover { border-color: var(--primary); color: var(--primary); }
+
+  textarea {
+    flex: 1;
+    padding: 16px;
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--code-bg);
+    transition: background 0.3s;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .status-bar .valid { color: var(--success); }
+  .status-bar .invalid { color: var(--error); }
+
+  .output-panel {
+    position: relative;
+  }
+
+  .output-content {
+    flex: 1;
+    padding: 16px;
+    overflow: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--code-bg);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .json-key { color: #d73a49; }
+  .json-string { color: #032f62; }
+  .json-number { color: #005cc5; }
+  .json-boolean { color: #005cc5; }
+  .json-null { color: #6f42c1; }
+
+  [data-theme="dark"] .json-key { color: #ff7b72; }
+  [data-theme="dark"] .json-string { color: #a5d6ff; }
+  [data-theme="dark"] .json-number { color: #79c0ff; }
+  [data-theme="dark"] .json-boolean { color: #79c0ff; }
+  [data-theme="dark"] .json-null { color: #d2a8ff; }
+
+  footer {
+    padding: 16px 32px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--card-bg);
+  }
+
+  @media (max-width: 768px) {
+    main { padding: 16px; }
+    header { padding: 12px 16px; }
+    .editor-container { grid-template-columns: 1fr; height: auto; }
+    .panel { min-height: 300px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="../../">
+    <span style="font-size: 28px;">{ }</span>
+    <span>JSON 工具</span>
+  </a>
+  <div class="header-actions">
+    <a class="back-btn" href="../../">← 返回首页</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+      <span id="theme-icon">🌙</span>
+    </button>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button class="btn primary" onclick="formatJSON()">格式化</button>
+    <button class="btn" onclick="compressJSON()">压缩</button>
+    <button class="btn" onclick="validateJSON()">校验</button>
+    <button class="btn" onclick="escapeJSON()">转义</button>
+    <button class="btn" onclick="unescapeJSON()">去转义</button>
+    <button class="btn" onclick="copyResult()">复制结果</button>
+    <button class="btn" onclick="clearAll()">清空</button>
+    <button class="btn" onclick="loadSample()">加载示例</button>
+  </div>
+
+  <div class="editor-container">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">输入 JSON</span>
+        <div class="panel-actions">
+          <button class="btn-small" onclick="loadFile()">📁 打开文件</button>
+          <button class="btn-small" onclick="pasteFromClipboard()">📋 粘贴</button>
+        </div>
+      </div>
+      <textarea id="input" placeholder="在此粘贴 JSON 数据..." spellcheck="false"></textarea>
+      <div class="status-bar">
+        <span id="status">等待输入...</span>
+        <span id="stats"></span>
+      </div>
+    </div>
+
+    <div class="panel output-panel">
+      <div class="panel-header">
+        <span class="panel-title">输出结果</span>
+        <div class="panel-actions">
+          <button class="btn-small" onclick="downloadResult()">💾 下载</button>
+        </div>
+      </div>
+      <div class="output-content" id="output"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  © 2026 JSON 工具 — 纯前端实现，数据不会上传到任何服务器
+</footer>
+
+<input type="file" id="fileInput" style="display: none;" accept=".json,.txt" onchange="handleFile(event)">
+
+<script>
+// Theme
+function initTheme() {
+  const savedTheme = localStorage.getItem('quick-tools-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('quick-tools-theme', newTheme);
+  updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+  document.getElementById('theme-icon').textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+// JSON Operations
+function formatJSON() {
+  const input = document.getElementById('input').value.trim();
+  if (!input) {
+    showStatus('请输入 JSON 数据', 'invalid');
+    return;
+  }
+  
+  try {
+    const obj = JSON.parse(input);
+    const formatted = JSON.stringify(obj, null, 2);
+    document.getElementById('output').innerHTML = syntaxHighlight(formatted);
+    showStatus('✓ 格式化成功', 'valid');
+    updateStats(formatted);
+  } catch (e) {
+    showStatus('✗ ' + e.message, 'invalid');
+    document.getElementById('output').textContent = e.message;
+  }
+}
+
+function compressJSON() {
+  const input = document.getElementById('input').value.trim();
+  if (!input) {
+    showStatus('请输入 JSON 数据', 'invalid');
+    return;
+  }
+  
+  try {
+    const obj = JSON.parse(input);
+    const compressed = JSON.stringify(obj);
+    document.getElementById('output').textContent = compressed;
+    showStatus('✓ 压缩成功', 'valid');
+    updateStats(compressed);
+  } catch (e) {
+    showStatus('✗ ' + e.message, 'invalid');
+    document.getElementById('output').textContent = e.message;
+  }
+}
+
+function validateJSON() {
+  const input = document.getElementById('input').value.trim();
+  if (!input) {
+    showStatus('请输入 JSON 数据', 'invalid');
+    return;
+  }
+  
+  try {
+    JSON.parse(input);
+    showStatus('✓ JSON 格式正确', 'valid');
+    document.getElementById('output').textContent = 'JSON 格式正确！';
+  } catch (e) {
+    showStatus('✗ ' + e.message, 'invalid');
+    document.getElementById('output').textContent = e.message;
+  }
+}
+
+function escapeJSON() {
+  const input = document.getElementById('input').value;
+  if (!input) return;
+  
+  const escaped = JSON.stringify(input).slice(1, -1);
+  document.getElementById('output').textContent = escaped;
+  showStatus('✓ 转义完成', 'valid');
+  updateStats(escaped);
+}
+
+function unescapeJSON() {
+  const input = document.getElementById('input').value;
+  if (!input) return;
+  
+  try {
+    const unescaped = JSON.parse('"' + input + '"');
+    document.getElementById('output').textContent = unescaped;
+    showStatus('✓ 去转义完成', 'valid');
+    updateStats(unescaped);
+  } catch (e) {
+    showStatus('✗ 去转义失败', 'invalid');
+  }
+}
+
+function syntaxHighlight(json) {
+  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return json.replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g, function(match, string, colon, boolean) {
+    if (colon) return '<span class="json-key">' + string + '</span>' + colon;
+    if (boolean) return '<span class="json-boolean">' + match + '</span>';
+    if (match === 'null') return '<span class="json-null">' + match + '</span>';
+    if (/^-?\d/.test(match)) return '<span class="json-number">' + match + '</span>';
+    return '<span class="json-string">' + string + '</span>';
+  });
+}
+
+function showStatus(message, type) {
+  const status = document.getElementById('status');
+  status.textContent = message;
+  status.className = type;
+}
+
+function updateStats(text) {
+  const lines = text.split('\n').length;
+  const chars = text.length;
+  const bytes = new Blob([text]).size;
+  document.getElementById('stats').textContent = `${lines} 行 | ${chars} 字符 | ${formatBytes(bytes)}`;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function copyResult() {
+  const output = document.getElementById('output');
+  const text = output.textContent || output.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus('✓ 已复制到剪贴板', 'valid');
+  });
+}
+
+function clearAll() {
+  document.getElementById('input').value = '';
+  document.getElementById('output').innerHTML = '';
+  showStatus('已清空', '');
+  document.getElementById('stats').textContent = '';
+}
+
+function loadFile() {
+  document.getElementById('fileInput').click();
+}
+
+function handleFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('input').value = e.target.result;
+    formatJSON();
+  };
+  reader.readAsText(file);
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    document.getElementById('input').value = text;
+    formatJSON();
+  } catch (e) {
+    showStatus('无法访问剪贴板', 'invalid');
+  }
+}
+
+function downloadResult() {
+  const output = document.getElementById('output');
+  const text = output.textContent || output.innerText;
+  if (!text) {
+    showStatus('没有可下载的内容', 'invalid');
+    return;
+  }
+  
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'result.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function loadSample() {
+  const sample = {
+    "name": "Quick Tools",
+    "version": "1.0.0",
+    "description": "A collection of developer tools",
+    "features": ["JSON Formatter", "Text Diff", "Code Highlight"],
+    "author": {
+      "name": "Developer",
+      "email": "dev@example.com"
+    },
+    "settings": {
+      "theme": "dark",
+      "autoSave": true,
+      "maxHistory": 10
+    }
+  };
+  
+  document.getElementById('input').value = JSON.stringify(sample, null, 2);
+  formatJSON();
+}
+
+// Auto format on paste
+document.getElementById('input').addEventListener('paste', function() {
+  setTimeout(formatJSON, 100);
+});
+
+// Init
+document.addEventListener('DOMContentLoaded', initTheme);
+</script>
+
+</body>
+</html>
