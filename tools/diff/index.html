@@ -21,14 +21,14 @@
     --text: #2c3e50;
     --text-secondary: #7f8c8d;
     --border: #e1e8ed;
-    --added-bg: #e6ffed;
-    --added-border: #b4e2c4;
-    --added-text: #1a7f37;
-    --added-highlight: #acf2bd;
-    --removed-bg: #ffebe9;
-    --removed-border: #ffc1ba;
-    --removed-text: #cf222e;
-    --removed-highlight: #fd8c73;
+    --added-bg: #eef8f2;
+    --added-border: #b8dcc8;
+    --added-text: #1a6b30;
+    --added-highlight: #c2e6cc;
+    --removed-bg: #f8efee;
+    --removed-border: #e0c4c0;
+    --removed-text: #a03030;
+    --removed-highlight: #e8b8b0;
     --line-num: #adb5bd;
     --shadow: 0 2px 12px rgba(0,0,0,0.08);
     --radius: 10px;
@@ -41,14 +41,14 @@
     --text: #c9d1d9;
     --text-secondary: #8b949e;
     --border: #30363d;
-    --added-bg: #0f3d1f;
-    --added-border: #238636;
-    --added-text: #7ee787;
-    --added-highlight: #2ea043;
-    --removed-bg: #3d0f1f;
-    --removed-border: #da3633;
-    --removed-text: #ffa198;
-    --removed-highlight: #f85149;
+    --added-bg: #122a1a;
+    --added-border: #1a4028;
+    --added-text: #8bc9a0;
+    --added-highlight: #1e4a30;
+    --removed-bg: #2a1518;
+    --removed-border: #401a20;
+    --removed-text: #d4a0a0;
+    --removed-highlight: #4a2028;
     --line-num: #484f58;
     --shadow: 0 2px 12px rgba(0,0,0,0.3);
     --code-bg: #0d1117;
@@ -576,11 +576,24 @@
 
   @media (max-width: 768px) {
     .input-section { grid-template-columns: 1fr; }
-    main { padding: 16px; }
-    header { padding: 12px 16px; }
+    main { padding: 12px; }
+    header { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+    .logo { font-size: 16px; }
+    .logo svg { width: 22px; height: 22px; }
+    .header-actions { gap: 6px; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
+    .back-btn { padding: 5px 10px; font-size: 12px; }
+    .history-btn { padding: 5px 10px; font-size: 12px; }
+    .mode-select { padding: 5px 8px; font-size: 12px; }
+    .theme-toggle { width: 34px; height: 34px; font-size: 16px; }
+    .action-bar { gap: 8px; margin-bottom: 16px; }
+    .btn-primary { padding: 10px 24px; font-size: 14px; }
+    .btn-secondary { padding: 8px 14px; font-size: 13px; }
     .side-by-side-view { grid-template-columns: 1fr; }
     .side-by-side-view .diff-pane { border-right: none; border-bottom: 1px solid var(--border); }
     .result-header { flex-direction: column; align-items: flex-start; }
+    .panel-header { padding: 10px 12px; }
+    .panel-title { font-size: 13px; }
+    .btn-small { padding: 4px 8px; font-size: 11px; }
   }
 
   .diff-container::-webkit-scrollbar,
