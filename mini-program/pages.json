@@ -1,0 +1,54 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "Quick Tools",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/tool/tool",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/history/history",
+			"style": {
+				"navigationBarTitleText": "历史记录",
+				"navigationStyle": "default"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "Quick Tools",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"tabBar": {
+		"color": "#7A7E83",
+		"selectedColor": "#2DBAA3",
+		"borderStyle": "black",
+		"backgroundColor": "#ffffff",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"iconPath": "static/icon_home.png",
+				"selectedIconPath": "static/icon_home_selected.png",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/history/history",
+				"iconPath": "static/icon_history.png",
+				"selectedIconPath": "static/icon_history_selected.png",
+				"text": "历史"
+			}
+		]
+	},
+	"uniIdRouter": {},
+	"condition": {}
+}
