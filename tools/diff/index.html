@@ -61,38 +61,27 @@
     --code-bg: #0d1117;
   }
 
-  /* 深色模式下的 diff 颜色 */
+  /* 深色模式下的 diff 颜色 - 柔和但有对比 */
   [data-theme="dark"] tr.diff-added {
-    background: #14532d;
-    color: #bbf7d0;
+    background: #144620;
   }
   [data-theme="dark"] tr.diff-added .diff-line-num {
-    background: #22c55e;
-    color: #052e16;
-    font-weight: 600;
-  }
-  [data-theme="dark"] tr.diff-added .diff-line-content {
-    color: #bbf7d0;
+    background: #196c2e;
+    color: #7ee787;
   }
   [data-theme="dark"] tr.diff-removed {
-    background: #7f1d1d;
-    color: #fecaca;
+    background: #5a1e1e;
   }
   [data-theme="dark"] tr.diff-removed .diff-line-num {
-    background: #ef4444;
-    color: #fff;
-    font-weight: 600;
-  }
-  [data-theme="dark"] tr.diff-removed .diff-line-content {
-    color: #fecaca;
+    background: #8b2e2e;
+    color: #ffa198;
   }
   [data-theme="dark"] .char-added {
-    background: #16a34a;
-    color: #f0fdf4;
+    background: #2ea043;
   }
   [data-theme="dark"] .char-removed {
-    background: #dc2626;
-    color: #fef2f2;
+    background: #c93c37;
+    text-decoration: line-through;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -547,49 +536,41 @@
     padding-left: 12px;
   }
 
-  /* Diff 颜色 - 直接硬编码，不依赖主题变量，确保始终可见 */
+  /* Diff 颜色 - 参考 diffchecker 风格：柔和背景 + 默认文字颜色 */
+  /* 新增行：非常浅的绿色背景，文字保持默认深色 */
   tr.diff-added {
-    background: #dcfce7;
-    color: #166534;
+    background: #e6ffec;
   }
   tr.diff-added .diff-line-num {
-    background: #86efac;
-    color: #166534;
-    font-weight: 600;
-  }
-  tr.diff-added .diff-line-content {
-    color: #166534;
+    background: #ccffd1;
+    color: #22863a;
   }
 
+  /* 删除行：非常浅的红色背景，文字保持默认深色 */
   tr.diff-removed {
-    background: #fee2e2;
-    color: #991b1b;
+    background: #ffebe9;
   }
   tr.diff-removed .diff-line-num {
-    background: #fca5a5;
-    color: #991b1b;
-    font-weight: 600;
-  }
-  tr.diff-removed .diff-line-content {
-    color: #991b1b;
+    background: #ffd7d5;
+    color: #cb2431;
   }
 
   tr.diff-unchanged { background: var(--card-bg); }
 
   .hide-unchanged tr.diff-unchanged { display: none; }
 
+  /* 字符级高亮：柔和但有对比 */
   .char-added {
-    background: #4ade80;
+    background: #acf2bd;
     border-radius: 3px;
     padding: 1px 0;
-    color: #14532d;
   }
 
   .char-removed {
-    background: #f87171;
+    background: #ffc0bb;
     border-radius: 3px;
     padding: 1px 0;
-    color: #7f1d1d;
+    text-decoration: line-through;
   }
 
   .unified-view .diff-table { table-layout: auto; }
