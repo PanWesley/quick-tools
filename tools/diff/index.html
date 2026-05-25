@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<script>
+  // 同步设置主题，防止闪烁（必须在 <head> 最前面）
+  (function() {
+    var theme = localStorage.getItem('quick-tools-theme') || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Diff 对比工具 - Quick Tools</title>
