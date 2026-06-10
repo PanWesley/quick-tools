@@ -1601,7 +1601,7 @@ async function importDataFromObj(data) {
   await importData(data);
 }
 
-window.clearAllData = async function() {
+window.confirmClearAllData = async function() {
   if (!confirm('确定要清除所有数据吗？此操作不可恢复！')) return;
   await clearAllData();
   showToast('数据已清除');
