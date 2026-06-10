@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<script>
+  // 同步设置主题，防止闪烁（必须在 <head> 最前面）
+  (function() {
+    var theme = localStorage.getItem('quick-tools-theme') || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2DBAA3">
+<title>Expense Tracker - Quick Tools</title>
+<!-- Chart.js for data visualization -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- SheetJS for Excel import -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <a class="logo" href="../../">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="6" fill="#2DBAA3"/>
+      <path d="M8 10h12M8 14h8M8 18h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    Expense Tracker
+  </a>
+  <div class="header-actions">
+    <a class="back-btn" href="../../">← 返回首页</a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+      <span id="theme-icon">🌙</span>
+    </button>
+  </div>
+</header>
+
+<main id="app">
+  <!-- Dashboard View -->
+  <section class="view-section active" id="view-dashboard">
+    <div class="dashboard-header">
+      <h2>📊 概览</h2>
+      <p class="subtitle">支出情况一览</p>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar dashboard-filter" id="dashboard-filter-bar">
+      <select id="dash-time-range" title="时间范围">
+        <option value="this-month">本月</option>
+        <option value="last-month">上月</option>
+        <option value="last-7">最近7天</option>
+        <option value="last-30">最近30天</option>
+        <option value="this-year">今年</option>
+        <option value="custom">自定义</option>
+      </select>
+      <div class="custom-date-range" id="dash-custom-range" style="display:none;gap:8px;flex-wrap:wrap;">
+        <input type="date" id="dash-date-start" title="开始日期">
+        <input type="date" id="dash-date-end" title="结束日期">
+      </div>
+      <button class="btn-secondary" id="dash-tag-btn" title="选择标签" onclick="toggleTagPopup()">🏷️ 标签</button>
+      <div class="tag-popup" id="dash-tag-popup" style="display:none;">
+        <div class="tag-popup-header">
+          <span>选择标签</span>
+          <button class="btn-close" onclick="toggleTagPopup()">✕</button>
+        </div>
+        <div class="tag-cloud" id="dash-tag-cloud"></div>
+        <div class="tag-popup-footer">
+          <button class="btn-secondary" onclick="clearTagFilter()">清除</button>
+          <button class="btn-primary" onclick="applyTagFilter()">确定</button>
+        </div>
+      </div>
+      <input type="number" id="dash-amount-min" placeholder="最低金额" step="0.01" min="0" title="最低金额">
+      <input type="number" id="dash-amount-max" placeholder="最高金额" step="0.01" min="0" title="最高金额">
+      <input type="text" id="dash-search" placeholder="🔍 搜索备注或分类..." title="搜索">
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="stat-card total">
+        <div class="stat-label">总支出</div>
+        <div class="stat-value" id="dash-total">¥0.00</div>
+      </div>
+      <div class="stat-card count">
+        <div class="stat-label">记账笔数</div>
+        <div class="stat-value" id="dash-count">0</div>
+      </div>
+      <div class="stat-card avg">
+        <div class="stat-label">日均支出</div>
+        <div class="stat-value" id="dash-avg">¥0.00</div>
+      </div>
+      <div class="stat-card top">
+        <div class="stat-label">最高单笔</div>
+        <div class="stat-value" id="dash-top">¥0.00</div>
+      </div>
+    </div>
+
+    <!-- Charts Row 1: Pie + Bar -->
+    <div class="chart-row">
+      <div class="chart-card chart-half">
+        <h3>分类占比</h3>
+        <div class="chart-wrapper doughnut">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card chart-half">
+        <h3>TOP 5 分类</h3>
+        <div class="chart-wrapper">
+          <canvas id="topCategoryChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row 2: Line Trend -->
+    <div class="chart-card">
+      <h3>近7天支出趋势</h3>
+      <div class="chart-wrapper">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Add Expense View -->
+  <section class="view-section" id="view-add">
+    <div class="page-header">
+      <h2>➕ 记一笔</h2>
+      <p class="subtitle">快速记录新的支出</p>
+    </div>
+
+    <!-- Mode Toggle -->
+    <div class="mode-toggle-bar">
+      <button class="mode-btn active" id="mode-form-btn" onclick="switchEntryMode('form')">表单</button>
+      <button class="mode-btn" id="mode-nl-btn" onclick="switchEntryMode('nl')">自然语言</button>
+    </div>
+
+    <!-- Recent Templates -->
+    <div class="recent-templates" id="recent-templates">
+      <div class="templates-label">最近模板</div>
+      <div class="templates-chips" id="templates-chips"></div>
+    </div>
+
+    <!-- Form Mode -->
+    <div class="form-card entry-mode" id="entry-form-mode">
+      <div class="form-group">
+        <label for="exp-amount">金额 <span class="required">*</span></label>
+        <div class="input-prefix">
+          <span class="prefix">¥</span>
+          <input type="number" id="exp-amount" placeholder="0.00" step="0.01" min="0" autofocus>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="exp-date">日期</label>
+        <input type="date" id="exp-date">
+      </div>
+      <div class="form-group">
+        <label for="exp-tags-input">标签</label>
+        <div class="tag-input-wrap">
+          <input type="text" id="exp-tags-input" placeholder="输入标签，用空格/逗号/回车分隔..." autocomplete="off">
+          <div class="tag-suggestions" id="tag-suggestions" style="display:none;"></div>
+        </div>
+        <div class="selected-tags" id="selected-tags"></div>
+      </div>
+      <div class="form-group">
+        <label for="exp-item-name">项目名称（可选）</label>
+        <input type="text" id="exp-item-name" placeholder="例如：午餐、打车...">
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" onclick="saveQuickExpense()">💾 保存</button>
+        <button class="btn-secondary" onclick="resetQuickForm()">🔄 重置</button>
+      </div>
+    </div>
+
+    <!-- Natural Language Mode -->
+    <div class="form-card entry-mode" id="entry-nl-mode" style="display:none;">
+      <div class="form-group">
+        <label for="nl-input">自然语言输入</label>
+        <textarea id="nl-input" rows="3" placeholder="例如：午餐 35 家庭 餐饮 叮咚"></textarea>
+      </div>
+      <div class="nl-preview" id="nl-preview" style="display:none;">
+        <div class="nl-preview-title">解析结果</div>
+        <div class="nl-preview-content" id="nl-preview-content"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" id="nl-save-btn" onclick="saveNLExpense()" disabled>💾 确认保存</button>
+        <button class="btn-secondary" onclick="resetNLForm()">🔄 清空</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Expense List View -->
+  <section class="view-section" id="view-list">
+    <div class="page-header">
+      <h2>📋 账单明细</h2>
+      <p class="subtitle">查看和管理所有支出记录</p>
+    </div>
+    <div class="filter-bar">
+      <input type="text" id="list-search" placeholder="🔍 搜索备注或分类..." oninput="renderExpenseList()">
+      <select id="list-filter-category" onchange="renderExpenseList()">
+        <option value="">全部分类</option>
+      </select>
+      <select id="list-sort" onchange="renderExpenseList()">
+        <option value="date-desc">日期 ↓</option>
+        <option value="date-asc">日期 ↑</option>
+        <option value="amount-desc">金额 ↓</option>
+        <option value="amount-asc">金额 ↑</option>
+      </select>
+    </div>
+    <div class="list-card" id="expense-list">
+      <div class="empty-state">
+        <div class="empty-icon">📝</div>
+        <p>暂无支出记录</p>
+        <button class="btn-primary" onclick="switchView('add')">记一笔</button>
+      </div>
+    </div>
+    <div class="load-more-wrap" id="load-more-wrap" style="display:none;">
+      <button class="btn-secondary" id="load-more-btn" onclick="loadMoreExpenses()">加载更多</button>
+    </div>
+  </section>
+
+  <!-- Tags View -->
+  <section class="view-section" id="view-tags">
+    <div class="page-header">
+      <h2>🏷️ 标签管理</h2>
+      <p class="subtitle">管理支出分类和自定义标签</p>
+    </div>
+    <div class="form-card">
+      <div class="form-group inline">
+        <input type="text" id="new-tag-name" placeholder="输入新标签名称...">
+        <input type="color" id="new-tag-color" value="#2DBAA3">
+        <button class="btn-primary" onclick="addNewTag()">➕ 添加</button>
+      </div>
+    </div>
+    <div class="tags-card" id="tags-list">
+      <div class="empty-state">
+        <div class="empty-icon">🏷️</div>
+        <p>暂无标签</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Edit Expense Modal -->
+  <div class="modal-overlay" id="edit-modal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>✏️ 编辑支出</h3>
+        <button class="btn-close" onclick="closeEditModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="edit-amount">金额 <span class="required">*</span></label>
+          <div class="input-prefix">
+            <span class="prefix">¥</span>
+            <input type="number" id="edit-amount" placeholder="0.00" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="edit-date">日期</label>
+          <input type="date" id="edit-date">
+        </div>
+        <div class="form-group">
+          <label for="edit-item-name">项目名称</label>
+          <input type="text" id="edit-item-name" placeholder="例如：午餐、打车...">
+        </div>
+        <div class="form-group">
+          <label>标签</label>
+          <div class="tag-input-wrap">
+            <input type="text" id="edit-tags-input" placeholder="输入标签，用空格/逗号/回车分隔..." autocomplete="off">
+            <div class="tag-suggestions" id="edit-tag-suggestions" style="display:none;"></div>
+          </div>
+          <div class="selected-tags" id="edit-selected-tags"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeEditModal()">取消</button>
+        <button class="btn-primary" onclick="saveEditExpense()">💾 保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div class="modal-overlay" id="delete-modal" style="display:none;">
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h3>🗑️ 确认删除</h3>
+        <button class="btn-close" onclick="closeDeleteModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>确定要删除这条支出记录吗？此操作不可恢复。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeDeleteModal()">取消</button>
+        <button class="btn-danger" id="delete-confirm-btn" onclick="confirmDeleteExpense()">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tag Merge Modal -->
+  <div class="modal-overlay" id="merge-modal" style="display:none;">
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h3>🔀 合并标签</h3>
+        <button class="btn-close" onclick="closeMergeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>将标签 <strong id="merge-source-name"></strong> 合并到：</p>
+        <div class="form-group">
+          <select id="merge-target-select">
+            <option value="">选择目标标签</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeMergeModal()">取消</button>
+        <button class="btn-primary" onclick="confirmMergeTag()">确认合并</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings View -->
+  <section class="view-section" id="view-settings">
+    <div class="page-header">
+      <h2>⚙️ 设置</h2>
+      <p class="subtitle">数据管理与个性化选项</p>
+    </div>
+    <div class="settings-group">
+      <h3>数据导出</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">导出 CSV</span>
+          <span class="setting-desc">将支出记录导出为 CSV 表格</span>
+        </div>
+        <button class="btn-secondary" onclick="exportCSV()">📄 CSV</button>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">导出 JSON</span>
+          <span class="setting-desc">将所有数据（支出 + 标签）导出为 JSON 备份</span>
+        </div>
+        <button class="btn-secondary" onclick="exportJSON()">📤 JSON</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h3>数据导入</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">导入文件</span>
+          <span class="setting-desc">支持 CSV / Excel (.xlsx) 格式，自动识别字段</span>
+        </div>
+        <button class="btn-secondary" onclick="document.getElementById('import-file-input').click()">📥 选择文件</button>
+        <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="handleImportFile(this)">
+      </div>
+      <div id="import-preview-area" style="display:none;"></div>
+      <div id="import-actions" class="import-actions" style="display:none;">
+        <button class="btn-secondary" onclick="cancelImport()">取消</button>
+        <button class="btn-primary" onclick="confirmImport()">✅ 确认导入</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h3>演示与引导</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">演示模式</span>
+          <span class="setting-desc">加载 20 条示例数据体验功能（可随时恢复真实数据）</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="demo-mode-toggle" onchange="handleDemoModeToggle(this)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">重新显示引导</span>
+          <span class="setting-desc">再次查看新用户功能引导</span>
+        </div>
+        <button class="btn-secondary" onclick="showGuideAgain()">🚀 显示引导</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h3>危险操作</h3>
+      <div class="setting-item danger">
+        <div class="setting-info">
+          <span class="setting-title">清除所有数据</span>
+          <span class="setting-desc">此操作不可恢复，请谨慎操作</span>
+        </div>
+        <button class="btn-danger" onclick="clearAllData()">🗑️ 清除</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h3>关于</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">Expense Tracker</span>
+          <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+    <span class="nav-icon">📊</span>
+    <span class="nav-label">概览</span>
+  </button>
+  <button class="nav-item" data-view="add" onclick="switchView('add')">
+    <span class="nav-icon">➕</span>
+    <span class="nav-label">记账</span>
+  </button>
+  <button class="nav-item" data-view="list" onclick="switchView('list')">
+    <span class="nav-icon">📋</span>
+    <span class="nav-label">明细</span>
+  </button>
+  <button class="nav-item" data-view="tags" onclick="switchView('tags')">
+    <span class="nav-icon">🏷️</span>
+    <span class="nav-label">标签</span>
+  </button>
+  <button class="nav-item" data-view="settings" onclick="switchView('settings')">
+    <span class="nav-icon">⚙️</span>
+    <span class="nav-label">设置</span>
+  </button>
+</nav>
+
+<script src="js/db.js?v=5"></script>
+<script src="js/chart.js?v=5"></script>
+<script src="js/import-export.js?v=5"></script>
+<script src="js/guide.js?v=5"></script>
+<script src="js/app.js?v=5"></script>
+<script>
+// Theme Management (inline for instant theme sync)
+function initTheme() {
+  const savedTheme = localStorage.getItem('quick-tools-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('quick-tools-theme', newTheme);
+  updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+  const icon = document.getElementById('theme-icon');
+  if (icon) icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+// View switching (inline for immediate nav response)
+function switchView(viewName) {
+  document.querySelectorAll('.view-section').forEach(function(sec) {
+    sec.classList.remove('active');
+  });
+  document.querySelectorAll('.nav-item').forEach(function(nav) {
+    nav.classList.remove('active');
+  });
+  const target = document.getElementById('view-' + viewName);
+  if (target) target.classList.add('active');
+  const navBtn = document.querySelector('.nav-item[data-view="' + viewName + '"]');
+  if (navBtn) navBtn.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Trigger view-specific rendering
+  if (viewName === 'list' && typeof window.renderExpenseList === 'function') {
+    window.renderExpenseList();
+  } else if (viewName === 'tags' && typeof window.renderTagsList === 'function') {
+    window.renderTagsList();
+  } else if (viewName === 'dashboard' && typeof window.refreshDashboard === 'function') {
+    window.refreshDashboard();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initTheme);
+</script>
+<div class="toast" id="toast"></div>
+
+</body>
+</html>

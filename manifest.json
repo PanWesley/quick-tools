@@ -88,6 +88,13 @@
       "description": "对比两段文本差异",
       "url": "/tools/diff/",
       "icons": [{ "src": "/icons/diff-icon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "生活账单",
+      "short_name": "账单",
+      "description": "快速记录和统计日常消费",
+      "url": "/tools/expense/",
+      "icons": [{ "src": "/icons/expense-icon.png", "sizes": "96x96" }]
     }
   ],
   "related_applications": [],
