@@ -448,7 +448,7 @@ function updateThemeIcon(theme) {
 }
 
 // View switching (inline for immediate nav response)
-function switchView(viewName) {
+function switchView(viewName, skipHistory) {
   document.querySelectorAll('.view-section').forEach(function(sec) {
     sec.classList.remove('active');
   });
@@ -461,7 +461,25 @@ function switchView(viewName) {
   if (navBtn) navBtn.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
+  // Push state for browser back button support
+  if (!skipHistory && history.state !== viewName) {
+    history.pushState(viewName, '', '#view=' + viewName);
+  }
 }
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', function(e) {
+  const viewName = e.state || 'dashboard';
+  switchView(viewName, true);
+  // Trigger rendering after view switch
+  if (typeof window.refreshDashboard === 'function' && viewName === 'dashboard') {
+    window.refreshDashboard();
+  } else if (typeof window.renderExpenseList === 'function' && viewName === 'list') {
+    window.renderExpenseList();
+  } else if (typeof window.renderTagsList === 'function' && viewName === 'tags') {
+    window.renderTagsList();
+  }
+});
 
 document.addEventListener('DOMContentLoaded', initTheme);
 </script>

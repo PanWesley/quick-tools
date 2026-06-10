@@ -321,9 +321,9 @@ function populateCategorySelects() {
 
 // View switching with rendering - runs after index.html's switchView
 const originalSwitchView = window.switchView;
-window.switchView = function(viewName) {
+window.switchView = function(viewName, skipHistory) {
   // Call the original switchView from index.html first
-  if (originalSwitchView) originalSwitchView(viewName);
+  if (originalSwitchView) originalSwitchView(viewName, skipHistory);
 
   // Then trigger view-specific rendering
   if (viewName === 'dashboard') {
