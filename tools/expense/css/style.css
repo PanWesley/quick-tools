@@ -186,6 +186,7 @@ main {
   box-shadow: var(--shadow);
   transition: all 0.3s;
   text-align: center;
+  cursor: pointer;
 }
 
 .stat-card:hover {
@@ -422,6 +423,13 @@ main {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card-bg);
+}
+
+.selected-filter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .tag-chip {
@@ -743,6 +751,13 @@ main {
   background: var(--bg);
   padding: 2px 8px;
   border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tag-count:hover {
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 .tag-actions {

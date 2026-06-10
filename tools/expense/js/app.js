@@ -120,6 +120,15 @@ function initDashboardFilters() {
   if (amountMin) amountMin.addEventListener('input', triggerDashboardUpdate);
   if (amountMax) amountMax.addEventListener('input', triggerDashboardUpdate);
   if (search) search.addEventListener('input', triggerDashboardUpdate);
+
+  // Initialize selected tags display
+  renderSelectedFilterTags();
+
+  // Event delegation for stat cards click
+  document.querySelectorAll('[data-action="go-to-list"]').forEach(card => {
+    card.addEventListener('click', goToListFromDashboard);
+    card.style.cursor = 'pointer';
+  });
 }
 
 function triggerDashboardUpdate() {
@@ -171,14 +180,89 @@ window.toggleTagPopup = function() {
 window.applyTagFilter = function() {
   const popup = document.getElementById('dash-tag-popup');
   if (popup) popup.style.display = 'none';
+  renderSelectedFilterTags();
   refreshDashboard();
 };
 
 window.clearTagFilter = function() {
   selectedTagIds = [];
   renderTagCloud();
+  renderSelectedFilterTags();
   refreshDashboard();
 };
+
+function renderSelectedFilterTags() {
+  const container = document.getElementById('dash-selected-tags');
+  if (!container) return;
+
+  if (selectedTagIds.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = selectedTagIds.map(id => {
+    const tag = allTags.find(t => t.id === id);
+    if (!tag) return '';
+    const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
+    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeFilterTag('${tag.id}')">×</button></span>`;
+  }).join('');
+}
+
+window.removeFilterTag = function(tagId) {
+  selectedTagIds = selectedTagIds.filter(id => id !== tagId);
+  renderTagCloud();
+  renderSelectedFilterTags();
+  refreshDashboard();
+};
+
+window.goToListFromDashboard = function() {
+  // Apply dashboard filters to list view
+  const timeRange = document.getElementById('dash-time-range');
+  const dateStart = document.getElementById('dash-date-start');
+  const dateEnd = document.getElementById('dash-date-end');
+  const amountMin = document.getElementById('dash-amount-min');
+  const amountMax = document.getElementById('dash-amount-max');
+  const search = document.getElementById('dash-search');
+
+  // Store filters for list view to use
+  window._listViewFilters = {
+    timeRange: timeRange ? timeRange.value : 'this-month',
+    customStart: dateStart ? dateStart.value : null,
+    customEnd: dateEnd ? dateEnd.value : null,
+    tags: selectedTagIds.length > 0 ? selectedTagIds : null,
+    minAmount: amountMin ? amountMin.value : null,
+    maxAmount: amountMax ? amountMax.value : null,
+    search: search ? search.value : ''
+  };
+
+  switchView('list');
+  applyListViewFilters();
+};
+
+function applyListViewFilters() {
+  if (!window._listViewFilters) return;
+
+  const filters = window._listViewFilters;
+
+  // Apply search filter
+  const listSearch = document.getElementById('list-search');
+  if (listSearch && filters.search) {
+    listSearch.value = filters.search;
+  }
+
+  // Apply category filter if single tag selected
+  const listFilterCategory = document.getElementById('list-filter-category');
+  if (listFilterCategory && filters.tags && filters.tags.length === 1) {
+    const tag = allTags.find(t => t.id === filters.tags[0]);
+    if (tag) {
+      listFilterCategory.value = tag.name;
+    }
+  }
+
+  // Re-render list with filters
+  listViewCurrentOffset = 0;
+  renderExpenseList();
+}
 
 function renderTagCloud() {
   const container = document.getElementById('dash-tag-cloud');
@@ -235,10 +319,13 @@ function populateCategorySelects() {
 // View Switching
 // ============================================
 
+// View switching with rendering - runs after index.html's switchView
 const originalSwitchView = window.switchView;
 window.switchView = function(viewName) {
+  // Call the original switchView from index.html first
   if (originalSwitchView) originalSwitchView(viewName);
 
+  // Then trigger view-specific rendering
   if (viewName === 'dashboard') {
     refreshDashboard();
   } else if (viewName === 'list') {
@@ -266,7 +353,7 @@ window.saveExpense = async function() {
   const note = document.getElementById('exp-note').value;
 
   if (!amount || !date || !category) {
-    alert('请填写金额、日期和分类');
+    showToast('请填写金额、日期和分类');
     return;
   }
 
@@ -275,7 +362,7 @@ window.saveExpense = async function() {
 
   await addExpense({ amount, date, category, note, tags });
   resetExpenseForm();
-  alert('保存成功！');
+  showToast('保存成功！');
   switchView('dashboard');
 };
 
@@ -345,6 +432,16 @@ function onTagInput() {
 
   const container = document.getElementById('tag-suggestions');
   if (tagSuggestionMatches.length === 0) {
+    // Show option to create new tag
+    const current = raw.split(/[,，\s]+/).pop().trim();
+    if (current && !allTags.some(t => t.name === current)) {
+      container.innerHTML = `<div class="tag-suggestion-item new-tag" onclick="createNewTagFromSuggestion('${current.replace(/'/g, "\\'")}')">
+        <span class="tag-suggestion-dot" style="background:#2DBAA3"></span>
+        <span>新建标签 "${current}"</span>
+      </div>`;
+      container.style.display = 'block';
+      return;
+    }
     hideTagSuggestions();
     return;
   }
@@ -414,6 +511,18 @@ window.selectSuggestionTag = function(tagId) {
   hideTagSuggestions();
 };
 
+window.createNewTagFromSuggestion = async function(name) {
+  if (!name || allTags.some(t => t.name === name)) return;
+  const newTag = await addTag({ name, color: '#2DBAA3' });
+  allTags.push(newTag);
+  quickFormSelectedTags.push(newTag.id);
+  renderSelectedTags();
+  renderTagCloud();
+  populateCategorySelects();
+  document.getElementById('exp-tags-input').value = '';
+  hideTagSuggestions();
+};
+
 function tryAddTagFromInput() {
   const input = document.getElementById('exp-tags-input');
   const raw = input.value.trim();
@@ -421,9 +530,20 @@ function tryAddTagFromInput() {
 
   const names = raw.split(/[,，\s]+/).filter(n => n.trim());
   for (const name of names) {
-    const tag = allTags.find(t => t.name === name.trim());
+    const nameTrimmed = name.trim();
+    let tag = allTags.find(t => t.name === nameTrimmed);
     if (tag && !quickFormSelectedTags.includes(tag.id)) {
       quickFormSelectedTags.push(tag.id);
+    } else if (!tag) {
+      // Create new tag
+      (async () => {
+        const newTag = await addTag({ name: nameTrimmed, color: '#2DBAA3' });
+        allTags.push(newTag);
+        quickFormSelectedTags.push(newTag.id);
+        renderSelectedTags();
+        renderTagCloud();
+        populateCategorySelects();
+      })();
     }
   }
   renderSelectedTags();
@@ -1096,9 +1216,20 @@ function tryAddEditTagFromInput() {
 
   const names = raw.split(/[,，\s]+/).filter(n => n.trim());
   for (const name of names) {
-    const tag = allTags.find(t => t.name === name.trim());
+    const nameTrimmed = name.trim();
+    let tag = allTags.find(t => t.name === nameTrimmed);
     if (tag && !editFormSelectedTags.includes(tag.id)) {
       editFormSelectedTags.push(tag.id);
+    } else if (!tag) {
+      // Create new tag
+      (async () => {
+        const newTag = await addTag({ name: nameTrimmed, color: '#2DBAA3' });
+        allTags.push(newTag);
+        editFormSelectedTags.push(newTag.id);
+        renderEditSelectedTags();
+        renderTagCloud();
+        populateCategorySelects();
+      })();
     }
   }
   renderEditSelectedTags();
@@ -1224,7 +1355,7 @@ window.renderTagsList = async function() {
       <div class="tag-display">
         <div class="tag-color-dot" style="background:${tag.color}"></div>
         <span class="tag-name">${tag.name}</span>
-        <span class="tag-count">${tagCounts[tag.id] || 0} 笔</span>
+        <span class="tag-count" onclick="filterByTagFromList('${tag.id}')" style="cursor:pointer;">${tagCounts[tag.id] || 0} 笔</span>
       </div>
       <div class="tag-actions">
         <input type="color" class="tag-color-input" value="${tag.color}" title="更改颜色" onchange="changeTagColor('${tag.id}', this.value)">
@@ -1265,6 +1396,24 @@ window.removeTag = async function(id) {
   await loadTags();
   renderExpenseList();
   refreshDashboard();
+};
+
+window.filterByTagFromList = function(tagId) {
+  const tag = allTags.find(t => t.id === tagId);
+  if (!tag) return;
+
+  // Switch to list view and filter by this tag
+  selectedTagIds = [tagId];
+  renderSelectedFilterTags();
+
+  // Set the category filter in list view
+  const listFilterCategory = document.getElementById('list-filter-category');
+  if (listFilterCategory) {
+    listFilterCategory.value = tag.name;
+  }
+
+  switchView('list');
+  renderExpenseList();
 };
 
 // ============================================
@@ -1359,11 +1508,14 @@ window.exportJSON = async function() {
 
 // Task 6: Import file handler
 let pendingImportRecords = null;
+let isImportProcessing = false;
 
 window.handleImportFile = async function(input) {
+  if (isImportProcessing) return;
   const file = input.files[0];
   if (!file) return;
 
+  isImportProcessing = true;
   const previewArea = document.getElementById('import-preview-area');
   const actionArea = document.getElementById('import-actions');
 
@@ -1373,6 +1525,7 @@ window.handleImportFile = async function(input) {
     if (!records || records.length === 0) {
       showToast('文件为空或无法识别');
       input.value = '';
+      isImportProcessing = false;
       return;
     }
 
@@ -1390,6 +1543,7 @@ window.handleImportFile = async function(input) {
     pendingImportRecords = null;
   }
   input.value = '';
+  isImportProcessing = false;
 };
 
 window.cancelImport = function() {
@@ -1432,12 +1586,12 @@ window.importData = async function(input) {
     const text = await file.text();
     const data = JSON.parse(text);
     await importDataFromObj(data);
-    alert('导入成功！');
+    showToast('导入成功！');
     await loadTags();
     renderExpenseList();
     refreshDashboard();
   } catch (err) {
-    alert('导入失败: ' + err.message);
+    showToast('导入失败: ' + err.message);
   }
   input.value = '';
 };
@@ -1450,7 +1604,7 @@ async function importDataFromObj(data) {
 window.clearAllData = async function() {
   if (!confirm('确定要清除所有数据吗？此操作不可恢复！')) return;
   await clearAllData();
-  alert('数据已清除');
+  showToast('数据已清除');
   await loadTags();
   renderExpenseList();
   refreshDashboard();
@@ -1492,8 +1646,7 @@ window.showGuideAgain = async function() {
 // ============================================
 
 async function generateTestData() {
-  const categories = allTags.map(t => t.name);
-  if (categories.length === 0) return;
+  if (allTags.length === 0) return;
 
   const today = new Date();
   const records = [];
@@ -1507,7 +1660,7 @@ async function generateTestData() {
     // 1-3 expenses per day
     const count = 1 + Math.floor(Math.random() * 3);
     for (let j = 0; j < count; j++) {
-      const cat = categories[Math.floor(Math.random() * categories.length)];
+      const tag = allTags[Math.floor(Math.random() * allTags.length)];
       const amount = parseFloat((Math.random() * 200 + 10).toFixed(2));
       const notes = ['午餐', '晚餐', '早餐', '打车', '地铁', '超市', '咖啡', '奶茶', '水果', '零食', '话费', '网费'];
       const note = notes[Math.floor(Math.random() * notes.length)];
@@ -1515,9 +1668,9 @@ async function generateTestData() {
       records.push({
         amount,
         date: dateStr,
-        category: cat,
+        category: tag.name,
         note,
-        tags: []
+        tags: [tag.id]
       });
     }
   }

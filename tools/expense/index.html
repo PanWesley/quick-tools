@@ -59,6 +59,7 @@
         <input type="date" id="dash-date-end" title="结束日期">
       </div>
       <button class="btn-secondary" id="dash-tag-btn" title="选择标签" onclick="toggleTagPopup()">🏷️ 标签</button>
+      <div class="selected-filter-tags" id="dash-selected-tags"></div>
       <div class="tag-popup" id="dash-tag-popup" style="display:none;">
         <div class="tag-popup-header">
           <span>选择标签</span>
@@ -76,19 +77,19 @@
     </div>
 
     <div class="dashboard-grid">
-      <div class="stat-card total">
+      <div class="stat-card total" data-action="go-to-list">
         <div class="stat-label">总支出</div>
         <div class="stat-value" id="dash-total">¥0.00</div>
       </div>
-      <div class="stat-card count">
+      <div class="stat-card count" data-action="go-to-list">
         <div class="stat-label">记账笔数</div>
         <div class="stat-value" id="dash-count">0</div>
       </div>
-      <div class="stat-card avg">
+      <div class="stat-card avg" data-action="go-to-list">
         <div class="stat-label">日均支出</div>
         <div class="stat-value" id="dash-avg">¥0.00</div>
       </div>
-      <div class="stat-card top">
+      <div class="stat-card top" data-action="go-to-list">
         <div class="stat-label">最高单笔</div>
         <div class="stat-value" id="dash-top">¥0.00</div>
       </div>
@@ -420,11 +421,11 @@
   </button>
 </nav>
 
-<script src="js/db.js?v=5"></script>
-<script src="js/chart.js?v=5"></script>
-<script src="js/import-export.js?v=5"></script>
-<script src="js/guide.js?v=5"></script>
-<script src="js/app.js?v=5"></script>
+<script src="js/db.js?v=10"></script>
+<script src="js/chart.js?v=10"></script>
+<script src="js/import-export.js?v=10"></script>
+<script src="js/guide.js?v=10"></script>
+<script src="js/app.js?v=10"></script>
 <script>
 // Theme Management (inline for instant theme sync)
 function initTheme() {
@@ -460,14 +461,6 @@ function switchView(viewName) {
   if (navBtn) navBtn.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Trigger view-specific rendering
-  if (viewName === 'list' && typeof window.renderExpenseList === 'function') {
-    window.renderExpenseList();
-  } else if (viewName === 'tags' && typeof window.renderTagsList === 'function') {
-    window.renderTagsList();
-  } else if (viewName === 'dashboard' && typeof window.refreshDashboard === 'function') {
-    window.refreshDashboard();
-  }
 }
 
 document.addEventListener('DOMContentLoaded', initTheme);
