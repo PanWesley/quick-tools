@@ -348,29 +348,38 @@ function parseAmount(amountStr) {
 }
 
 // ============================================
-// Import Preview
+// Import Preview (Full scrollable list with inline edit)
 // ============================================
 
 /**
- * Show preview of first 5 rows from imported data.
+ * Validate a mapped record.
+ * @param {Object} record
+ * @returns {{ valid: boolean, dateError: boolean, amountError: boolean }}
+ */
+function validateRecord(record) {
+  const dateError = !record.date;
+  const amountError = record.amount === null || isNaN(record.amount);
+  return { valid: !dateError && !amountError, dateError, amountError };
+}
+
+/**
+ * Show full scrollable preview of all imported records.
+ * Invalid fields are editable inline so the user can fix them.
  * @param {Array<Object>} records - Raw parsed records
  * @returns {Object} { previewHTML: string, mapped: Array<Object>, validCount: number, invalidCount: number }
  */
 function showImportPreview(records) {
   const mapped = mapRecordsToExpenses(records);
-  const previewRows = mapped.slice(0, 5);
+  const mapping = detectColumnMapping(records);
 
   let validCount = 0;
   let invalidCount = 0;
-  for (const m of mapped) {
-    if (m.date && m.amount !== null && !isNaN(m.amount)) {
-      validCount++;
-    } else {
-      invalidCount++;
-    }
-  }
+  const rowStates = mapped.map(m => {
+    const v = validateRecord(m);
+    if (v.valid) validCount++; else invalidCount++;
+    return { record: m, ...v };
+  });
 
-  const mapping = detectColumnMapping(records);
   const mappingInfo = Object.entries(mapping)
     .map(([k, v]) => {
       const display = Array.isArray(v) ? v.join(', ') : v;
@@ -378,45 +387,162 @@ function showImportPreview(records) {
     })
     .join('');
 
-  const rowsHtml = previewRows.map((row, idx) => {
-    const date = row.date || '<span class="import-missing">未识别</span>';
-    const amount = row.amount !== null ? `¥${row.amount.toFixed(2)}` : '<span class="import-missing">未识别</span>';
-    const item = row.itemName || '-';
-    const tags = row.tagValues && row.tagValues.length > 0 ? row.tagValues.join(', ') : '-';
+  const rowsHtml = rowStates.map((rs, idx) => {
+    const rec = rs.record;
+    const cls = rs.valid ? 'import-row-valid' : 'import-row-invalid';
+
+    const dateCell = rs.dateError
+      ? `<input type="text" class="import-edit-input import-edit-date" data-idx="${idx}" value="${rec.date || ''}" placeholder="例: 2025-01-15">`
+      : `<span class="import-cell-valid">${rec.date}</span>`;
+
+    const amountCell = rs.amountError
+      ? `<input type="number" step="0.01" min="0" class="import-edit-input import-edit-amount" data-idx="${idx}" value="${rec.amount !== null && !isNaN(rec.amount) ? rec.amount : ''}" placeholder="例: 35.00">`
+      : `<span class="import-cell-valid">¥${rec.amount.toFixed(2)}</span>`;
+
+    const itemCell = rec.itemName || '<span class="import-missing">-</span>';
+    const tagsCell = rec.tagValues && rec.tagValues.length > 0
+      ? rec.tagValues.join(', ')
+      : '<span class="import-missing">-</span>';
+
+    const statusIcon = rs.valid ? '✅' : '❌';
+
     return `
-      <tr>
-        <td>${idx + 1}</td>
-        <td>${date}</td>
-        <td>${amount}</td>
-        <td>${item}</td>
-        <td>${tags}</td>
+      <tr class="${cls}">
+        <td class="import-row-num">${idx + 1}</td>
+        <td>${dateCell}</td>
+        <td>${amountCell}</td>
+        <td>${itemCell}</td>
+        <td>${tagsCell}</td>
+        <td class="import-row-status">${statusIcon}</td>
       </tr>
     `;
   }).join('');
 
   const html = `
-    <div class="import-preview-section">
+    <div class="import-preview-section" id="import-preview-section">
       <div class="import-mapping-info">
         <strong>字段映射：</strong>
         <div class="import-mapping-tags">${mappingInfo || '<span class="import-missing">未检测到可识别字段</span>'}</div>
       </div>
-      <div class="import-stats">
-        <span class="import-stat valid">✅ 有效记录: ${validCount}</span>
-        <span class="import-stat invalid">⚠️ 无效记录: ${invalidCount}</span>
+      <div class="import-stats" id="import-stats-bar">
         <span class="import-stat total">总计: ${mapped.length}</span>
+        <span class="import-stat valid">✅ 有效: ${validCount}</span>
+        <span class="import-stat invalid">⚠️ 无效: ${invalidCount}</span>
       </div>
-      <table class="import-preview-table">
-        <thead>
-          <tr><th>#</th><th>日期</th><th>金额</th><th>项目</th><th>标签</th></tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-      ${mapped.length > 5 ? `<p class="import-preview-more">还有 ${mapped.length - 5} 行...</p>` : ''}
+      <div class="import-table-wrap">
+        <table class="import-preview-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>日期</th>
+              <th>金额</th>
+              <th>项目</th>
+              <th>标签</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <div class="import-preview-actions">
+        <button class="btn-secondary" onclick="revalidateImportPreview()">🔄 重新验证</button>
+      </div>
     </div>
   `;
 
-  return { previewHTML: html, mapped, validCount, invalidCount };
+  return { previewHTML: html, mapped, rowStates, validCount, invalidCount };
 }
+
+/**
+ * Read inline-edited values from the preview table and update mapped records.
+ * Called before re-validation or final import.
+ * @returns {Array<Object>} Updated mapped records
+ */
+function collectImportEdits() {
+  const dateInputs = document.querySelectorAll('.import-edit-date');
+  const amountInputs = document.querySelectorAll('.import-edit-amount');
+
+  // We need access to the global pendingImportRecords
+  if (typeof pendingImportRecords === 'undefined' || !pendingImportRecords) return;
+
+  dateInputs.forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    if (!isNaN(idx) && pendingImportRecords[idx]) {
+      pendingImportRecords[idx].date = inp.value.trim() || null;
+    }
+  });
+
+  amountInputs.forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    if (!isNaN(idx) && pendingImportRecords[idx]) {
+      const val = parseFloat(inp.value);
+      pendingImportRecords[idx].amount = isNaN(val) ? null : val;
+    }
+  });
+}
+
+/**
+ * Re-validate the preview table after inline edits and re-render the row statuses.
+ */
+function revalidateImportPreview() {
+  if (!pendingImportRecords) return;
+
+  // Collect edits first
+  collectImportEdits();
+
+  // Re-validate all records
+  let validCount = 0;
+  let invalidCount = 0;
+  const tbody = document.querySelector('.import-preview-table tbody');
+  if (!tbody) return;
+
+  const rows = tbody.querySelectorAll('tr');
+  rows.forEach((row, idx) => {
+    if (idx >= pendingImportRecords.length) return;
+    const rec = pendingImportRecords[idx];
+    const val = validateRecord(rec);
+
+    // Update row class
+    row.className = val.valid ? 'import-row-valid' : 'import-row-invalid';
+
+    // Update status cell
+    const statusCell = row.querySelector('.import-row-status');
+    if (statusCell) statusCell.textContent = val.valid ? '✅' : '❌';
+
+    // Replace inputs with valid text or keep them editable
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 3) {
+      // Date cell (index 1)
+      if (!val.dateError) {
+        cells[1].innerHTML = `<span class="import-cell-valid">${rec.date}</span>`;
+      } else {
+        cells[1].innerHTML = `<input type="text" class="import-edit-input import-edit-date" data-idx="${idx}" value="${rec.date || ''}" placeholder="例: 2025-01-15">`;
+      }
+
+      // Amount cell (index 2)
+      if (!val.amountError) {
+        cells[2].innerHTML = `<span class="import-cell-valid">¥${rec.amount.toFixed(2)}</span>`;
+      } else {
+        cells[2].innerHTML = `<input type="number" step="0.01" min="0" class="import-edit-input import-edit-amount" data-idx="${idx}" value="${rec.amount !== null && !isNaN(rec.amount) ? rec.amount : ''}" placeholder="例: 35.00">`;
+      }
+
+      if (val.valid) validCount++; else invalidCount++;
+    }
+  });
+
+  // Update stats bar
+  const statsBar = document.getElementById('import-stats-bar');
+  if (statsBar) {
+    statsBar.innerHTML = `
+      <span class="import-stat total">总计: ${pendingImportRecords.length}</span>
+      <span class="import-stat valid">✅ 有效: ${validCount}</span>
+      <span class="import-stat invalid">⚠️ 无效: ${invalidCount}</span>
+    `;
+  }
+}
+
+// Expose re-validation function globally
+window.revalidateImportPreview = revalidateImportPreview;
 
 // ============================================
 // Execute Import

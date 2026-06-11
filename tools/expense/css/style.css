@@ -1509,6 +1509,96 @@ main {
   text-align: center;
 }
 
+/* Scrollable import table */
+.import-table-wrap {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+
+.import-table-wrap .import-preview-table {
+  border: none;
+}
+
+.import-table-wrap .import-preview-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.import-table-wrap .import-preview-table thead th {
+  background: var(--card-bg);
+  border-bottom: 2px solid var(--border);
+}
+
+.import-table-wrap .import-preview-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Valid / invalid row indicators */
+.import-row-valid td {
+  border-left: 3px solid var(--success);
+}
+
+.import-row-invalid td {
+  border-left: 3px solid var(--danger);
+  background: rgba(231, 76, 60, 0.04);
+}
+
+[data-theme="dark"] .import-row-invalid td {
+  background: rgba(231, 76, 60, 0.10);
+}
+
+.import-row-num {
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 32px;
+  text-align: center;
+}
+
+.import-row-status {
+  text-align: center;
+  width: 36px;
+}
+
+.import-cell-valid {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Inline edit inputs */
+.import-edit-input {
+  padding: 4px 8px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  width: 120px;
+  max-width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.import-edit-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.import-edit-input::placeholder {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* Re-validate button row */
+.import-preview-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
 /* ============================================
    Guide Overlay
    ============================================ */

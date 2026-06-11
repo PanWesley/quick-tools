@@ -1606,6 +1606,11 @@ window.confirmImport = async function() {
     return;
   }
 
+  // Collect any inline edits from the preview table before importing
+  if (typeof collectImportEdits === 'function') {
+    collectImportEdits();
+  }
+
   try {
     showToast('正在导入...');
     const result = await executeImport(pendingImportRecords);
