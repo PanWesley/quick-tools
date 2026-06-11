@@ -59,12 +59,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial dashboard render
   await refreshDashboard();
 
-  // Generate test data if empty (development helper)
+  // Generate test data only on very first visit (no data AND no prior flag)
   const expenses = await getExpenses();
-  if (expenses.length === 0) {
+  const hasSeenBefore = localStorage.getItem('expense_data_initialized');
+  if (expenses.length === 0 && !hasSeenBefore) {
     await generateTestData();
     await refreshDashboard();
   }
+  localStorage.setItem('expense_data_initialized', '1');
 
   // Initialize guide on first visit
   try {
@@ -854,6 +856,49 @@ function showToast(message) {
 }
 
 // ============================================
+// Custom Confirm Modal
+// ============================================
+
+let confirmModalCallback = null;
+
+/**
+ * Show a custom confirm modal with title and message.
+ * @param {string} message - Body text
+ * @param {Function} onConfirm - Called when user clicks confirm
+ * @param {string} title - Optional title (default: '确认操作')
+ * @param {string} confirmLabel - Optional button label (default: '确认')
+ */
+window.showCustomConfirm = function(message, onConfirm, title, confirmLabel) {
+  const modal = document.getElementById('confirm-modal');
+  if (!modal) return;
+  
+  document.getElementById('confirm-modal-message').textContent = message;
+  document.getElementById('confirm-modal-title').textContent = title || '确认操作';
+  const okBtn = document.getElementById('confirm-modal-ok');
+  okBtn.textContent = confirmLabel || '确认';
+  
+  confirmModalCallback = onConfirm;
+  modal.style.display = 'flex';
+};
+
+window.closeConfirmModal = function() {
+  const modal = document.getElementById('confirm-modal');
+  if (modal) modal.style.display = 'none';
+  confirmModalCallback = null;
+};
+
+// Bind confirm button
+document.addEventListener('DOMContentLoaded', function() {
+  const okBtn = document.getElementById('confirm-modal-ok');
+  if (okBtn) {
+    okBtn.addEventListener('click', function() {
+      closeConfirmModal();
+      if (confirmModalCallback) confirmModalCallback();
+    });
+  }
+});
+
+// ============================================
 // Helpers: Recently used tags
 // ============================================
 
@@ -1391,11 +1436,12 @@ window.renameTag = async function(id) {
 };
 
 window.removeTag = async function(id) {
-  if (!confirm('确定要删除这个标签吗？相关支出中的标签引用也会被移除。')) return;
-  await deleteTag(id);
-  await loadTags();
-  renderExpenseList();
-  refreshDashboard();
+  showCustomConfirm('确定要删除这个标签吗？相关支出中的标签引用也会被移除。', async () => {
+    await deleteTag(id);
+    await loadTags();
+    renderExpenseList();
+    refreshDashboard();
+  }, '删除标签', '删除');
 };
 
 window.filterByTagFromList = function(tagId) {
@@ -1602,12 +1648,13 @@ async function importDataFromObj(data) {
 }
 
 window.confirmClearAllData = async function() {
-  if (!confirm('确定要清除所有数据吗？此操作不可恢复！')) return;
-  await clearAllData();
-  showToast('数据已清除');
-  await loadTags();
-  renderExpenseList();
-  refreshDashboard();
+  showCustomConfirm('确定要清除所有数据吗？此操作不可恢复！', async () => {
+    await clearAllData();
+    showToast('数据已清除');
+    await loadTags();
+    renderExpenseList();
+    refreshDashboard();
+  }, '清除数据', '清除');
 };
 
 // Task 7: Demo mode toggle

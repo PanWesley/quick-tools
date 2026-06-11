@@ -538,6 +538,26 @@ main {
   width: auto;
 }
 
+/* Amount Range (side-by-side min/max) */
+.amount-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 200px;
+}
+
+.amount-range input {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+}
+
+.amount-range .amount-sep {
+  color: var(--text-secondary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
 /* Tag Popup */
 .tag-popup {
   position: absolute;
@@ -1663,6 +1683,20 @@ main {
     width: 100%;
   }
 
+  .dashboard-filter select,
+  .dashboard-filter input[type="number"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .amount-range {
+    width: 100%;
+  }
+
+  .amount-range input {
+    min-width: 0;
+  }
+
   .custom-date-range {
     width: 100%;
   }
@@ -1676,10 +1710,15 @@ main {
   }
 
   .tag-popup {
-    left: 8px;
-    right: 8px;
-    min-width: auto;
-    max-width: none;
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 60vh;
+    z-index: 160;
+    animation: slideUp 0.3s ease;
   }
 
   .expense-item {

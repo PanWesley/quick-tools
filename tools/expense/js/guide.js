@@ -3,9 +3,8 @@
  * Provides first-visit guide overlay and demo data toggle.
  */
 
-// Using global functions from db.js: getExpenses, getTags, addExpense, clearAllData, setSettings, getSettings
-
-const GUIDE_SEEN_KEY = 'expense_guide_seen';
+// Using local storage for guide state (survives data clearing)
+const GUIDE_SEEN_KEY = 'expense_guide_seen_v2';
 const DEMO_MODE_KEY = 'expense_demo_mode';
 const REAL_DATA_BACKUP_KEY = 'expense_real_data_backup';
 
@@ -52,22 +51,21 @@ let guideOverlay = null;
  * @returns {Promise<boolean>}
  */
 async function shouldShowGuide() {
-  const seen = await getSettings(GUIDE_SEEN_KEY, false);
-  return !seen;
+  return !localStorage.getItem(GUIDE_SEEN_KEY);
 }
 
 /**
  * Mark guide as seen.
  */
 async function completeGuide() {
-  await setSettings(GUIDE_SEEN_KEY, true);
+  localStorage.setItem(GUIDE_SEEN_KEY, '1');
 }
 
 /**
  * Reset guide state so it shows again.
  */
 async function resetGuide() {
-  await setSettings(GUIDE_SEEN_KEY, false);
+  localStorage.removeItem(GUIDE_SEEN_KEY);
 }
 
 // ============================================

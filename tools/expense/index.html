@@ -71,8 +71,11 @@
           <button class="btn-primary" onclick="applyTagFilter()">确定</button>
         </div>
       </div>
-      <input type="number" id="dash-amount-min" placeholder="最低金额" step="0.01" min="0" title="最低金额">
-      <input type="number" id="dash-amount-max" placeholder="最高金额" step="0.01" min="0" title="最高金额">
+      <div class="amount-range">
+        <input type="number" id="dash-amount-min" placeholder="最低金额 ¥" step="0.01" min="0" title="最低金额">
+        <span class="amount-sep">—</span>
+        <input type="number" id="dash-amount-max" placeholder="最高金额 ¥" step="0.01" min="0" title="最高金额">
+      </div>
       <input type="text" id="dash-search" placeholder="🔍 搜索备注或分类..." title="搜索">
     </div>
 
@@ -397,6 +400,23 @@
   </section>
 </main>
 
+<!-- Custom Confirm Modal -->
+<div class="modal-overlay" id="confirm-modal" style="display:none;">
+  <div class="modal-card modal-small">
+    <div class="modal-header">
+      <h3 id="confirm-modal-title">确认操作</h3>
+      <button class="btn-close" onclick="closeConfirmModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-modal-message"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeConfirmModal()">取消</button>
+      <button class="btn-danger" id="confirm-modal-ok">确认</button>
+    </div>
+  </div>
+</div>
+
 <!-- Bottom Navigation -->
 <nav class="bottom-nav">
   <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
@@ -421,11 +441,11 @@
   </button>
 </nav>
 
-<script src="js/db.js?v=10"></script>
-<script src="js/chart.js?v=10"></script>
-<script src="js/import-export.js?v=10"></script>
-<script src="js/guide.js?v=10"></script>
-<script src="js/app.js?v=10"></script>
+<script src="js/db.js?v=14"></script>
+<script src="js/chart.js?v=14"></script>
+<script src="js/import-export.js?v=14"></script>
+<script src="js/guide.js?v=14"></script>
+<script src="js/app.js?v=14"></script>
 <script>
 // Theme Management (inline for instant theme sync)
 function initTheme() {
