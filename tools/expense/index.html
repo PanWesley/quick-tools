@@ -21,7 +21,7 @@
 <body>
 
 <header>
-  <a class="logo" href="../../">
+  <a class="logo" href="." onclick="switchView('dashboard'); return false;">
     <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="28" height="28" rx="6" fill="#2DBAA3"/>
       <path d="M8 10h12M8 14h8M8 18h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
@@ -29,7 +29,6 @@
     Expense Tracker
   </a>
   <div class="header-actions">
-    <a class="back-btn" href="../../">← 返回首页</a>
     <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
       <span id="theme-icon">🌙</span>
     </button>
@@ -441,11 +440,11 @@
   </button>
 </nav>
 
-<script src="js/db.js?v=15"></script>
-<script src="js/chart.js?v=15"></script>
-<script src="js/import-export.js?v=15"></script>
-<script src="js/guide.js?v=15"></script>
-<script src="js/app.js?v=15"></script>
+<script src="js/db.js?v=16"></script>
+<script src="js/chart.js?v=16"></script>
+<script src="js/import-export.js?v=16"></script>
+<script src="js/guide.js?v=16"></script>
+<script src="js/app.js?v=16"></script>
 <script>
 // Theme Management (inline for instant theme sync)
 function initTheme() {

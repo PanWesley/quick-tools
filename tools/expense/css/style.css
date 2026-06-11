@@ -77,6 +77,8 @@ header {
   font-weight: 700;
   color: var(--primary);
   text-decoration: none;
+  cursor: pointer;
+  user-select: none;
 }
 
 .logo svg {
