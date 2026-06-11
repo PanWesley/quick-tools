@@ -18,5 +18,9 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    { "source": "/tools/expense", "destination": "/tools/expense/" },
+    { "source": "/tools/expense/", "destination": "/tools/expense/index.html" }
   ]
 }

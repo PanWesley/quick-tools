@@ -12,12 +12,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta http-equiv="cache-control" content="no-cache, must-revalidate">
 <meta name="theme-color" content="#2DBAA3">
+<!-- PWA Manifest -->
+<link rel="manifest" href="/manifest.json">
+<!-- iOS Icons -->
+<link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+<link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png">
+<!-- PWA Styles -->
+<link rel="stylesheet" href="/shared/css/pwa.css?v=2">
 <title>Expense Tracker - Quick Tools</title>
 <!-- Chart.js for data visualization -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=17">
+<link rel="stylesheet" href="css/style.css?v=18">
 <style>
   /* Critical inline CSS — guarantees stat cards render correctly even if external CSS is CDN-cached */
   .dashboard-grid {
@@ -493,11 +501,13 @@
   </button>
 </nav>
 
-<script src="js/db.js?v=17"></script>
-<script src="js/chart.js?v=17"></script>
-<script src="js/import-export.js?v=17"></script>
-<script src="js/guide.js?v=17"></script>
-<script src="js/app.js?v=17"></script>
+<script src="js/db.js?v=18"></script>
+<script src="js/chart.js?v=18"></script>
+<script src="js/import-export.js?v=18"></script>
+<script src="js/guide.js?v=18"></script>
+<script src="js/app.js?v=18"></script>
+<!-- PWA Scripts -->
+<script src="/shared/js/pwa.js?v=2"></script>
 <script>
 // Theme Management (inline for instant theme sync)
 function initTheme() {
