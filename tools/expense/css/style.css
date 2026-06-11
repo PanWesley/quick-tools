@@ -862,6 +862,17 @@ main {
   color: var(--danger);
 }
 
+.setting-version {
+  padding: 4px 10px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
 /* Empty State */
 .empty-state {
   display: flex;
