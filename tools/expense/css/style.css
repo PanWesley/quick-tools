@@ -1571,14 +1571,14 @@ main {
 /* Inline edit inputs */
 .import-edit-input {
   padding: 4px 8px;
-  border: 1px solid var(--danger);
+  border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--card-bg);
   color: var(--text);
   font-size: 13px;
   outline: none;
-  width: 120px;
-  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -1592,10 +1592,70 @@ main {
   font-size: 11px;
 }
 
+/* Invalid field input — red border */
+.import-edit-invalid {
+  border-color: var(--danger);
+  background: rgba(231, 76, 60, 0.04);
+}
+
+.import-edit-invalid:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* Column widths */
+.import-preview-table .col-num { width: 36px; }
+.import-preview-table .col-date { width: 120px; }
+.import-preview-table .col-amount { width: 90px; }
+.import-preview-table .col-item { width: auto; }
+.import-preview-table .col-tags { width: auto; }
+.import-preview-table .col-status { width: 40px; }
+.import-preview-table .col-del { width: 40px; }
+
+/* Delete button per row */
+.import-row-del {
+  text-align: center;
+  padding: 2px !important;
+}
+
+.import-del-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  line-height: 1;
+  padding: 0;
+}
+
+.import-del-btn:hover {
+  background: rgba(231, 76, 60, 0.12);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Delete invalid rows button */
+.import-del-invalid-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.import-del-invalid-btn:hover {
+  background: rgba(231, 76, 60, 0.08);
+}
+
 /* Re-validate button row */
 .import-preview-actions {
   display: flex;
   justify-content: center;
+  gap: 10px;
   padding-top: 8px;
 }
 
@@ -1895,5 +1955,29 @@ main {
 
   .stat-value {
     font-size: 16px;
+  }
+
+  .import-table-wrap {
+    max-height: 360px;
+    overflow-x: auto;
+  }
+
+  .import-preview-table {
+    min-width: 600px;
+  }
+
+  .import-edit-input {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .import-preview-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .import-preview-actions .btn-secondary {
+    font-size: 13px;
+    padding: 8px 14px;
   }
 }

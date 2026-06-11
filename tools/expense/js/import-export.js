@@ -348,7 +348,7 @@ function parseAmount(amountStr) {
 }
 
 // ============================================
-// Import Preview (Full scrollable list with inline edit)
+// Import Preview (Full scrollable, all-field edit, per-row delete)
 // ============================================
 
 /**
@@ -363,10 +363,46 @@ function validateRecord(record) {
 }
 
 /**
+ * Escape HTML entities for safe rendering.
+ */
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Build a single editable row for the import preview.
+ * Every field is an input so the user can edit anything.
+ */
+function buildImportRow(rec, idx, keepStatus) {
+  const v = validateRecord(rec);
+  const cls = v.valid ? 'import-row-valid' : 'import-row-invalid';
+  const statusIcon = keepStatus || (v.valid ? '✅' : '❌');
+  const dateVal = rec.date || '';
+  const amountVal = rec.amount !== null && !isNaN(rec.amount) ? rec.amount : '';
+  const itemVal = rec.itemName || '';
+  const tagsVal = (rec.tagValues && rec.tagValues.length > 0) ? rec.tagValues.join(', ') : '';
+
+  // Color the border of invalid fields red
+  const dateInputCls = v.dateError ? 'import-edit-input import-edit-invalid' : 'import-edit-input';
+  const amountInputCls = v.amountError ? 'import-edit-input import-edit-invalid' : 'import-edit-input';
+
+  return `
+    <tr class="${cls}" data-idx="${idx}">
+      <td class="import-row-num">${idx + 1}</td>
+      <td><input type="text" class="${dateInputCls} import-edit-date" data-idx="${idx}" value="${escHtml(dateVal)}" placeholder="日期"></td>
+      <td><input type="number" step="0.01" min="0" class="${amountInputCls} import-edit-amount" data-idx="${idx}" value="${amountVal}" placeholder="金额"></td>
+      <td><input type="text" class="import-edit-input import-edit-item" data-idx="${idx}" value="${escHtml(itemVal)}" placeholder="项目名称"></td>
+      <td><input type="text" class="import-edit-input import-edit-tags" data-idx="${idx}" value="${escHtml(tagsVal)}" placeholder="标签（逗号分隔）"></td>
+      <td class="import-row-status">${statusIcon}</td>
+      <td class="import-row-del"><button class="import-del-btn" onclick="deleteImportRow(${idx})" title="删除此行">✕</button></td>
+    </tr>`;
+}
+
+/**
  * Show full scrollable preview of all imported records.
- * Invalid fields are editable inline so the user can fix them.
+ * Every field is editable inline. Each row has a delete button.
  * @param {Array<Object>} records - Raw parsed records
- * @returns {Object} { previewHTML: string, mapped: Array<Object>, validCount: number, invalidCount: number }
  */
 function showImportPreview(records) {
   const mapped = mapRecordsToExpenses(records);
@@ -374,10 +410,8 @@ function showImportPreview(records) {
 
   let validCount = 0;
   let invalidCount = 0;
-  const rowStates = mapped.map(m => {
-    const v = validateRecord(m);
-    if (v.valid) validCount++; else invalidCount++;
-    return { record: m, ...v };
+  mapped.forEach(m => {
+    if (validateRecord(m).valid) validCount++; else invalidCount++;
   });
 
   const mappingInfo = Object.entries(mapping)
@@ -387,36 +421,7 @@ function showImportPreview(records) {
     })
     .join('');
 
-  const rowsHtml = rowStates.map((rs, idx) => {
-    const rec = rs.record;
-    const cls = rs.valid ? 'import-row-valid' : 'import-row-invalid';
-
-    const dateCell = rs.dateError
-      ? `<input type="text" class="import-edit-input import-edit-date" data-idx="${idx}" value="${rec.date || ''}" placeholder="例: 2025-01-15">`
-      : `<span class="import-cell-valid">${rec.date}</span>`;
-
-    const amountCell = rs.amountError
-      ? `<input type="number" step="0.01" min="0" class="import-edit-input import-edit-amount" data-idx="${idx}" value="${rec.amount !== null && !isNaN(rec.amount) ? rec.amount : ''}" placeholder="例: 35.00">`
-      : `<span class="import-cell-valid">¥${rec.amount.toFixed(2)}</span>`;
-
-    const itemCell = rec.itemName || '<span class="import-missing">-</span>';
-    const tagsCell = rec.tagValues && rec.tagValues.length > 0
-      ? rec.tagValues.join(', ')
-      : '<span class="import-missing">-</span>';
-
-    const statusIcon = rs.valid ? '✅' : '❌';
-
-    return `
-      <tr class="${cls}">
-        <td class="import-row-num">${idx + 1}</td>
-        <td>${dateCell}</td>
-        <td>${amountCell}</td>
-        <td>${itemCell}</td>
-        <td>${tagsCell}</td>
-        <td class="import-row-status">${statusIcon}</td>
-      </tr>
-    `;
-  }).join('');
+  const rowsHtml = mapped.map((rec, idx) => buildImportRow(rec, idx)).join('');
 
   const html = `
     <div class="import-preview-section" id="import-preview-section">
@@ -433,12 +438,13 @@ function showImportPreview(records) {
         <table class="import-preview-table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>日期</th>
-              <th>金额</th>
-              <th>项目</th>
-              <th>标签</th>
-              <th>状态</th>
+              <th class="col-num">#</th>
+              <th class="col-date">日期</th>
+              <th class="col-amount">金额</th>
+              <th class="col-item">项目</th>
+              <th class="col-tags">标签</th>
+              <th class="col-status">状态</th>
+              <th class="col-del">删除</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
@@ -446,91 +452,104 @@ function showImportPreview(records) {
       </div>
       <div class="import-preview-actions">
         <button class="btn-secondary" onclick="revalidateImportPreview()">🔄 重新验证</button>
+        <button class="btn-secondary import-del-invalid-btn" onclick="deleteInvalidImportRows()">🗑️ 删除无效行</button>
       </div>
     </div>
   `;
 
-  return { previewHTML: html, mapped, rowStates, validCount, invalidCount };
+  return { previewHTML: html, mapped, validCount, invalidCount };
 }
 
 /**
- * Read inline-edited values from the preview table and update mapped records.
- * Called before re-validation or final import.
- * @returns {Array<Object>} Updated mapped records
+ * Read ALL inline-edited values from the preview table and update pendingImportRecords.
  */
 function collectImportEdits() {
-  const dateInputs = document.querySelectorAll('.import-edit-date');
-  const amountInputs = document.querySelectorAll('.import-edit-amount');
-
-  // We need access to the global pendingImportRecords
   if (typeof pendingImportRecords === 'undefined' || !pendingImportRecords) return;
 
-  dateInputs.forEach(inp => {
+  document.querySelectorAll('.import-edit-date').forEach(inp => {
     const idx = parseInt(inp.dataset.idx);
     if (!isNaN(idx) && pendingImportRecords[idx]) {
       pendingImportRecords[idx].date = inp.value.trim() || null;
     }
   });
 
-  amountInputs.forEach(inp => {
+  document.querySelectorAll('.import-edit-amount').forEach(inp => {
     const idx = parseInt(inp.dataset.idx);
     if (!isNaN(idx) && pendingImportRecords[idx]) {
       const val = parseFloat(inp.value);
       pendingImportRecords[idx].amount = isNaN(val) ? null : val;
     }
   });
-}
 
-/**
- * Re-validate the preview table after inline edits and re-render the row statuses.
- */
-function revalidateImportPreview() {
-  if (!pendingImportRecords) return;
-
-  // Collect edits first
-  collectImportEdits();
-
-  // Re-validate all records
-  let validCount = 0;
-  let invalidCount = 0;
-  const tbody = document.querySelector('.import-preview-table tbody');
-  if (!tbody) return;
-
-  const rows = tbody.querySelectorAll('tr');
-  rows.forEach((row, idx) => {
-    if (idx >= pendingImportRecords.length) return;
-    const rec = pendingImportRecords[idx];
-    const val = validateRecord(rec);
-
-    // Update row class
-    row.className = val.valid ? 'import-row-valid' : 'import-row-invalid';
-
-    // Update status cell
-    const statusCell = row.querySelector('.import-row-status');
-    if (statusCell) statusCell.textContent = val.valid ? '✅' : '❌';
-
-    // Replace inputs with valid text or keep them editable
-    const cells = row.querySelectorAll('td');
-    if (cells.length >= 3) {
-      // Date cell (index 1)
-      if (!val.dateError) {
-        cells[1].innerHTML = `<span class="import-cell-valid">${rec.date}</span>`;
-      } else {
-        cells[1].innerHTML = `<input type="text" class="import-edit-input import-edit-date" data-idx="${idx}" value="${rec.date || ''}" placeholder="例: 2025-01-15">`;
-      }
-
-      // Amount cell (index 2)
-      if (!val.amountError) {
-        cells[2].innerHTML = `<span class="import-cell-valid">¥${rec.amount.toFixed(2)}</span>`;
-      } else {
-        cells[2].innerHTML = `<input type="number" step="0.01" min="0" class="import-edit-input import-edit-amount" data-idx="${idx}" value="${rec.amount !== null && !isNaN(rec.amount) ? rec.amount : ''}" placeholder="例: 35.00">`;
-      }
-
-      if (val.valid) validCount++; else invalidCount++;
+  document.querySelectorAll('.import-edit-item').forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    if (!isNaN(idx) && pendingImportRecords[idx]) {
+      pendingImportRecords[idx].itemName = inp.value.trim() || null;
     }
   });
 
-  // Update stats bar
+  document.querySelectorAll('.import-edit-tags').forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    if (!isNaN(idx) && pendingImportRecords[idx]) {
+      const raw = inp.value.trim();
+      if (raw) {
+        pendingImportRecords[idx].tagValues = raw.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+      } else {
+        pendingImportRecords[idx].tagValues = [];
+      }
+    }
+  });
+}
+
+/**
+ * Delete a single row from the import preview by its original index.
+ */
+function deleteImportRow(idx) {
+  if (!pendingImportRecords || idx < 0 || idx >= pendingImportRecords.length) return;
+
+  // Remove from data
+  pendingImportRecords.splice(idx, 1);
+
+  // Rebuild the entire table to keep indices correct
+  rebuildImportTable();
+}
+
+/**
+ * Delete all invalid rows (rows where date or amount is missing).
+ */
+function deleteInvalidImportRows() {
+  if (!pendingImportRecords) return;
+
+  pendingImportRecords = pendingImportRecords.filter(rec => {
+    const v = validateRecord(rec);
+    return v.valid;
+  });
+
+  rebuildImportTable();
+}
+
+/**
+ * Rebuild the preview table from pendingImportRecords (preserving DOM edits).
+ */
+function rebuildImportTable() {
+  if (!pendingImportRecords) return;
+  collectImportEdits(); // save any in-progress edits first
+
+  const tbody = document.querySelector('.import-preview-table tbody');
+  if (!tbody) return;
+
+  let validCount = 0;
+  let invalidCount = 0;
+
+  const rowsHtml = pendingImportRecords.map((rec, idx) => {
+    const v = validateRecord(rec);
+    if (v.valid) validCount++; else invalidCount++;
+    return buildImportRow(rec, idx);
+  }).join('');
+
+  tbody.innerHTML = rowsHtml;
+
+  // Update stats
   const statsBar = document.getElementById('import-stats-bar');
   if (statsBar) {
     statsBar.innerHTML = `
@@ -541,8 +560,20 @@ function revalidateImportPreview() {
   }
 }
 
-// Expose re-validation function globally
+/**
+ * Re-validate the preview table after edits and refresh row statuses.
+ */
+function revalidateImportPreview() {
+  if (!pendingImportRecords) return;
+  collectImportEdits();
+  rebuildImportTable();
+}
+
+// Expose globally for onclick handlers
 window.revalidateImportPreview = revalidateImportPreview;
+window.deleteImportRow = deleteImportRow;
+window.deleteInvalidImportRows = deleteInvalidImportRows;
+window.rebuildImportTable = rebuildImportTable;
 
 // ============================================
 // Execute Import
