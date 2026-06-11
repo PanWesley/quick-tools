@@ -3,12 +3,13 @@
  * 提供离线缓存和 PWA 支持
  */
 
-const CACHE_NAME = 'quick-tools-v1';
+const CACHE_NAME = 'quick-tools-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/tools/json/',
   '/tools/diff/',
+  '/tools/expense/',
   '/manifest.json'
 ];
 
@@ -62,27 +63,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(request)
-      .then((cached) => {
-        // 返回缓存或发起网络请求
-        const fetchPromise = fetch(request)
-          .then((networkResponse) => {
-            // 更新缓存
-            if (networkResponse.ok) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, clone);
-              });
-            }
-            return networkResponse;
-          })
-          .catch(() => {
-            // 网络失败时返回缓存（如果存在）
-            return cached;
+    fetch(request)
+      .then((networkResponse) => {
+        // 网络成功：更新缓存
+        if (networkResponse.ok) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone);
           });
-
-        // 优先返回缓存，同时更新缓存
-        return cached || fetchPromise;
+        }
+        return networkResponse;
+      })
+      .catch(() => {
+        // 网络失败：回退到缓存
+        return caches.match(request);
       })
   );
 });
