@@ -42,6 +42,76 @@ function aggregateByTag(expenses, tagFilter = null) {
 }
 
 /**
+ * Aggregate expenses by tag group.
+ * @param {Array} expenses
+ * @returns {Object} { labels: [], data: [], colors: [] }
+ */
+async function aggregateByGroup(expenses) {
+  const allTags = await getTags();
+  const allTagGroups = await getTagGroups();
+
+  // Build tag ID -> group lookup
+  const tagGroupMap = {};
+  for (const tag of allTags) {
+    tagGroupMap[tag.id] = tag.parentId || 'group-uncategorized';
+  }
+
+  const groupAmounts = {};
+  for (const exp of expenses) {
+    const expTags = exp.tags || [];
+    if (expTags.length === 0) {
+      // No tags: attribute to uncategorized group
+      groupAmounts['group-uncategorized'] = (groupAmounts['group-uncategorized'] || 0) + (exp.amount || 0);
+      continue;
+    }
+
+    // Split amount evenly across tag groups
+    const uniqueGroups = new Set();
+    for (const tid of expTags) {
+      const gid = tagGroupMap[tid] || 'group-uncategorized';
+      uniqueGroups.add(gid);
+    }
+    const splitAmount = (exp.amount || 0) / uniqueGroups.size;
+    for (const gid of uniqueGroups) {
+      groupAmounts[gid] = (groupAmounts[gid] || 0) + splitAmount;
+    }
+  }
+
+  // Map group IDs to names and colors
+  const sorted = Object.entries(groupAmounts).sort((a, b) => b[1] - a[1]);
+  const labels = sorted.map(([gid]) => {
+    const group = allTagGroups.find(g => g.id === gid);
+    return group ? group.name : '未分类';
+  });
+  const data = sorted.map(([, v]) => v);
+  const colors = sorted.map(([gid]) => {
+    const group = allTagGroups.find(g => g.id === gid);
+    return group ? group.color : '#95a5a6';
+  });
+
+  return { labels, data, colors };
+}
+
+// Pie chart aggregation mode: 'tag' or 'group'
+let pieAggregationMode = 'tag';
+
+window.togglePieMode = function() {
+  if (pieAggregationMode === 'tag') {
+    pieAggregationMode = 'group';
+  } else {
+    pieAggregationMode = 'tag';
+  }
+  const toggleEl = document.getElementById('pie-mode-toggle');
+  if (toggleEl) {
+    toggleEl.textContent = pieAggregationMode === 'tag' ? '按标签' : '按分组';
+  }
+  // Re-render
+  if (typeof window !== 'undefined' && window._dashboardFilters) {
+    updateDashboard(window._dashboardFilters);
+  }
+};
+
+/**
  * Aggregate expenses by date for trend.
  * @param {Array} expenses
  * @param {number} days - number of days to look back
@@ -418,8 +488,13 @@ async function updateDashboard(filters = {}) {
   if (topEl) topEl.textContent = '¥' + top.toFixed(2);
 
   // Render charts
-  const pieData = aggregateByTag(expenses);
-  renderPieChart('categoryChart', pieData);
+  if (pieAggregationMode === 'group') {
+    const pieData = await aggregateByGroup(expenses);
+    renderPieChart('categoryChart', pieData);
+  } else {
+    const pieData = aggregateByTag(expenses);
+    renderPieChart('categoryChart', pieData);
+  }
 
   const barData = aggregateTopCategories(expenses, 5);
   renderBarChart('topCategoryChart', barData);

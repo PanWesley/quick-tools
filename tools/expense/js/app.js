@@ -11,6 +11,7 @@
 // ============================================
 
 let allTags = [];
+let allTagGroups = [];
 let selectedTagIds = [];
 let filterDebounceTimer = null;
 
@@ -207,8 +208,10 @@ function renderSelectedFilterTags() {
   container.innerHTML = selectedTagIds.map(id => {
     const tag = allTags.find(t => t.id === id);
     if (!tag) return '';
+    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
+    const groupName = group ? group.name : '';
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeFilterTag('${tag.id}')">×</button></span>`;
+    return `<span class="selected-tag-chip" style="${style}">${groupName ? groupName + ' · ' : ''}${tag.name}<button class="remove" onclick="removeFilterTag('${tag.id}')">×</button></span>`;
   }).join('');
 }
 
@@ -269,7 +272,7 @@ function applyListViewFilters() {
 }
 
 function renderTagCloud() {
-  const container = document.getElementById('dash-tag-cloud');
+  const container = document.getElementById('dash-tag-groups');
   if (!container) return;
 
   if (allTags.length === 0) {
@@ -277,12 +280,57 @@ function renderTagCloud() {
     return;
   }
 
-  container.innerHTML = allTags.map(tag => {
-    const isSelected = selectedTagIds.includes(tag.id);
-    const style = `background:${tag.color}22;color:${tag.color};border-color:${isSelected ? tag.color : 'transparent'}`;
-    return `<span class="tag-chip ${isSelected ? 'selected' : ''}" data-id="${tag.id}" style="${style}" onclick="toggleTagSelection('${tag.id}')">${tag.name}</span>`;
-  }).join('');
+  // Group tags by parentId
+  const tagsByGroup = {};
+  for (const group of allTagGroups) {
+    tagsByGroup[group.id] = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
+  }
+
+  let html = '';
+  for (const group of allTagGroups) {
+    const tags = tagsByGroup[group.id] || [];
+    if (tags.length === 0) continue; // Skip empty groups in filter
+
+    const allSelected = tags.every(tag => selectedTagIds.includes(tag.id));
+    const someSelected = tags.some(tag => selectedTagIds.includes(tag.id));
+
+    html += `<div class="tag-group-section">
+      <div class="tag-group-section-header" onclick="toggleGroupSelectAll('${group.id}')">
+        <span class="tag-group-dot" style="background:${group.color}"></span>
+        <span class="tag-group-section-name">${group.name}</span>
+        <span class="tag-group-select-all">${allSelected ? '取消全选' : '全选'}</span>
+      </div>
+      <div class="tag-group-section-chips">`;
+
+    for (const tag of tags) {
+      const isSelected = selectedTagIds.includes(tag.id);
+      const style = `background:${tag.color}22;color:${tag.color};border-color:${isSelected ? tag.color : 'transparent'}`;
+      html += `<span class="tag-chip ${isSelected ? 'selected' : ''}" data-id="${tag.id}" style="${style}" onclick="toggleTagSelection('${tag.id}')">${tag.name}</span>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  container.innerHTML = html;
 }
+
+window.toggleGroupSelectAll = function(groupId) {
+  const tagsInGroup = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === groupId);
+  const allSelected = tagsInGroup.every(tag => selectedTagIds.includes(tag.id));
+
+  if (allSelected) {
+    // Deselect all in group
+    selectedTagIds = selectedTagIds.filter(id => !tagsInGroup.some(tag => tag.id === id));
+  } else {
+    // Select all in group
+    for (const tag of tagsInGroup) {
+      if (!selectedTagIds.includes(tag.id)) {
+        selectedTagIds.push(tag.id);
+      }
+    }
+  }
+  renderTagCloud();
+};
 
 window.toggleTagSelection = function(tagId) {
   if (selectedTagIds.includes(tagId)) {
@@ -295,6 +343,7 @@ window.toggleTagSelection = function(tagId) {
 
 async function loadTags() {
   allTags = await getTags();
+  allTagGroups = await getTagGroups();
   populateCategorySelects();
   renderTagCloud();
   renderTagsList();
@@ -450,12 +499,15 @@ function onTagInput() {
     return;
   }
 
-  container.innerHTML = tagSuggestionMatches.map((tag, i) => `
+  container.innerHTML = tagSuggestionMatches.map((tag, i) => {
+    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
+    return `
     <div class="tag-suggestion-item" data-index="${i}" data-id="${tag.id}" onclick="selectSuggestionTag('${tag.id}')">
       <span class="tag-suggestion-dot" style="background:${tag.color}"></span>
       <span>${tag.name}</span>
+      <span class="tag-suggestion-group">${group ? group.name : ''}</span>
     </div>
-  `).join('');
+  `;}).join('');
   container.style.display = 'block';
 }
 
@@ -889,6 +941,23 @@ window.closeConfirmModal = function() {
   confirmModalCallback = null;
 };
 
+// ============================================
+// Custom Modal (generic content)
+// ============================================
+
+window.showCustomModal = function(htmlContent, title) {
+  const modal = document.getElementById('custom-modal');
+  if (!modal) return;
+  document.getElementById('custom-modal-title').textContent = title || '提示';
+  document.getElementById('custom-modal-body').innerHTML = htmlContent;
+  modal.style.display = 'flex';
+};
+
+window.closeCustomModal = function() {
+  const modal = document.getElementById('custom-modal');
+  if (modal) modal.style.display = 'none';
+};
+
 // Bind confirm button
 document.addEventListener('DOMContentLoaded', function() {
   const okBtn = document.getElementById('confirm-modal-ok');
@@ -1191,12 +1260,15 @@ function onEditTagInput() {
     return;
   }
 
-  container.innerHTML = editTagSuggestionMatches.map((tag, i) => `
+  container.innerHTML = editTagSuggestionMatches.map((tag, i) => {
+    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
+    return `
     <div class="tag-suggestion-item" data-index="${i}" data-id="${tag.id}" onclick="selectEditSuggestionTag('${tag.id}')">
       <span class="tag-suggestion-dot" style="background:${tag.color}"></span>
       <span>${tag.name}</span>
+      <span class="tag-suggestion-group">${group ? group.name : ''}</span>
     </div>
-  `).join('');
+  `;}).join('');
   container.style.display = 'block';
 }
 
@@ -1355,8 +1427,10 @@ function renderTagSelector(selectedIds = []) {
 window.addNewTag = async function() {
   const nameInput = document.getElementById('new-tag-name');
   const colorInput = document.getElementById('new-tag-color');
+  const groupSelect = document.getElementById('new-tag-group');
   const name = nameInput ? nameInput.value.trim() : '';
   const color = colorInput ? colorInput.value : '#2DBAA3';
+  const groupId = groupSelect ? groupSelect.value : '';
 
   if (!name) {
     showToast('请输入标签名称');
@@ -1369,15 +1443,26 @@ window.addNewTag = async function() {
     return;
   }
 
-  await addTag({ name, color });
+  const tag = await addTag({ name, color, parentId: groupId || 'group-uncategorized' });
   if (nameInput) nameInput.value = '';
+  if (groupSelect) groupSelect.value = '';
   await loadTags();
   renderTagSelector();
 };
 
+// Track collapsed state for groups
+const collapsedGroups = new Set();
+
 window.renderTagsList = async function() {
   const container = document.getElementById('tags-list');
   if (!container) return;
+
+  // Update the group select dropdown
+  const groupSelect = document.getElementById('new-tag-group');
+  if (groupSelect) {
+    groupSelect.innerHTML = '<option value="">选择分组...</option>' +
+      allTagGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+  }
 
   const expenses = await getExpenses();
   const tagCounts = {};
@@ -1387,31 +1472,173 @@ window.renderTagsList = async function() {
     }
   }
 
-  if (allTags.length === 0) {
+  if (allTagGroups.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">🏷️</div>
-        <p>暂无标签</p>
+        <p>暂无分组</p>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = allTags.map(tag => `
-    <div class="tag-item" data-id="${tag.id}">
-      <div class="tag-display">
-        <div class="tag-color-dot" style="background:${tag.color}"></div>
-        <span class="tag-name">${tag.name}</span>
-        <span class="tag-count" onclick="filterByTagFromList('${tag.id}')" style="cursor:pointer;">${tagCounts[tag.id] || 0} 笔</span>
+  // Group tags by parentId
+  const tagsByGroup = {};
+  for (const group of allTagGroups) {
+    tagsByGroup[group.id] = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
+  }
+
+  let html = '';
+  for (const group of allTagGroups) {
+    const tags = tagsByGroup[group.id] || [];
+    const isCollapsed = collapsedGroups.has(group.id);
+    const totalCount = tags.reduce((sum, tag) => sum + (tagCounts[tag.id] || 0), 0);
+
+    html += `
+      <div class="tag-group-card" data-group-id="${group.id}">
+        <div class="tag-group-header" onclick="toggleGroupCollapse('${group.id}')">
+          <div class="tag-group-left">
+            <span class="tag-group-toggle ${isCollapsed ? 'collapsed' : ''}">▼</span>
+            <span class="tag-group-dot" style="background:${group.color}"></span>
+            <span class="tag-group-name">${group.name}</span>
+            <span class="tag-group-total">${tags.length} 标签 / ${totalCount} 笔</span>
+          </div>
+          <div class="tag-group-actions" onclick="event.stopPropagation();">
+            <button class="tag-group-action-btn" onclick="renameGroup('${group.id}')">重命名</button>
+            <button class="tag-group-action-btn delete" onclick="removeGroup('${group.id}')">删除</button>
+          </div>
+        </div>
+        <div class="tag-group-body ${isCollapsed ? 'collapsed' : ''}">
+          ${tags.length === 0 ? `
+            <div class="tree-tag-item empty-group">
+              <span class="empty-text">此分组暂无标签</span>
+            </div>
+          ` : tags.map(tag => `
+            <div class="tree-tag-item" data-tag-id="${tag.id}">
+              <div class="tag-display">
+                <div class="tag-color-dot" style="background:${tag.color}"></div>
+                <span class="tag-name">${tag.name}</span>
+                <span class="tag-count" onclick="filterByTagFromList('${tag.id}')" style="cursor:pointer;">${tagCounts[tag.id] || 0} 笔</span>
+              </div>
+              <div class="tag-actions">
+                <input type="color" class="tag-color-input" value="${tag.color}" title="更改颜色" onchange="changeTagColor('${tag.id}', this.value)">
+                <button onclick="renameTag('${tag.id}')">重命名</button>
+                <button onclick="moveTagPrompt('${tag.id}', '${tag.name}')">移动</button>
+                <button onclick="openMergeModal('${tag.id}')">合并</button>
+                <button class="delete" onclick="removeTag('${tag.id}')">删除</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
-      <div class="tag-actions">
-        <input type="color" class="tag-color-input" value="${tag.color}" title="更改颜色" onchange="changeTagColor('${tag.id}', this.value)">
-        <button onclick="renameTag('${tag.id}')">重命名</button>
-        <button onclick="openMergeModal('${tag.id}')">合并</button>
-        <button class="delete" onclick="removeTag('${tag.id}')">删除</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }
+
+  container.innerHTML = html;
+};
+
+// ============================================
+// Tag Group Management Functions
+// ============================================
+
+window.toggleGroupCollapse = function(groupId) {
+  if (collapsedGroups.has(groupId)) {
+    collapsedGroups.delete(groupId);
+  } else {
+    collapsedGroups.add(groupId);
+  }
+  renderTagsList();
+};
+
+window.addNewGroup = async function() {
+  const nameInput = document.getElementById('new-group-name');
+  const colorInput = document.getElementById('new-group-color');
+  const name = nameInput ? nameInput.value.trim() : '';
+  const color = colorInput ? colorInput.value : '#95a5a6';
+
+  if (!name) {
+    showToast('请输入分组名称');
+    return;
+  }
+
+  // Check duplicate
+  if (allTagGroups.some(g => g.name === name)) {
+    showToast('分组名称已存在');
+    return;
+  }
+
+  await addTagGroup({ name, color });
+  if (nameInput) nameInput.value = '';
+  if (colorInput) colorInput.value = '#95a5a6';
+  await loadTags();
+  showToast('分组创建成功');
+};
+
+window.renameGroup = async function(groupId) {
+  const group = allTagGroups.find(g => g.id === groupId);
+  if (!group) return;
+
+  const newName = prompt('请输入新名称:', group.name);
+  if (newName && newName.trim() && newName.trim() !== group.name) {
+    if (allTagGroups.some(g => g.id !== groupId && g.name === newName.trim())) {
+      showToast('分组名称已存在');
+      return;
+    }
+    await updateTagGroup({ id: groupId, name: newName.trim() });
+    await loadTags();
+    showToast('重命名成功');
+  }
+};
+
+window.removeGroup = async function(groupId) {
+  const group = allTagGroups.find(g => g.id === groupId);
+  if (!group) return;
+
+  const tagsInGroup = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === groupId);
+  const msg = tagsInGroup.length > 0
+    ? `确定要删除分组"${group.name}"吗？其中的 ${tagsInGroup.length} 个标签将被移到"未分类"。`
+    : `确定要删除分组"${group.name}"吗？`;
+
+  showCustomConfirm(msg, async () => {
+    await deleteTagGroup(groupId);
+    await loadTags();
+    renderExpenseList();
+    refreshDashboard();
+    showToast('分组已删除');
+  }, '删除分组', '删除');
+};
+
+window.moveTagPrompt = function(tagId, tagName) {
+  const groups = allTagGroups.filter(g => {
+    const currentParentId = allTags.find(t => t.id === tagId)?.parentId || 'group-uncategorized';
+    return g.id !== currentParentId;
+  });
+
+  if (groups.length === 0) {
+    showToast('没有其他可移动的分组');
+    return;
+  }
+
+  const groupOptions = groups.map(g =>
+    `<div class="move-group-option" onclick="moveTagToGroupAction('${tagId}', '${g.id}')">
+      <span class="tag-group-dot" style="background:${g.color}"></span>
+      ${g.name}
+    </div>`
+  ).join('');
+
+  showCustomModal(`
+    <p>将标签 <strong>${tagName}</strong> 移动到：</p>
+    <div class="move-group-list">${groupOptions}</div>
+  `, '移动标签');
+};
+
+window.moveTagToGroupAction = async function(tagId, groupId) {
+  await moveTagToGroup(tagId, groupId);
+  await loadTags();
+  renderExpenseList();
+  refreshDashboard();
+  showToast('移动成功');
+  closeCustomModal();
 };
 
 window.changeTagColor = async function(id, color) {

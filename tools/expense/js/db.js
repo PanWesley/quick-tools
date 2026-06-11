@@ -5,11 +5,12 @@
  */
 
 const DB_NAME = 'expense-tracker-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 // Object store names
 const STORE_EXPENSES = 'expenses';
 const STORE_TAGS = 'tags';
+const STORE_TAG_GROUPS = 'tagGroups';
 const STORE_SETTINGS = 'settings';
 
 // Default categories (pre-populated tags)
@@ -22,6 +23,15 @@ const DEFAULT_TAGS = [
   { id: 'cat-medical', name: '医疗', color: '#e67e22' },
   { id: 'cat-education', name: '教育', color: '#1abc9c' },
   { id: 'cat-other', name: '其他', color: '#95a5a6' }
+];
+
+// Default tag groups (levels)
+const DEFAULT_TAG_GROUPS = [
+  { id: 'group-payment', name: '支付方式', color: '#3498db', order: 0 },
+  { id: 'group-person', name: '人员', color: '#e91e63', order: 1 },
+  { id: 'group-category', name: '消费类型', color: '#f39c12', order: 2 },
+  { id: 'group-channel', name: '渠道', color: '#9b59b6', order: 3 },
+  { id: 'group-uncategorized', name: '未分类', color: '#95a5a6', order: 99 }
 ];
 
 let dbInstance = null;
@@ -68,6 +78,11 @@ function openDB() {
         tagStore.createIndex('name', 'name', { unique: false });
       }
 
+      // Tag Groups store (v2)
+      if (!db.objectStoreNames.contains(STORE_TAG_GROUPS)) {
+        db.createObjectStore(STORE_TAG_GROUPS, { keyPath: 'id' });
+      }
+
       // Settings store
       if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
         db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
@@ -83,16 +98,43 @@ function openDB() {
 async function initDB() {
   const db = await openDB();
 
+  // Initialize tag groups if empty
+  const existingGroups = await getTagGroups();
+  if (existingGroups.length === 0) {
+    const tx = db.transaction(STORE_TAG_GROUPS, 'readwrite');
+    const store = tx.objectStore(STORE_TAG_GROUPS);
+    for (const g of DEFAULT_TAG_GROUPS) {
+      store.put(g);
+    }
+    await transactionComplete(tx);
+    console.log('Default tag groups initialized');
+  }
+
   // Check if tags already exist
   const existingTags = await getTags();
   if (existingTags.length === 0) {
     const tx = db.transaction(STORE_TAGS, 'readwrite');
     const store = tx.objectStore(STORE_TAGS);
     for (const tag of DEFAULT_TAGS) {
-      store.put(tag);
+      store.put({ ...tag, parentId: 'group-category' });
     }
     await transactionComplete(tx);
     console.log('Default tags initialized');
+  } else {
+    // Migrate: set parentId for any tag missing it (v1 -> v2)
+    const needsMigration = existingTags.some(t => t.parentId === undefined);
+    if (needsMigration) {
+      const tx = db.transaction(STORE_TAGS, 'readwrite');
+      const store = tx.objectStore(STORE_TAGS);
+      for (const tag of existingTags) {
+        if (tag.parentId === undefined) {
+          tag.parentId = 'group-category';
+          store.put(tag);
+        }
+      }
+      await transactionComplete(tx);
+      console.log('Tags migrated: parentId set to group-category');
+    }
   }
 }
 
@@ -106,6 +148,135 @@ function transactionComplete(tx) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(new Error('Transaction aborted'));
+  });
+}
+
+// ============================================
+// Tag Group CRUD (v2)
+// ============================================
+
+/**
+ * Add a new tag group.
+ * @param {Object} group - { name, color?, order? }
+ * @returns {Promise<Object>}
+ */
+async function addTagGroup(group) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_TAG_GROUPS, 'readwrite');
+  const store = tx.objectStore(STORE_TAG_GROUPS);
+
+  const allGroups = await getTagGroups();
+  const maxOrder = allGroups.reduce((m, g) => Math.max(m, g.order || 0), 0);
+
+  const record = {
+    id: 'group_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    name: group.name.trim(),
+    color: group.color || '#95a5a6',
+    order: group.order !== undefined ? group.order : maxOrder + 1,
+    createdAt: new Date().toISOString()
+  };
+
+  store.put(record);
+  await transactionComplete(tx);
+  return record;
+}
+
+/**
+ * Get all tag groups sorted by order.
+ * @returns {Promise<Array>}
+ */
+async function getTagGroups() {
+  const db = await openDB();
+  const tx = db.transaction(STORE_TAG_GROUPS, 'readonly');
+  const store = tx.objectStore(STORE_TAG_GROUPS);
+
+  return new Promise((resolve, reject) => {
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const groups = request.result || [];
+      groups.sort((a, b) => (a.order || 0) - (b.order || 0));
+      resolve(groups);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Update a tag group.
+ * @param {Object} group - Must include id.
+ * @returns {Promise<Object>}
+ */
+async function updateTagGroup(group) {
+  if (!group.id) throw new Error('Group id is required');
+
+  const db = await openDB();
+  const tx = db.transaction(STORE_TAG_GROUPS, 'readwrite');
+  const store = tx.objectStore(STORE_TAG_GROUPS);
+
+  return new Promise((resolve, reject) => {
+    const getReq = store.get(group.id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) { reject(new Error('Group not found: ' + group.id)); return; }
+
+      const updated = { ...existing };
+      if (group.name !== undefined) updated.name = group.name.trim();
+      if (group.color !== undefined) updated.color = group.color;
+      if (group.order !== undefined) updated.order = group.order;
+
+      store.put(updated);
+      tx.oncomplete = () => resolve(updated);
+      tx.onerror = () => reject(tx.error);
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+/**
+ * Delete a tag group, moving child tags to 'group-uncategorized'.
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+async function deleteTagGroup(id) {
+  const db = await openDB();
+  const tags = await getTags();
+  const affectedTags = tags.filter(t => (t.parentId || 'group-uncategorized') === id);
+
+  const tx = db.transaction([STORE_TAGS, STORE_TAG_GROUPS], 'readwrite');
+  const tagStore = tx.objectStore(STORE_TAGS);
+  const groupStore = tx.objectStore(STORE_TAG_GROUPS);
+
+  for (const tag of affectedTags) {
+    tag.parentId = 'group-uncategorized';
+    tagStore.put(tag);
+  }
+
+  groupStore.delete(id);
+  await transactionComplete(tx);
+}
+
+/**
+ * Move a tag to a different group.
+ * @param {string} tagId
+ * @param {string} groupId
+ * @returns {Promise<Object>}
+ */
+async function moveTagToGroup(tagId, groupId) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_TAGS, 'readwrite');
+  const store = tx.objectStore(STORE_TAGS);
+
+  return new Promise((resolve, reject) => {
+    const getReq = store.get(tagId);
+    getReq.onsuccess = () => {
+      const tag = getReq.result;
+      if (!tag) { reject(new Error('Tag not found')); return; }
+      tag.parentId = groupId;
+      store.put(tag);
+      tx.oncomplete = () => resolve(tag);
+      tx.onerror = () => reject(tx.error);
+    };
+    getReq.onerror = () => reject(getReq.error);
   });
 }
 
@@ -246,7 +417,8 @@ async function addTag(tag) {
   const record = {
     id: 'tag_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
     name: tag.name.trim(),
-    color: tag.color || '#2DBAA3'
+    color: tag.color || '#2DBAA3',
+    parentId: tag.parentId || 'group-uncategorized'
   };
 
   store.put(record);
@@ -417,7 +589,7 @@ async function setSettings(key, value) {
  * @returns {Promise<Object>}
  */
 async function exportAllData() {
-  const [expenses, tags, settings] = await Promise.all([
+  const [expenses, tags, settings, tagGroups] = await Promise.all([
     getExpenses(),
     getTags(),
     (async () => {
@@ -429,7 +601,8 @@ async function exportAllData() {
         req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => reject(req.error);
       });
-    })()
+    })(),
+    getTagGroups()
   ]);
 
   return {
@@ -437,7 +610,8 @@ async function exportAllData() {
     exportedAt: new Date().toISOString(),
     expenses,
     tags,
-    settings
+    settings,
+    tagGroups
   };
 }
 
@@ -490,6 +664,16 @@ async function importData(data) {
     }
     await transactionComplete(tx4);
   }
+
+  // Import tag groups
+  if (Array.isArray(data.tagGroups)) {
+    const tx5 = db.transaction(STORE_TAG_GROUPS, 'readwrite');
+    const store = tx5.objectStore(STORE_TAG_GROUPS);
+    for (const g of data.tagGroups) {
+      if (g.id) store.put(g);
+    }
+    await transactionComplete(tx5);
+  }
 }
 
 /**
@@ -498,10 +682,11 @@ async function importData(data) {
  */
 async function clearAllData() {
   const db = await openDB();
-  const tx = db.transaction([STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS], 'readwrite');
+  const tx = db.transaction([STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS, STORE_TAG_GROUPS], 'readwrite');
   tx.objectStore(STORE_EXPENSES).clear();
   tx.objectStore(STORE_TAGS).clear();
   tx.objectStore(STORE_SETTINGS).clear();
+  tx.objectStore(STORE_TAG_GROUPS).clear();
   await transactionComplete(tx);
 }
 
@@ -525,6 +710,11 @@ window.setSettings = setSettings;
 window.exportAllData = exportAllData;
 window.importData = importData;
 window.clearAllData = clearAllData;
+window.addTagGroup = addTagGroup;
+window.getTagGroups = getTagGroups;
+window.updateTagGroup = updateTagGroup;
+window.deleteTagGroup = deleteTagGroup;
+window.moveTagToGroup = moveTagToGroup;
 
 openDB().then(() => {
   initDB().catch(err => console.error('DB init error:', err));

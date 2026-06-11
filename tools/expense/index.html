@@ -25,7 +25,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=20">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=22">
 <style>
   /* Critical inline CSS — guarantees stat cards render correctly even if external CSS is CDN-cached */
   .dashboard-grid {
@@ -125,7 +125,7 @@
           <span>选择标签</span>
           <button class="btn-close" onclick="toggleTagPopup()">✕</button>
         </div>
-        <div class="tag-cloud" id="dash-tag-cloud"></div>
+        <div class="tag-groups" id="dash-tag-groups"></div>
         <div class="tag-popup-footer">
           <button class="btn-secondary" onclick="clearTagFilter()">清除</button>
           <button class="btn-primary" onclick="applyTagFilter()">确定</button>
@@ -161,7 +161,7 @@
     <!-- Charts Row 1: Pie + Bar -->
     <div class="chart-row">
       <div class="chart-card chart-half">
-        <h3>分类占比</h3>
+        <h3>分类占比 <span class="chart-mode-toggle" id="pie-mode-toggle" onclick="togglePieMode()" style="cursor:pointer;font-size:12px;font-weight:400;color:var(--primary);margin-left:8px;">按标签</span></h3>
         <div class="chart-wrapper doughnut">
           <canvas id="categoryChart"></canvas>
         </div>
@@ -289,8 +289,16 @@
     <div class="form-card">
       <div class="form-group inline">
         <input type="text" id="new-tag-name" placeholder="输入新标签名称...">
+        <select id="new-tag-group" title="所属分组"></select>
         <input type="color" id="new-tag-color" value="#2DBAA3">
-        <button class="btn-primary" onclick="addNewTag()">➕ 添加</button>
+        <button class="btn-primary" onclick="addNewTag()">➕ 添加标签</button>
+      </div>
+    </div>
+    <div class="form-card" style="margin-top:12px;">
+      <div class="form-group inline">
+        <input type="text" id="new-group-name" placeholder="输入新分组名称...">
+        <input type="color" id="new-group-color" value="#95a5a6">
+        <button class="btn-primary" onclick="addNewGroup()">➕ 新建分组</button>
       </div>
     </div>
     <div class="tags-card" id="tags-list">
@@ -455,7 +463,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.1.0</span>
+        <span class="setting-version">v1.2.0</span>
       </div>
     </div>
   </section>
@@ -474,6 +482,21 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeConfirmModal()">取消</button>
       <button class="btn-danger" id="confirm-modal-ok">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Modal (for generic content) -->
+<div class="modal-overlay" id="custom-modal" style="display:none;">
+  <div class="modal-card modal-small">
+    <div class="modal-header">
+      <h3 id="custom-modal-title">提示</h3>
+      <button class="btn-close" onclick="closeCustomModal()">✕</button>
+    </div>
+    <div class="modal-body" id="custom-modal-body">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeCustomModal()">关闭</button>
     </div>
   </div>
 </div>
@@ -502,11 +525,11 @@
   </button>
 </nav>
 
-<script src="/tools/expense/js/db.js?v=20"></script>
-<script src="/tools/expense/js/chart.js?v=20"></script>
-<script src="/tools/expense/js/import-export.js?v=20"></script>
-<script src="/tools/expense/js/guide.js?v=20"></script>
-<script src="/tools/expense/js/app.js?v=20"></script>
+<script src="/tools/expense/js/db.js?v=22"></script>
+<script src="/tools/expense/js/chart.js?v=22"></script>
+<script src="/tools/expense/js/import-export.js?v=22"></script>
+<script src="/tools/expense/js/guide.js?v=22"></script>
+<script src="/tools/expense/js/app.js?v=22"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <script>
