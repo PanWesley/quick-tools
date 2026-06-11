@@ -1650,7 +1650,7 @@ async function importDataFromObj(data) {
 window.confirmClearAllData = async function() {
   showCustomConfirm('确定要清除所有数据吗？此操作不可恢复！', async () => {
     await clearAllData();
-    showToast('数据已清除');
+    showToast('所有数据均已删除');
     await loadTags();
     renderExpenseList();
     refreshDashboard();
