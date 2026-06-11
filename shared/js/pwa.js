@@ -3,6 +3,8 @@
  * 提供 PWA 支持、添加到主屏幕、系统分享等功能
  */
 
+const PWA_SEEN_KEY = 'pwa_install_guide_seen';
+
 class QuickToolsPWA {
   constructor() {
     this.deferredPrompt = null;
@@ -22,8 +24,8 @@ class QuickToolsPWA {
     // 监听应用安装完成
     this.listenAppInstalled();
     
-    // 显示安装提示（如果需要）
-    if (this.isMobile && !this.isStandalone) {
+    // 仅在首次访问移动设备时显示安装提示
+    if (this.isMobile && !this.isStandalone && !localStorage.getItem(PWA_SEEN_KEY)) {
       setTimeout(() => this.showInstallPrompt(), 3000);
     }
   }
@@ -113,6 +115,7 @@ class QuickToolsPWA {
    * 显示 Android 安装提示
    */
   showAndroidInstallPrompt() {
+    localStorage.setItem(PWA_SEEN_KEY, '1');
     const prompt = document.createElement('div');
     prompt.className = 'pwa-install-prompt';
     prompt.innerHTML = `
@@ -136,25 +139,29 @@ class QuickToolsPWA {
    * 显示 iOS 安装引导
    */
   showIOSInstallGuide() {
+    localStorage.setItem(PWA_SEEN_KEY, '1');
     const guide = document.createElement('div');
     guide.className = 'pwa-install-guide';
     guide.innerHTML = `
       <div class="pwa-guide-overlay" onclick="pwa.hideInstallPrompt()"></div>
       <div class="pwa-guide-content">
-        <div class="pwa-guide-arrow"></div>
         <div class="pwa-guide-box">
+          <button class="pwa-guide-close" onclick="pwa.hideInstallPrompt()">✕</button>
           <div class="pwa-guide-title">添加到主屏幕</div>
           <div class="pwa-guide-steps">
             <div class="pwa-guide-step">
               <span class="step-num">1</span>
-              <span>点击底部分享按钮 <span class="share-icon">⎋</span></span>
+              <span>点击底部工具栏的分享按钮 <span class="share-icon">⎋</span></span>
             </div>
             <div class="pwa-guide-step">
               <span class="step-num">2</span>
-              <span>选择"添加到主屏幕"</span>
+              <span>向下滑动并选择"添加到主屏幕"</span>
             </div>
           </div>
           <button class="pwa-guide-btn" onclick="pwa.hideInstallPrompt()">知道了</button>
+          <div class="pwa-guide-arrow-wrapper">
+            <div class="pwa-guide-arrow-down"></div>
+          </div>
         </div>
       </div>
     `;
