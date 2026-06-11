@@ -64,6 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const hasSeenBefore = localStorage.getItem('expense_data_initialized');
   if (expenses.length === 0 && !hasSeenBefore) {
     await generateTestData();
+    // Also mark demo mode as active so the UI toggle reflects reality
+    await setSettings(DEMO_MODE_KEY, true);
     await refreshDashboard();
   }
   localStorage.setItem('expense_data_initialized', '1');
