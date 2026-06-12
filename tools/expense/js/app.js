@@ -189,6 +189,18 @@ window.toggleTagPopup = function() {
   if (!popup) return;
   const isVisible = popup.style.display === 'block';
   popup.style.display = isVisible ? 'none' : 'block';
+  
+  // Show/hide mobile backdrop
+  let backdrop = document.getElementById('tag-popup-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.id = 'tag-popup-backdrop';
+    backdrop.className = 'tag-popup-backdrop';
+    backdrop.onclick = function() { toggleTagPopup(); };
+    document.getElementById('view-dashboard').appendChild(backdrop);
+  }
+  backdrop.style.display = isVisible ? 'none' : 'block';
+  
   if (!isVisible) {
     renderTagCloud();
   }
@@ -197,6 +209,8 @@ window.toggleTagPopup = function() {
 window.applyTagFilter = function() {
   const popup = document.getElementById('dash-tag-popup');
   if (popup) popup.style.display = 'none';
+  const backdrop = document.getElementById('tag-popup-backdrop');
+  if (backdrop) backdrop.style.display = 'none';
   renderSelectedFilterTags();
   refreshDashboard();
 };
@@ -206,6 +220,10 @@ window.clearTagFilter = function() {
   renderTagCloud();
   renderSelectedFilterTags();
   refreshDashboard();
+  const popup = document.getElementById('dash-tag-popup');
+  if (popup) popup.style.display = 'none';
+  const backdrop = document.getElementById('tag-popup-backdrop');
+  if (backdrop) backdrop.style.display = 'none';
 };
 
 function renderSelectedFilterTags() {
@@ -1059,13 +1077,130 @@ window.closeCustomModal = function() {
   if (modal) modal.style.display = 'none';
 };
 
+// ============================================
+// Custom Rename Modal
+// ============================================
+
+let renameModalCallback = null;
+let renameCurrentId = null;
+let renameIsGroup = false;
+
+window.openRenameModal = function(currentName, title, labelText, callback) {
+  const modal = document.getElementById('rename-modal');
+  if (!modal) return;
+
+  document.getElementById('rename-modal-title').textContent = title;
+  document.getElementById('rename-modal-label').textContent = labelText;
+  document.getElementById('rename-modal-input').value = currentName;
+  document.getElementById('rename-modal-error').style.display = 'none';
+
+  renameModalCallback = callback;
+  modal.style.display = 'flex';
+
+  // Focus input after animation
+  setTimeout(() => {
+    const input = document.getElementById('rename-modal-input');
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, 100);
+};
+
+window.closeRenameModal = function() {
+  const modal = document.getElementById('rename-modal');
+  if (modal) modal.style.display = 'none';
+  renameModalCallback = null;
+  renameCurrentId = null;
+  renameIsGroup = false;
+};
+
+// Handle Enter key press
+document.addEventListener('DOMContentLoaded', function() {
+  const input = document.getElementById('rename-modal-input');
+  const okBtn = document.getElementById('rename-modal-ok');
+  if (input) {
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (okBtn) okBtn.click();
+      }
+    });
+  }
+  if (okBtn) {
+    okBtn.addEventListener('click', async function() {
+      const input = document.getElementById('rename-modal-input');
+      const newName = input ? input.value.trim() : '';
+      const errorEl = document.getElementById('rename-modal-error');
+      if (!newName) {
+        if (errorEl) {
+          errorEl.textContent = '名称不能为空';
+          errorEl.style.display = 'block';
+        }
+        return;
+      }
+      if (renameModalCallback) {
+        await renameModalCallback(newName);
+      }
+      closeRenameModal();
+    });
+  }
+
+  // Close when clicking backdrop
+  const overlay = document.getElementById('rename-modal');
+  if (overlay) {
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        closeRenameModal();
+      }
+    });
+  }
+});
+
+// ============================================
+// Confirm Modal
+// ============================================
+
 // Bind confirm button
 document.addEventListener('DOMContentLoaded', function() {
   const okBtn = document.getElementById('confirm-modal-ok');
   if (okBtn) {
     okBtn.addEventListener('click', function() {
+      const cb = confirmModalCallback;
       closeConfirmModal();
-      if (confirmModalCallback) confirmModalCallback();
+      if (cb) cb();
+    });
+  }
+
+  // Close modals when clicking backdrop
+  const confirmOverlay = document.getElementById('confirm-modal');
+  if (confirmOverlay) {
+    confirmOverlay.addEventListener('click', function(e) {
+      if (e.target === confirmOverlay) closeConfirmModal();
+    });
+  }
+  const customOverlay = document.getElementById('custom-modal');
+  if (customOverlay) {
+    customOverlay.addEventListener('click', function(e) {
+      if (e.target === customOverlay) closeCustomModal();
+    });
+  }
+  const mergeOverlay = document.getElementById('merge-modal');
+  if (mergeOverlay) {
+    mergeOverlay.addEventListener('click', function(e) {
+      if (e.target === mergeOverlay) closeMergeModal();
+    });
+  }
+  const editOverlay = document.getElementById('edit-modal');
+  if (editOverlay) {
+    editOverlay.addEventListener('click', function(e) {
+      if (e.target === editOverlay) closeEditModal();
+    });
+  }
+  const deleteOverlay = document.getElementById('delete-modal');
+  if (deleteOverlay) {
+    deleteOverlay.addEventListener('click', function(e) {
+      if (e.target === deleteOverlay) closeDeleteModal();
     });
   }
 });
@@ -1680,27 +1815,41 @@ window.addNewGroup = async function() {
     return;
   }
 
-  await addTagGroup({ name, color });
-  if (nameInput) nameInput.value = '';
-  if (colorInput) colorInput.value = '#95a5a6';
-  await loadTags();
-  showToast('分组创建成功');
+  try {
+    await addTagGroup({ name, color });
+    if (nameInput) nameInput.value = '';
+    if (colorInput) colorInput.value = '#95a5a6';
+    await loadTags();
+    showToast('分组创建成功');
+    renderExpenseList();
+    refreshDashboard();
+  } catch (e) {
+    console.error('addNewGroup failed:', e);
+    showToast('创建分组失败: ' + (e.message || '未知错误'));
+  }
 };
 
 window.renameGroup = async function(groupId) {
   const group = allTagGroups.find(g => g.id === groupId);
   if (!group) return;
 
-  const newName = prompt('请输入新名称:', group.name);
-  if (newName && newName.trim() && newName.trim() !== group.name) {
-    if (allTagGroups.some(g => g.id !== groupId && g.name === newName.trim())) {
-      showToast('分组名称已存在');
-      return;
+  openRenameModal(group.name, '重命名分组', '新分组名称', async function(newName) {
+    if (newName !== group.name) {
+      if (allTagGroups.some(g => g.id !== groupId && g.name === newName)) {
+        const errorEl = document.getElementById('rename-modal-error');
+        if (errorEl) {
+          errorEl.textContent = '分组名称已存在';
+          errorEl.style.display = 'block';
+        }
+        return;
+      }
+      await updateTagGroup({ id: groupId, name: newName });
+      await loadTags();
+      renderExpenseList();
+      refreshDashboard();
+      showToast('重命名成功');
     }
-    await updateTagGroup({ id: groupId, name: newName.trim() });
-    await loadTags();
-    showToast('重命名成功');
-  }
+  });
 };
 
 window.removeGroup = async function(groupId) {
@@ -1764,17 +1913,24 @@ window.changeTagColor = async function(id, color) {
 window.renameTag = async function(id) {
   const tag = allTags.find(t => t.id === id);
   if (!tag) return;
-  const newName = prompt('请输入新名称:', tag.name);
-  if (newName && newName.trim()) {
-    if (allTags.some(t => t.id !== id && t.name === newName.trim())) {
-      showToast('标签名称已存在');
-      return;
+
+  openRenameModal(tag.name, '重命名标签', '新标签名称', async function(newName) {
+    if (newName !== tag.name) {
+      if (allTags.some(t => t.id !== id && t.name === newName)) {
+        const errorEl = document.getElementById('rename-modal-error');
+        if (errorEl) {
+          errorEl.textContent = '标签名称已存在';
+          errorEl.style.display = 'block';
+        }
+        return;
+      }
+      await updateTag({ id, name: newName });
+      await loadTags();
+      renderExpenseList();
+      refreshDashboard();
+      showToast('重命名成功');
     }
-    await updateTag({ id, name: newName.trim() });
-    await loadTags();
-    renderExpenseList();
-    refreshDashboard();
-  }
+  });
 };
 
 window.removeTag = async function(id) {

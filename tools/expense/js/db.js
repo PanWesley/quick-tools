@@ -165,20 +165,29 @@ async function addTagGroup(group) {
   const tx = db.transaction(STORE_TAG_GROUPS, 'readwrite');
   const store = tx.objectStore(STORE_TAG_GROUPS);
 
-  const allGroups = await getTagGroups();
-  const maxOrder = allGroups.reduce((m, g) => Math.max(m, g.order || 0), 0);
+  // Use a single transaction for both read and write to avoid auto-commit issues
+  return new Promise((resolve, reject) => {
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      const allGroups = getAllReq.result || [];
+      const maxOrder = allGroups.reduce((m, g) => Math.max(m, g.order || 0), 0);
 
-  const record = {
-    id: 'group_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-    name: group.name.trim(),
-    color: group.color || '#95a5a6',
-    order: group.order !== undefined ? group.order : maxOrder + 1,
-    createdAt: new Date().toISOString()
-  };
+      const record = {
+        id: 'group_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        name: group.name.trim(),
+        color: group.color || '#95a5a6',
+        order: group.order !== undefined ? group.order : maxOrder + 1,
+        createdAt: new Date().toISOString()
+      };
 
-  store.put(record);
-  await transactionComplete(tx);
-  return record;
+      store.put(record);
+      // Use oncomplete/onerror directly instead of transactionComplete to avoid async gaps
+      tx.oncomplete = () => resolve(record);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(new Error('Transaction aborted'));
+    };
+    getAllReq.onerror = () => reject(getAllReq.error);
+  });
 }
 
 /**

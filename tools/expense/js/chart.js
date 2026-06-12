@@ -117,10 +117,24 @@ window.togglePieMode = function() {
  * @param {number} days - number of days to look back
  * @returns {Object} { labels: [], data: [] }
  */
-function aggregateByDate(expenses, days = 7) {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - days + 1);
+function aggregateByDate(expenses, rangeOrDays = 7) {
+  let start, end;
+
+  if (typeof rangeOrDays === 'number') {
+    // Days mode: last N days
+    end = new Date();
+    start = new Date();
+    start.setDate(end.getDate() - rangeOrDays + 1);
+  } else if (typeof rangeOrDays === 'object' && rangeOrDays.startDate && rangeOrDays.endDate) {
+    // Date range mode: specific start/end dates
+    start = new Date(rangeOrDays.startDate + 'T00:00:00');
+    end = new Date(rangeOrDays.endDate + 'T00:00:00');
+  } else {
+    // Default: last 7 days
+    end = new Date();
+    start = new Date();
+    start.setDate(end.getDate() - 6);
+  }
 
   // Initialize all days with 0
   const dateMap = {};
@@ -499,7 +513,37 @@ async function updateDashboard(filters = {}) {
   const barData = aggregateTopCategories(expenses, 5);
   renderBarChart('topCategoryChart', barData);
 
-  const lineData = aggregateByDate(expenses, 7);
+  // Get trend range from user selection
+  let lineData;
+  const trendRangeEl = document.getElementById('trend-time-range');
+  if (trendRangeEl) {
+    const trendRange = trendRangeEl.value;
+    if (trendRange === 'this-month') {
+      const trendDates = getDateRange('this-month');
+      lineData = aggregateByDate(expenses, { startDate: trendDates.startDate, endDate: trendDates.endDate });
+    } else if (trendRange === 'last-month') {
+      const trendDates = getDateRange('last-month');
+      lineData = aggregateByDate(expenses, { startDate: trendDates.startDate, endDate: trendDates.endDate });
+    } else {
+      lineData = aggregateByDate(expenses, 7);
+    }
+  } else {
+    // Default: last 7 days
+    lineData = aggregateByDate(expenses, 7);
+  }
+
+  // Update title
+  const titleEl = document.getElementById('trend-chart-title');
+  if (titleEl) {
+    if (trendRangeEl && trendRangeEl.value === 'this-month') {
+      titleEl.textContent = '本月支出趋势';
+    } else if (trendRangeEl && trendRangeEl.value === 'last-month') {
+      titleEl.textContent = '上月支出趋势';
+    } else {
+      titleEl.textContent = '近7天支出趋势';
+    }
+  }
+
   renderLineChart('trendChart', lineData);
 }
 
@@ -520,4 +564,13 @@ window.renderLineChart = renderLineChart;
 window.renderBarChart = renderBarChart;
 window.aggregateByTag = aggregateByTag;
 window.aggregateByDate = aggregateByDate;
+
+/**
+ * Handle trend chart time range change.
+ */
+window.changeTrendRange = function() {
+  if (typeof window !== 'undefined' && window._dashboardFilters) {
+    updateDashboard(window._dashboardFilters);
+  }
+};
 window.refreshChartTheme = refreshChartTheme;

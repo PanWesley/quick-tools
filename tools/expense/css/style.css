@@ -283,6 +283,26 @@ main {
   flex: 1;
 }
 
+.form-group.inline select {
+  flex: 1;
+  min-width: 120px;
+}
+
+/* Tags form rows - prevent button wrapping on narrow screens */
+.tags-form-row {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 768px) {
+  .tags-form-row {
+    flex-wrap: wrap;
+  }
+  .tags-form-row input[type="text"] {
+    width: 100%;
+    flex-basis: 100%;
+  }
+}
+
 .form-group.inline input[type="color"] {
   width: 48px;
   height: 40px;
@@ -565,7 +585,7 @@ main {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 60;
+  z-index: 160;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -573,6 +593,15 @@ main {
   padding: 16px;
   min-width: 280px;
   max-width: 360px;
+}
+
+/* Mobile backdrop for tag popup */
+.tag-popup-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 155;
 }
 
 .tag-popup-header {
@@ -585,17 +614,19 @@ main {
 }
 
 .tag-popup-header .btn-close {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border: none;
-  background: transparent;
+  background: var(--bg);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
-  border-radius: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
 }
 
 .tag-popup-header .btn-close:hover {
@@ -1281,35 +1312,68 @@ main {
 .selected-tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 13px;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 16px;
+  font-size: 12px;
   font-weight: 500;
   cursor: default;
   border: 2px solid transparent;
   user-select: none;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .selected-tag-chip .remove {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.15);
   color: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
   border: none;
   opacity: 0.7;
   transition: opacity 0.2s;
+  flex-shrink: 0;
 }
 
 .selected-tag-chip .remove:hover {
   opacity: 1;
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* Trend chart time range selector */
+.trend-range-select {
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--primary);
+  cursor: pointer;
+  margin-left: 8px;
+  outline: none;
+  vertical-align: middle;
+}
+
+.trend-range-select:focus {
+  border-color: var(--primary);
+}
+
+/* Rename modal error text */
+.rename-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
+  margin-bottom: 0;
 }
 
 .recent-templates {
@@ -2145,10 +2209,28 @@ main {
     bottom: 0;
     left: 0;
     right: 0;
-    border-radius: var(--radius) var(--radius) 0 0;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
     max-height: 60vh;
     z-index: 160;
     animation: slideUp 0.3s ease;
+    padding: 20px 16px 16px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  }
+
+  .tag-popup-backdrop {
+    display: block;
+  }
+
+  .tag-popup-header {
+    font-size: 16px;
+    padding-bottom: 12px;
+  }
+
+  .tag-popup-header .btn-close {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
   }
 
   .expense-item {

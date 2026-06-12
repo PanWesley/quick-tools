@@ -252,7 +252,7 @@ async function disableDemoMode() {
 
   if (backup && backup.expenses && backup.tags) {
     await importData({
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       expenses: backup.expenses,
       tags: backup.tags,
