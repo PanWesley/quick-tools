@@ -64,12 +64,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   const expenses = await getExpenses();
   const hasSeenBefore = localStorage.getItem('expense_data_initialized');
   if (expenses.length === 0 && !hasSeenBefore) {
-    await generateTestData();
-    // Also mark demo mode as active so the UI toggle reflects reality
-    await setSettings(DEMO_MODE_KEY, true);
-    await refreshDashboard();
+    try {
+      // Ensure tags exist (they should, but just in case)
+      if (allTags.length === 0) {
+        await initDB();
+        await loadTags();
+      }
+      await generateTestData();
+      // Also mark demo mode as active so the UI toggle reflects reality
+      await setSettings(DEMO_MODE_KEY, true);
+      await refreshDashboard();
+      localStorage.setItem('expense_data_initialized', '1');
+    } catch (e) {
+      console.error('Generate test data failed:', e);
+      // Don't mark as initialized, so it can retry next time
+    }
+  } else {
+    localStorage.setItem('expense_data_initialized', '1');
   }
-  localStorage.setItem('expense_data_initialized', '1');
 
   // Initialize guide on first visit
   try {
@@ -814,75 +826,164 @@ function parseAndPreviewNL() {
   nlParseResult.tagIds = tagIds;
   nlParseResult.tagObjs = tagObjs;
 
-  // Build preview HTML
-  let tagsHtml = '';
-  if (tagObjs.length > 0) {
-    tagsHtml = `<div class="nl-tags-preview">${tagObjs.map(t =>
-      `<span class="nl-tag-pill" style="background:${t.color}22;color:${t.color};border:1px solid ${t.color}44">${t.name}</span>`
-    ).join('')}</div>`;
-  }
+  // Build editable preview HTML
+  const tagsHtml = tagObjs.map(t =>
+    `<span class="nl-tag-pill" style="background:${t.color}22;color:${t.color};border:1px solid ${t.color}44" data-tag-id="${t.id}" onclick="nlRemoveTag('${t.id}')">${t.name} ✕</span>`
+  ).join('');
 
   previewContent.innerHTML = `
-    <div class="nl-preview-row"><span class="nl-preview-label">金额</span><span class="nl-preview-value amount">¥${nlParseResult.amount.toFixed(2)}</span></div>
-    <div class="nl-preview-row"><span class="nl-preview-label">项目</span><span class="nl-preview-value">${nlParseResult.itemName || '-'}</span></div>
-    <div class="nl-preview-row"><span class="nl-preview-label">标签</span><span class="nl-preview-value">${nlParseResult.tags.length > 0 ? '' : '无'}</span></div>
-    ${tagsHtml}
+    <div class="nl-preview-row">
+      <span class="nl-preview-label">日期</span>
+      <input type="date" id="nl-edit-date" class="nl-edit-field" value="${new Date().toISOString().slice(0, 10)}">
+    </div>
+    <div class="nl-preview-row">
+      <span class="nl-preview-label">项目</span>
+      <input type="text" id="nl-edit-item" class="nl-edit-field" value="${nlParseResult.itemName || ''}" placeholder="输入项目名称">
+    </div>
+    <div class="nl-preview-row">
+      <span class="nl-preview-label">金额</span>
+      <input type="number" id="nl-edit-amount" class="nl-edit-field amount" value="${nlParseResult.amount}" step="0.01" min="0">
+    </div>
+    <div class="nl-preview-row">
+      <span class="nl-preview-label">标签</span>
+      <input type="text" id="nl-edit-tags" class="nl-edit-field" placeholder="添加标签（逗号分隔）" value="${nlParseResult.tags.join(', ')}">
+    </div>
+    <div class="nl-tags-preview">${tagsHtml}</div>
   `;
   previewBox.style.display = 'block';
   saveBtn.disabled = false;
 }
+
+window.nlRemoveTag = function(tagId) {
+  if (!nlParseResult || !nlParseResult.tagIds) return;
+  nlParseResult.tagIds = nlParseResult.tagIds.filter(id => id !== tagId);
+  nlParseResult.tagObjs = (nlParseResult.tagObjs || []).filter(t => t.id !== tagId);
+  // Re-parse from the tags input
+  const tagsInput = document.getElementById('nl-edit-tags');
+  if (tagsInput) {
+    const remainingNames = nlParseResult.tagObjs.map(t => t.name);
+    tagsInput.value = remainingNames.join(', ');
+  }
+  parseAndPreviewNL();
+};
 
 function parseNaturalLanguage(input, knownTags) {
   // 1. Extract amount (first number found, including decimals)
   const amountMatch = input.match(/\d+(?:\.\d+)?/);
   const amount = amountMatch ? parseFloat(amountMatch[0]) : null;
 
-  // 2. Identify known tags from the text
+  // 2. Identify known tags from the text (longest match first to prevent partial)
+  const sortedTags = [...knownTags].sort((a, b) => b.length - a.length);
   const tags = [];
-  for (const tagName of knownTags) {
-    if (input.includes(tagName)) {
-      tags.push(tagName);
+
+  for (const tagName of sortedTags) {
+    const idx = input.indexOf(tagName);
+    if (idx !== -1) {
+      // Check if it's a whole-word match (surrounded by spaces, numbers, or string boundaries)
+      const before = idx > 0 ? input[idx - 1] : ' ';
+      const after = idx + tagName.length < input.length ? input[idx + tagName.length] : ' ';
+      const isWordBoundary = /[\s\d,，.。!！?？;；:：/]/.test(before) && /[\s\d,，.。!！?？;；:：/]/.test(after);
+
+      if (isWordBoundary || tagName.length > 1) {
+        if (!tags.includes(tagName)) {
+          tags.push(tagName);
+        }
+      }
     }
   }
 
   // 3. Remaining text becomes item name
-  // Remove amount and tags from input to get item name
-  let remaining = input;
+  // Build a mask of characters to remove
+  const remove = new Set();
+
+  // Mark amount for removal
   if (amountMatch) {
-    remaining = remaining.replace(amountMatch[0], '');
+    for (let i = amountMatch.index; i < amountMatch.index + amountMatch[0].length; i++) {
+      remove.add(i);
+    }
   }
-  for (const t of tags) {
-    remaining = remaining.replace(t, '');
+
+  // Mark tags for removal (by finding their positions in the original input)
+  for (const tagName of tags) {
+    let idx = input.indexOf(tagName);
+    while (idx !== -1) {
+      for (let i = idx; i < idx + tagName.length; i++) {
+        remove.add(i);
+      }
+      idx = input.indexOf(tagName, idx + 1);
+    }
   }
+
+  // Build remaining string from characters not marked for removal
+  let remaining = '';
+  for (let i = 0; i < input.length; i++) {
+    if (!remove.has(i)) {
+      remaining += input[i];
+    }
+  }
+
   // Clean up separators
   const itemName = remaining.replace(/[,，\s]+/g, ' ').trim() || '';
 
-  return { amount, tags, itemName, raw: input };
+  return { amount, tags: [...new Set(tags)], itemName, raw: input };
 }
 
 window.saveNLExpense = async function() {
-  if (!nlParseResult || !nlParseResult.amount) {
-    showToast('无法解析金额，请检查输入');
+  // Read from editable fields
+  const editAmount = document.getElementById('nl-edit-amount');
+  const editDate = document.getElementById('nl-edit-date');
+  const editItem = document.getElementById('nl-edit-item');
+  const editTags = document.getElementById('nl-edit-tags');
+
+  const amount = editAmount ? parseFloat(editAmount.value) : 0;
+  const date = editDate ? editDate.value : new Date().toISOString().slice(0, 10);
+  const itemName = editItem ? editItem.value.trim() : '';
+
+  if (!amount || amount <= 0) {
+    showToast('请输入有效金额');
     return;
   }
 
-  const date = new Date().toISOString().slice(0, 10);
+  // Resolve tags from the editable tags input
+  let tagIds = nlParseResult ? (nlParseResult.tagIds || []) : [];
+  let tagObjs = nlParseResult ? (nlParseResult.tagObjs || []) : [];
+
+  if (editTags && editTags.value.trim()) {
+    const tagNames = editTags.value.split(/[,，]+/).map(t => t.trim()).filter(Boolean);
+    tagIds = [];
+    tagObjs = [];
+    for (const tname of tagNames) {
+      let tag = allTags.find(t => t.name === tname);
+      if (!tag) {
+        // Auto-create tag
+        tag = await addTag({ name: tname, color: '#2DBAA3', parentId: 'group-category' });
+        await loadTags();
+      }
+      if (tag && !tagIds.includes(tag.id)) {
+        tagIds.push(tag.id);
+        tagObjs.push(tag);
+      }
+    }
+  }
+
   let category = '';
-  if (nlParseResult.tagObjs && nlParseResult.tagObjs.length > 0) {
-    category = nlParseResult.tagObjs[0].name;
-  } else if (allTags.length > 0) {
-    category = allTags[0].name;
+  if (tagObjs.length > 0) {
+    category = tagObjs[0].name;
+  } else if (itemName) {
+    category = itemName;
+  } else {
+    category = '其他';
   }
 
   await addExpense({
-    amount: nlParseResult.amount,
+    amount,
     date,
     category,
-    note: nlParseResult.itemName || '',
-    tags: nlParseResult.tagIds || []
+    note: itemName || '',
+    tags: tagIds
   });
 
-  await saveRecentTemplate(nlParseResult.tagIds || []);
+  await saveRecentTemplate(tagIds);
   showToast('保存成功！');
   resetNLForm();
 };
@@ -1041,7 +1142,19 @@ window.renderExpenseList = async function() {
   }
 
   if (catFilter && catFilter.value) {
-    expenses = expenses.filter(e => e.category === catFilter.value);
+    const catFilterValue = catFilter.value;
+    expenses = expenses.filter(e => {
+      // Match by category field
+      if (e.category === catFilterValue) return true;
+      // Also match if any tag on this expense has the name
+      if (e.tags && e.tags.length > 0) {
+        for (const tid of e.tags) {
+          const tag = allTags.find(t => t.id === tid);
+          if (tag && tag.name === catFilterValue) return true;
+        }
+      }
+      return false;
+    });
   }
 
   const sortValue = sort ? sort.value : 'date-desc';
@@ -1783,6 +1896,12 @@ window.exportJSON = async function() {
 
 // Task 6: Import file handler
 let pendingImportRecords = null;
+// Sync with window for cross-file access (import-export.js functions use bare pendingImportRecords)
+Object.defineProperty(window, 'pendingImportRecords', {
+  get: () => pendingImportRecords,
+  set: (v) => { pendingImportRecords = v; },
+  configurable: true
+});
 let isImportProcessing = false;
 
 window.handleImportFile = async function(input) {

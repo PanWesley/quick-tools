@@ -693,4 +693,5 @@ window.parseCSV = parseCSV;
 window.parseExcel = parseExcel;
 window.showImportPreview = showImportPreview;
 window.executeImport = executeImport;
+window.collectImportEdits = collectImportEdits;
 window.parseImportFile = parseImportFile;
