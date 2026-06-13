@@ -197,18 +197,20 @@ async function isDemoMode() {
  * Enable demo mode: backup real data and load 20 sample expenses.
  */
 async function enableDemoMode() {
-  // Backup current data
+  // Backup current data to localStorage so it survives clearAllData()
   const currentExpenses = await getExpenses();
   const currentTags = await getTags();
   const currentTagGroups = await getTagGroups();
 
   if (currentExpenses.length > 0 || currentTags.length > 0 || currentTagGroups.length > 0) {
-    await setSettings(REAL_DATA_BACKUP_KEY, {
+    localStorage.setItem(REAL_DATA_BACKUP_KEY, JSON.stringify({
       expenses: currentExpenses,
       tags: currentTags,
       tagGroups: currentTagGroups,
       backedUpAt: new Date().toISOString()
-    });
+    }));
+  } else {
+    localStorage.removeItem(REAL_DATA_BACKUP_KEY);
   }
 
   // Clear current data
@@ -247,7 +249,8 @@ async function enableDemoMode() {
  * Disable demo mode: restore real data from backup.
  */
 async function disableDemoMode() {
-  const backup = await getSettings(REAL_DATA_BACKUP_KEY, null);
+  const raw = localStorage.getItem(REAL_DATA_BACKUP_KEY);
+  const backup = raw ? JSON.parse(raw) : null;
 
   // Clear demo data
   await clearAllData();
@@ -267,7 +270,7 @@ async function disableDemoMode() {
   }
 
   await setSettings(DEMO_MODE_KEY, false);
-  await setSettings(REAL_DATA_BACKUP_KEY, null);
+  localStorage.removeItem(REAL_DATA_BACKUP_KEY);
 }
 
 window.shouldShowGuide = shouldShowGuide;

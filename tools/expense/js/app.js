@@ -2145,7 +2145,16 @@ window.confirmImport = async function() {
   }
 };
 
+// Keep a reference to db.js's importData before app.js overrides window.importData
+const _dbImportData = window.importData;
+
 window.importData = async function(input) {
+  // If called with a data object (from guide.js or importDataFromObj), route to db.js version
+  if (input && typeof input === 'object' && !input.files) {
+    return _dbImportData(input);
+  }
+
+  // Otherwise, treat as file input (from UI)
   const file = input.files[0];
   if (!file) return;
 
@@ -2164,8 +2173,8 @@ window.importData = async function(input) {
 };
 
 async function importDataFromObj(data) {
-  // Use the global db.js importData function
-  await importData(data);
+  // Use the db.js importData function (saved before app.js override)
+  await _dbImportData(data);
 }
 
 window.confirmClearAllData = async function() {
