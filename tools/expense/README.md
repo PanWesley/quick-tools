@@ -17,6 +17,12 @@
 
 ## 版本历史
 
+### v1.3.8 (2026-06-13)
+
+**PWA 图标修复：**
+- 修复 iOS Safari 添加到主屏幕仍显示旧图标的问题
+  - `apple-touch-icon` 引用从 `/icons/icon-*.png` 改为 `/icons/expense-icon-*.png`
+
 ### v1.3.7 (2026-06-13)
 
 **PWA 图标：**
