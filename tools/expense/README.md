@@ -17,6 +17,14 @@
 
 ## 版本历史
 
+### v1.3.4 (2026-06-13)
+
+**Bug 修复：**
+- 修复演示模式切换时自定义 tag groups 丢失的问题
+  - `enableDemoMode()` 备份时现在包含 `tagGroups`
+  - `disableDemoMode()` 恢复时现在恢复 `tagGroups`
+  - 恢复条件从 `backup.expenses && backup.tags` 改为 `backup.expenses || backup.tags || backup.tagGroups`，支持只有 tag groups 的场景
+
 ### v1.3.3 (2026-06-13)
 
 **移动端体验优化：**

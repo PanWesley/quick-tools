@@ -200,11 +200,13 @@ async function enableDemoMode() {
   // Backup current data
   const currentExpenses = await getExpenses();
   const currentTags = await getTags();
+  const currentTagGroups = await getTagGroups();
 
-  if (currentExpenses.length > 0 || currentTags.length > 0) {
+  if (currentExpenses.length > 0 || currentTags.length > 0 || currentTagGroups.length > 0) {
     await setSettings(REAL_DATA_BACKUP_KEY, {
       expenses: currentExpenses,
       tags: currentTags,
+      tagGroups: currentTagGroups,
       backedUpAt: new Date().toISOString()
     });
   }
@@ -250,12 +252,13 @@ async function disableDemoMode() {
   // Clear demo data
   await clearAllData();
 
-  if (backup && backup.expenses && backup.tags) {
+  if (backup && (backup.expenses || backup.tags || backup.tagGroups)) {
     await importData({
       version: 2,
       exportedAt: new Date().toISOString(),
-      expenses: backup.expenses,
-      tags: backup.tags,
+      expenses: backup.expenses || [],
+      tags: backup.tags || [],
+      tagGroups: backup.tagGroups || [],
       settings: []
     });
   } else {
