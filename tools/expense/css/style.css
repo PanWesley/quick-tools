@@ -627,6 +627,13 @@ main {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  padding: 0;
+  line-height: 1;
+}
+
+.tag-popup-header .btn-close svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .tag-popup-header .btn-close:hover {
@@ -867,7 +874,8 @@ main {
   gap: 6px;
 }
 
-.tag-actions button {
+.tag-actions button,
+.tag-action-icon {
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -878,12 +886,24 @@ main {
   transition: all 0.2s;
 }
 
-.tag-actions button:hover {
+.tag-action-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.tag-actions button:hover,
+.tag-action-icon:hover {
   border-color: var(--primary);
   color: var(--primary);
 }
 
-.tag-actions button.delete:hover {
+.tag-actions button.delete:hover,
+.tag-action-icon.delete:hover {
   border-color: var(--danger);
   color: var(--danger);
 }
@@ -964,14 +984,19 @@ main {
 }
 
 .tag-group-action-btn {
-  padding: 4px 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--card-bg);
   color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tag-group-action-btn:hover {
@@ -2266,11 +2291,18 @@ main {
   .tree-tag-item .tag-actions {
     width: 100%;
     justify-content: flex-end;
+    gap: 4px;
   }
 
   .tag-actions {
     width: 100%;
     justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .tag-action-icon {
+    width: 28px;
+    height: 28px;
   }
 
   .modal-card {

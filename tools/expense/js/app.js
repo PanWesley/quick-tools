@@ -241,7 +241,7 @@ function renderSelectedFilterTags() {
     const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
     const groupName = group ? group.name : '';
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${groupName ? groupName + ' · ' : ''}${tag.name}<button class="remove" onclick="removeFilterTag('${tag.id}')">×</button></span>`;
+    return `<span class="selected-tag-chip" style="${style}">${groupName ? groupName + ' · ' : ''}${tag.name}<button class="remove" onclick="removeFilterTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
   }).join('');
 }
 
@@ -650,7 +650,7 @@ function renderSelectedTags() {
     const tag = allTags.find(t => t.id === id);
     if (!tag) return '';
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeQuickTag('${tag.id}')">×</button></span>`;
+    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeQuickTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
   }).join('');
 }
 
@@ -1617,7 +1617,7 @@ function renderEditSelectedTags() {
     const tag = allTags.find(t => t.id === id);
     if (!tag) return '';
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeEditTag('${tag.id}')">×</button></span>`;
+    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeEditTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
   }).join('');
 }
 
@@ -1752,8 +1752,12 @@ window.renderTagsList = async function() {
             <span class="tag-group-total">${tags.length} 标签 / ${totalCount} 笔</span>
           </div>
           <div class="tag-group-actions" onclick="event.stopPropagation();">
-            <button class="tag-group-action-btn" onclick="renameGroup('${group.id}')">重命名</button>
-            <button class="tag-group-action-btn delete" onclick="removeGroup('${group.id}')">删除</button>
+            <button class="tag-group-action-btn" onclick="renameGroup('${group.id}')" title="重命名">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="tag-group-action-btn delete" onclick="removeGroup('${group.id}')" title="删除">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
           </div>
         </div>
         <div class="tag-group-body ${isCollapsed ? 'collapsed' : ''}">
@@ -1770,10 +1774,18 @@ window.renderTagsList = async function() {
               </div>
               <div class="tag-actions">
                 <input type="color" class="tag-color-input" value="${tag.color}" title="更改颜色" onchange="changeTagColor('${tag.id}', this.value)">
-                <button onclick="renameTag('${tag.id}')">重命名</button>
-                <button onclick="moveTagPrompt('${tag.id}', '${tag.name}')">移动</button>
-                <button onclick="openMergeModal('${tag.id}')">合并</button>
-                <button class="delete" onclick="removeTag('${tag.id}')">删除</button>
+                <button class="tag-action-icon" onclick="renameTag('${tag.id}')" title="重命名">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+                <button class="tag-action-icon" onclick="moveTagPrompt('${tag.id}', '${tag.name}')" title="移动">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>
+                </button>
+                <button class="tag-action-icon" onclick="openMergeModal('${tag.id}')" title="合并">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+                </button>
+                <button class="tag-action-icon delete" onclick="removeTag('${tag.id}')" title="删除">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
               </div>
             </div>
           `).join('')}
