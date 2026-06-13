@@ -1369,18 +1369,30 @@ main {
 .selected-tag-chip .remove {
   width: 18px;
   height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  max-width: 18px;
+  max-height: 18px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.15);
   color: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
   cursor: pointer;
   border: none;
   opacity: 0.7;
   transition: opacity 0.2s;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 0;
+  line-height: 1;
+}
+
+.selected-tag-chip .remove svg {
+  display: block;
+  width: 10px;
+  height: 10px;
   flex-shrink: 0;
 }
 
