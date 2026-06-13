@@ -17,6 +17,15 @@
 
 ## 版本历史
 
+### v1.3.6 (2026-06-13)
+
+**PWA 支持：**
+- 生活账单支持独立添加到手机主屏幕（像原生 App 一样使用）
+  - 新增独立的 `manifest.json`（`scope: /tools/expense/`，`start_url: /tools/expense/`）
+  - 新增独立的 Service Worker（`tools/expense/sw.js`），专门缓存生活账单资源
+  - 页面加载时自动注销主站 SW（避免冲突），注册独立 SW
+  - 标题改为"生活账单 - Expense Tracker"，更符合独立应用身份
+
 ### v1.3.5 (2026-06-13)
 
 **Bug 修复：**

@@ -12,15 +12,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta http-equiv="cache-control" content="no-cache, must-revalidate">
 <meta name="theme-color" content="#2DBAA3">
-<!-- PWA Manifest -->
-<link rel="manifest" href="/manifest.json">
+<!-- PWA Manifest (独立 manifest，支持生活账单子模块独立添加到主屏幕) -->
+<link rel="manifest" href="/tools/expense/manifest.json">
 <!-- iOS Icons -->
 <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png">
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
-<title>Expense Tracker - Quick Tools</title>
+<title>生活账单 - Expense Tracker</title>
 <!-- Chart.js for data visualization -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
@@ -472,7 +472,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.3.5</span>
+        <span class="setting-version">v1.3.6</span>
       </div>
     </div>
   </section>
@@ -562,6 +562,30 @@
 <script src="/tools/expense/js/app.js?v=31"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
+<!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // 先注销可能已注册的主站 SW，避免冲突
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((reg) => {
+        if (reg.scope && !reg.scope.includes('/tools/expense')) {
+          console.log('[Expense PWA] Unregistering non-expense SW:', reg.scope);
+          reg.unregister();
+        }
+      });
+    });
+    // 注册生活账单独立 SW
+    navigator.serviceWorker.register('/tools/expense/sw.js', { scope: '/tools/expense/' })
+      .then((registration) => {
+        console.log('[Expense PWA] SW registered:', registration.scope);
+      })
+      .catch((error) => {
+        console.log('[Expense PWA] SW registration failed:', error);
+      });
+  });
+}
+</script>
 <script>
 // Theme Management (inline for instant theme sync)
 function initTheme() {
