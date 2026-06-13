@@ -614,8 +614,12 @@ main {
 }
 
 .tag-popup-header .btn-close {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 36px;
+  max-height: 36px;
   border: none;
   background: var(--bg);
   color: var(--text-secondary);
@@ -629,11 +633,15 @@ main {
   transition: all 0.2s;
   padding: 0;
   line-height: 1;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .tag-popup-header .btn-close svg {
   display: block;
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
 }
 
 .tag-popup-header .btn-close:hover {
@@ -838,8 +846,9 @@ main {
 .tag-display {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
+  min-width: 0;
 }
 
 .tag-color-dot {
@@ -852,6 +861,10 @@ main {
 .tag-name {
   font-size: 15px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
 .tag-count {
@@ -872,6 +885,8 @@ main {
 .tag-actions {
   display: flex;
   gap: 6px;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .tag-actions button,
@@ -1021,11 +1036,11 @@ main {
 
 .tree-tag-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: 10px 16px 10px 40px;
   border-top: 1px solid var(--border);
   transition: background 0.2s;
+  gap: 8px;
 }
 
 .tree-tag-item:hover {
@@ -2253,8 +2268,12 @@ main {
   }
 
   .tag-popup-header .btn-close {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    max-width: 40px;
+    max-height: 40px;
     font-size: 22px;
   }
 
@@ -2286,16 +2305,15 @@ main {
 
   .tree-tag-item {
     padding: 10px 14px 10px 28px;
+    gap: 6px;
   }
 
   .tree-tag-item .tag-actions {
-    width: 100%;
     justify-content: flex-end;
     gap: 4px;
   }
 
   .tag-actions {
-    width: 100%;
     justify-content: flex-end;
     gap: 4px;
   }
@@ -2303,6 +2321,10 @@ main {
   .tag-action-icon {
     width: 28px;
     height: 28px;
+  }
+
+  .tag-name {
+    max-width: 140px;
   }
 
   .modal-card {
