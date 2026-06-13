@@ -17,6 +17,16 @@
 
 ## 版本历史
 
+### v1.3.5 (2026-06-13)
+
+**Bug 修复：**
+- 修复演示模式关闭后自定义数据完全丢失的问题
+  - 根因：`enableDemoMode()` 将备份保存在 IndexedDB settings store 中，但 `clearAllData()` 清空了所有 store，导致备份被一并清除
+  - 修复：备份机制改为 `localStorage`，不受 `clearAllData()` 影响
+- 修复演示模式关闭时 `importData` 调用错误的问题
+  - 根因：`app.js` 的 `window.importData`（文件导入）覆盖了 `db.js` 的 `importData`（数据对象导入），`guide.js` 调用时传入普通对象但执行了文件导入逻辑
+  - 修复：`app.js` 的 `window.importData` 添加参数类型检测，数据对象路由到 `db.js` 版本，文件输入路由到 UI 版本
+
 ### v1.3.4 (2026-06-13)
 
 **Bug 修复：**
