@@ -162,28 +162,40 @@ async function closeGuide() {
 // Demo Mode
 // ============================================
 
-const DEMO_SAMPLE_DATA = [
-  { amount: 35.00, date: '2026-05-20', category: '餐饮', note: '午餐', tags: ['餐饮'] },
-  { amount: 18.50, date: '2026-05-20', category: '交通', note: '打车回家', tags: ['交通'] },
-  { amount: 128.00, date: '2026-05-19', category: '购物', note: '超市采购', tags: ['购物'] },
-  { amount: 45.00, date: '2026-05-19', category: '餐饮', note: '晚餐聚会', tags: ['餐饮'] },
-  { amount: 12.00, date: '2026-05-18', category: '餐饮', note: '早餐', tags: ['餐饮'] },
-  { amount: 89.00, date: '2026-05-18', category: '娱乐', note: '电影票', tags: ['娱乐'] },
-  { amount: 22.00, date: '2026-05-17', category: '交通', note: '地铁充值', tags: ['交通'] },
-  { amount: 56.00, date: '2026-05-17', category: '购物', note: '水果', tags: ['购物'] },
-  { amount: 199.00, date: '2026-05-16', category: '购物', note: '电话费', tags: ['购物'] },
-  { amount: 68.00, date: '2026-05-16', category: '餐饮', note: '火锅', tags: ['餐饮'] },
-  { amount: 15.00, date: '2026-05-15', category: '餐饮', note: '奶茶', tags: ['餐饮'] },
-  { amount: 320.00, date: '2026-05-15', category: '居住', note: '水电费', tags: ['居住'] },
-  { amount: 42.00, date: '2026-05-14', category: '餐饮', note: '外卖', tags: ['餐饮'] },
-  { amount: 75.00, date: '2026-05-14', category: '医疗', note: '药店买药', tags: ['医疗'] },
-  { amount: 28.00, date: '2026-05-13', category: '交通', note: '出租车', tags: ['交通'] },
-  { amount: 150.00, date: '2026-05-13', category: '教育', note: '买书', tags: ['教育'] },
-  { amount: 9.90, date: '2026-05-12', category: '餐饮', note: '咖啡', tags: ['餐饮'] },
-  { amount: 88.00, date: '2026-05-12', category: '娱乐', note: '游戏充值', tags: ['娱乐'] },
-  { amount: 210.00, date: '2026-05-11', category: '购物', note: '日用品', tags: ['购物'] },
-  { amount: 55.00, date: '2026-05-11', category: '餐饮', note: '自助餐', tags: ['餐饮'] }
-];
+function getDemoSampleData() {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const d = today.getDate();
+
+  function dateStr(dayOffset) {
+    const dt = new Date(y, m, d - dayOffset);
+    return dt.toISOString().slice(0, 10);
+  }
+
+  return [
+    { amount: 35.00, date: dateStr(0), category: '餐饮', note: '午餐', tags: ['餐饮'] },
+    { amount: 18.50, date: dateStr(0), category: '交通', note: '打车回家', tags: ['交通'] },
+    { amount: 128.00, date: dateStr(1), category: '购物', note: '超市采购', tags: ['购物'] },
+    { amount: 45.00, date: dateStr(1), category: '餐饮', note: '晚餐聚会', tags: ['餐饮'] },
+    { amount: 12.00, date: dateStr(2), category: '餐饮', note: '早餐', tags: ['餐饮'] },
+    { amount: 89.00, date: dateStr(2), category: '娱乐', note: '电影票', tags: ['娱乐'] },
+    { amount: 22.00, date: dateStr(3), category: '交通', note: '地铁充值', tags: ['交通'] },
+    { amount: 56.00, date: dateStr(3), category: '购物', note: '水果', tags: ['购物'] },
+    { amount: 199.00, date: dateStr(4), category: '购物', note: '电话费', tags: ['购物'] },
+    { amount: 68.00, date: dateStr(4), category: '餐饮', note: '火锅', tags: ['餐饮'] },
+    { amount: 15.00, date: dateStr(5), category: '餐饮', note: '奶茶', tags: ['餐饮'] },
+    { amount: 320.00, date: dateStr(5), category: '居住', note: '水电费', tags: ['居住'] },
+    { amount: 42.00, date: dateStr(6), category: '餐饮', note: '外卖', tags: ['餐饮'] },
+    { amount: 75.00, date: dateStr(6), category: '医疗', note: '药店买药', tags: ['医疗'] },
+    { amount: 28.00, date: dateStr(7), category: '交通', note: '出租车', tags: ['交通'] },
+    { amount: 150.00, date: dateStr(7), category: '教育', note: '买书', tags: ['教育'] },
+    { amount: 9.90, date: dateStr(8), category: '餐饮', note: '咖啡', tags: ['餐饮'] },
+    { amount: 88.00, date: dateStr(8), category: '娱乐', note: '游戏充值', tags: ['娱乐'] },
+    { amount: 210.00, date: dateStr(9), category: '购物', note: '日用品', tags: ['购物'] },
+    { amount: 55.00, date: dateStr(9), category: '餐饮', note: '自助餐', tags: ['餐饮'] }
+  ];
+}
 
 /**
  * Check if demo mode is currently active.
@@ -194,24 +206,20 @@ async function isDemoMode() {
 }
 
 /**
- * Enable demo mode: backup real data and load 20 sample expenses.
+ * Enable demo mode: backup current data and load 20 sample expenses.
  */
 async function enableDemoMode() {
-  // Backup current data to localStorage so it survives clearAllData()
+  // Always backup current state so disableDemoMode can restore it
   const currentExpenses = await getExpenses();
   const currentTags = await getTags();
   const currentTagGroups = await getTagGroups();
 
-  if (currentExpenses.length > 0 || currentTags.length > 0 || currentTagGroups.length > 0) {
-    localStorage.setItem(REAL_DATA_BACKUP_KEY, JSON.stringify({
-      expenses: currentExpenses,
-      tags: currentTags,
-      tagGroups: currentTagGroups,
-      backedUpAt: new Date().toISOString()
-    }));
-  } else {
-    localStorage.removeItem(REAL_DATA_BACKUP_KEY);
-  }
+  localStorage.setItem(REAL_DATA_BACKUP_KEY, JSON.stringify({
+    expenses: currentExpenses,
+    tags: currentTags,
+    tagGroups: currentTagGroups,
+    backedUpAt: new Date().toISOString()
+  }));
 
   // Clear current data
   await clearAllData();
@@ -226,7 +234,7 @@ async function enableDemoMode() {
     tagMap[t.name] = t.id;
   }
 
-  for (const sample of DEMO_SAMPLE_DATA) {
+  for (const sample of getDemoSampleData()) {
     const tagIds = [];
     for (const tagName of (sample.tags || [])) {
       if (tagMap[tagName] && !tagIds.includes(tagMap[tagName])) {
@@ -264,10 +272,8 @@ async function disableDemoMode() {
       tagGroups: backup.tagGroups || [],
       settings: []
     });
-  } else {
-    // No backup, just re-init defaults
-    await initDB();
   }
+  // No backup: keep database empty (no default tags/groups)
 
   await setSettings(DEMO_MODE_KEY, false);
   localStorage.removeItem(REAL_DATA_BACKUP_KEY);

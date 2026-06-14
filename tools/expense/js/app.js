@@ -60,24 +60,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial dashboard render
   await refreshDashboard();
 
-  // Generate test data only on very first visit (no data AND no prior flag)
+  // First visit: use enableDemoMode() for consistent 20-sample data + proper backup
   const expenses = await getExpenses();
   const hasSeenBefore = localStorage.getItem('expense_data_initialized');
   if (expenses.length === 0 && !hasSeenBefore) {
     try {
-      // Ensure tags exist (they should, but just in case)
-      if (allTags.length === 0) {
-        await initDB();
-        await loadTags();
-      }
-      await generateTestData();
-      // Also mark demo mode as active so the UI toggle reflects reality
-      await setSettings(DEMO_MODE_KEY, true);
-      await refreshDashboard();
+      await enableDemoMode();
       localStorage.setItem('expense_data_initialized', '1');
     } catch (e) {
-      console.error('Generate test data failed:', e);
-      // Don't mark as initialized, so it can retry next time
+      console.error('Enable demo mode failed:', e);
     }
   } else {
     localStorage.setItem('expense_data_initialized', '1');
