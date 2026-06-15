@@ -11,7 +11,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="cache-control" content="no-cache, must-revalidate">
-<meta name="theme-color" content="#2DBAA3">
+<meta name="theme-color" content="#3D7B6E">
 <!-- PWA Manifest (独立 manifest，支持生活账单子模块独立添加到主屏幕) -->
 <link rel="manifest" href="manifest.json">
 <!-- iOS Icons (生活账单专属图标) -->
@@ -27,7 +27,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=33">
+<link rel="stylesheet" href="css/style.css?v=34">
 <style>
 /* More Menu (inline for reliability) */
     .more-menu {
@@ -87,7 +87,7 @@
 <header>
   <a class="logo" href="." onclick="switchView('dashboard'); return false;">
     <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="28" height="28" rx="6" fill="#2DBAA3"/>
+      <rect width="28" height="28" rx="6" fill="#3D7B6E"/>
       <path d="M8 10h12M8 14h8M8 18h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
     </svg>
     <h1>Expense Tracker</h1>
@@ -109,7 +109,7 @@
 
     <!-- Filter Bar -->
     <div class="filter-bar dashboard-filter" id="dashboard-filter-bar">
-      <select id="dash-time-range" title="时间范围">
+      <select id="dash-time-range" title="时间范围" aria-label="选择时间范围">
         <option value="this-month">本月</option>
         <option value="last-month">上月</option>
         <option value="last-7">最近7天</option>
@@ -118,8 +118,8 @@
         <option value="custom">自定义</option>
       </select>
       <div class="custom-date-range" id="dash-custom-range" style="display:none;gap:8px;flex-wrap:wrap;">
-        <input type="date" id="dash-date-start" title="开始日期">
-        <input type="date" id="dash-date-end" title="结束日期">
+        <input type="date" id="dash-date-start" title="开始日期" aria-label="自定义开始日期">
+        <input type="date" id="dash-date-end" title="结束日期" aria-label="自定义结束日期">
       </div>
       <button class="btn-secondary" id="dash-tag-btn" title="选择标签" onclick="toggleTagPopup()">🏷️ 标签</button>
       <div class="selected-filter-tags" id="dash-selected-tags"></div>
@@ -137,11 +137,11 @@
         </div>
       </div>
       <div class="amount-range">
-        <input type="number" id="dash-amount-min" placeholder="最低金额 ¥" step="0.01" min="0" title="最低金额">
+        <input type="number" id="dash-amount-min" placeholder="最低金额 ¥" step="0.01" min="0" title="最低金额" aria-label="最低金额">
         <span class="amount-sep">—</span>
-        <input type="number" id="dash-amount-max" placeholder="最高金额 ¥" step="0.01" min="0" title="最高金额">
+        <input type="number" id="dash-amount-max" placeholder="最高金额 ¥" step="0.01" min="0" title="最高金额" aria-label="最高金额">
       </div>
-      <input type="text" id="dash-search" placeholder="搜索备注或分类…" title="搜索">
+      <input type="text" id="dash-search" placeholder="搜索备注或分类…" title="搜索" aria-label="搜索备注或分类">
     </div>
 
     <!-- Dashboard Hero -->
@@ -237,7 +237,7 @@
         <label for="exp-amount">金额 <span class="required">*</span></label>
         <div class="input-prefix">
           <span class="prefix">¥</span>
-          <input type="number" id="exp-amount" placeholder="0.00" step="0.01" min="0" autofocus>
+          <input type="number" id="exp-amount" placeholder="0.00" step="0.01" min="0">
         </div>
       </div>
       <div class="form-group">

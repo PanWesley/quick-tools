@@ -193,9 +193,14 @@ main {
 
 .dashboard-header h2,
 .page-header h2 {
+  font-family: var(--font-display);
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 6px;
+}
+
+h1, h2 {
+  font-family: var(--font-display);
 }
 
 .subtitle {
@@ -312,7 +317,7 @@ main {
   border-radius: 0;
   padding: 0;
   box-shadow: none;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   animation: fadeUp 0.5s 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -463,13 +468,13 @@ main {
   cursor: pointer;
   touch-action: manipulation;
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
-  box-shadow: 0 2px 8px rgba(45, 186, 163, 0.3);
+  box-shadow: 0 2px 8px rgba(61, 123, 110, 0.3);
 }
 
 .btn-primary:hover {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(45, 186, 163, 0.4);
+  box-shadow: 0 4px 12px rgba(61, 123, 110, 0.4);
 }
 
 .btn-primary:active {
@@ -801,7 +806,7 @@ main {
 .chart-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 24px;
   margin-bottom: 20px;
   border-top: 1px solid var(--border);
   padding-top: 24px;
@@ -825,7 +830,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   transition: background 0.2s;
 }
@@ -1241,18 +1246,18 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 20px;
+  padding: 60px 20px;
   text-align: center;
 }
 
 .empty-dashboard .empty-illustration {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   opacity: 0.5;
 }
 
 .empty-dashboard h3 {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 8px;
@@ -1718,10 +1723,10 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 16px 16px 10px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -2395,6 +2400,7 @@ main {
 
   .chart-row {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .tag-popup {
