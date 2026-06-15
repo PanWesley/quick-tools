@@ -56,6 +56,11 @@ function openDB() {
 
     request.onsuccess = () => {
       dbInstance = request.result;
+      // Reset cache when DB connection is closed (e.g., after deleteDatabase)
+      dbInstance.onclose = () => {
+        console.log('IndexedDB connection closed, resetting cache');
+        dbInstance = null;
+      };
       console.log('IndexedDB opened successfully:', DB_NAME, 'v' + DB_VERSION);
       resolve(dbInstance);
     };

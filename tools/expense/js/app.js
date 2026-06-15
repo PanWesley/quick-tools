@@ -14,6 +14,7 @@ let allTags = [];
 let allTagGroups = [];
 let selectedTagIds = [];
 let filterDebounceTimer = null;
+let _originalSwitchView = null;
 
 // Expose dashboard filters globally for chart.js theme refresh
 window._dashboardFilters = {};
@@ -66,6 +67,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (expenses.length === 0 && !hasSeenBefore) {
     try {
       await enableDemoMode();
+      // Refresh in-memory tag state (allTags/allTagGroups were loaded before enableDemoMode cleared+recreated DB)
+      await loadTags();
       localStorage.setItem('expense_data_initialized', '1');
     } catch (e) {
       console.error('Enable demo mode failed:', e);
@@ -73,6 +76,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     localStorage.setItem('expense_data_initialized', '1');
   }
+
+  // Re-render after potential demo mode init
+  await renderExpenseList();
+  await refreshDashboard();
 
   // Initialize guide on first visit
   try {
@@ -86,6 +93,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Update demo mode toggle state
   updateDemoToggleUI();
+
+  // Override switchView to trigger view-specific rendering
+  // Must be done here (after index.html's inline script defines switchView)
+  _originalSwitchView = window.switchView;
+  window.switchView = function(viewName, skipHistory) {
+    if (_originalSwitchView) _originalSwitchView(viewName, skipHistory);
+    if (viewName === 'dashboard') {
+      refreshDashboard();
+    } else if (viewName === 'list') {
+      renderExpenseList();
+    } else if (viewName === 'tags') {
+      renderTagsList();
+    }
+  };
 });
 
 // ============================================
@@ -263,7 +284,7 @@ window.goToListFromDashboard = function() {
     search: search ? search.value : ''
   };
 
-  switchView('list');
+  _originalSwitchView('list');
   applyListViewFilters();
 };
 
@@ -367,7 +388,7 @@ async function loadTags() {
   allTagGroups = await getTagGroups();
   populateCategorySelects();
   renderTagCloud();
-  renderTagsList();
+  await renderTagsList();
 }
 
 function populateCategorySelects() {
@@ -388,26 +409,6 @@ function populateCategorySelects() {
     listFilter.value = current;
   }
 }
-
-// ============================================
-// View Switching
-// ============================================
-
-// View switching with rendering - runs after index.html's switchView
-const originalSwitchView = window.switchView;
-window.switchView = function(viewName, skipHistory) {
-  // Call the original switchView from index.html first
-  if (originalSwitchView) originalSwitchView(viewName, skipHistory);
-
-  // Then trigger view-specific rendering
-  if (viewName === 'dashboard') {
-    refreshDashboard();
-  } else if (viewName === 'list') {
-    renderExpenseList();
-  } else if (viewName === 'tags') {
-    renderTagsList();
-  }
-};
 
 // ============================================
 // Add Expense Form (legacy, kept for compatibility)

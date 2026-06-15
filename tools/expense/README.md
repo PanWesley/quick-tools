@@ -17,6 +17,33 @@
 
 ## 版本历史
 
+### v1.4.2 (2026-06-15)
+
+**Bug 修复（演示模式残留问题 - 补充修复）：**
+- 修复首次进入后明细页数据为空的问题（根因修复）
+  - 根因：`app.js` 模块级 `switchView` 覆盖在 `index.html` 内联 `switchView` 定义之前执行，`originalSwitchView` 捕获为 `undefined`，随后内联 `function switchView()` 声明覆盖了 `app.js` 的覆盖，导致导航按钮点击不触发 `renderExpenseList()`
+  - 修复：将 `switchView` 覆盖从模块级移到 `DOMContentLoaded` 处理器内，确保在内联脚本定义 `switchView` 之后执行
+- 修复标签页计数始终显示"0笔"的问题（根因修复）
+  - 根因：`loadTags()` 中 `renderTagsList()` 未 await，首次调用（0 条数据）可能晚于第二次调用（20 条演示数据）完成，导致过期输出覆盖正确计数
+  - 修复：`loadTags()` 中 `await renderTagsList()`
+- 修复关闭演示模式后默认标签仍然存在的问题（根因修复）
+  - 根因：同上 race condition，`disableDemoMode()` 后 `loadTags()` 调用 `renderTagsList()` 未 await，可能导致标签页渲染过期状态
+  - 修复：同上
+- 修复 `goToListFromDashboard` 双重渲染问题：使用 `_originalSwitchView` 而非 `switchView` 避免重复触发 `renderExpenseList`
+
+### v1.4.1 (2026-06-15)
+
+**Bug 修复（演示模式残留问题）：**
+- 修复首次进入后明细页数据为空的问题
+  - 根因：`enableDemoMode()` 清空重建 DB 后未刷新 `allTags` 内存状态，`renderExpenseList` 使用的旧 tag 对象与新 DB 数据不匹配
+  - 修复：`enableDemoMode()` 后调用 `loadTags()` 刷新 `allTags`，并重渲染明细列表和概览页
+- 修复标签页计数始终显示为 0 的问题
+  - 根因同上：`allTags` 指向已被清空的旧 DB 对象，标签 ID 虽然相同但对象引用不匹配导致计数异常
+  - 修复同上
+- 修复关闭演示模式后默认标签仍然存在的问题
+  - 根因：`enableDemoMode()` 备份了 `initDB()` 自动创建的默认标签，`disableDemoMode()` 恢复时将其写回 DB
+  - 修复：`disableDemoMode()` 仅在备份中有实际 expense 数据时才恢复 tags/tagGroups，空 expense 时不恢复
+
 ### v1.4.0 (2026-06-14)
 
 **Bug 修复（演示模式）：**

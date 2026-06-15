@@ -263,7 +263,9 @@ async function disableDemoMode() {
   // Clear demo data
   await clearAllData();
 
-  if (backup && (backup.expenses || backup.tags || backup.tagGroups)) {
+  // Only restore if backup has actual user data (expenses > 0).
+  // If expenses is empty, the tags/groups were just initDB() defaults, not user data.
+  if (backup && backup.expenses && backup.expenses.length > 0) {
     await importData({
       version: 2,
       exportedAt: new Date().toISOString(),
@@ -273,7 +275,7 @@ async function disableDemoMode() {
       settings: []
     });
   }
-  // No backup: keep database empty (no default tags/groups)
+  // No backup or empty backup: keep database empty
 
   await setSettings(DEMO_MODE_KEY, false);
   localStorage.removeItem(REAL_DATA_BACKUP_KEY);
