@@ -27,59 +27,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=30">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=31">
 <style>
-  /* Critical inline CSS — guarantees stat cards render correctly even if external CSS is CDN-cached */
-  .dashboard-grid {
-    display: grid !important;
-    grid-template-columns: repeat(4, 1fr) !important;
-    gap: 16px !important;
-    margin-bottom: 24px !important;
-  }
-  .stat-card {
-    background: var(--card-bg, #fff) !important;
-    border: 1px solid var(--border, #e1e8ed) !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
-    text-align: center !important;
-    cursor: pointer !important;
-  }
-  .stat-label {
-    font-size: 12px !important;
-    color: var(--text-secondary, #7f8c8d) !important;
-    margin-bottom: 8px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-  }
-  .stat-value {
-    font-size: 24px !important;
-    font-weight: 700 !important;
-    color: var(--text, #2c3e50) !important;
-  }
-  .filter-bar {
-    display: flex !important;
-    gap: 12px !important;
-    margin-bottom: 20px !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-  }
-  @media (max-width: 1024px) {
-    .dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; }
-  }
-  @media (max-width: 768px) {
-    .dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-    .stat-card { padding: 14px !important; }
-    .stat-value { font-size: 18px !important; }
-    .filter-bar { flex-direction: column !important; }
-    .filter-bar input, .filter-bar select, .filter-bar button { width: 100% !important; }
-  }
-  @media (max-width: 480px) {
-    .dashboard-grid { grid-template-columns: 1fr 1fr !important; }
-    .stat-label { font-size: 11px !important; }
-    .stat-value { font-size: 16px !important; }
-  }
-/* More Menu */
+/* More Menu (inline for reliability) */
     .more-menu {
       position: fixed;
       bottom: 0;
@@ -627,11 +577,11 @@
     </div>
   </div>
 
-<script src="/tools/expense/js/db.js?v=35"></script>
-<script src="/tools/expense/js/chart.js?v=35"></script>
-<script src="/tools/expense/js/import-export.js?v=35"></script>
-<script src="/tools/expense/js/guide.js?v=35"></script>
-<script src="/tools/expense/js/app.js?v=35"></script>
+<script src="/tools/expense/js/db.js?v=36"></script>
+<script src="/tools/expense/js/chart.js?v=36"></script>
+<script src="/tools/expense/js/import-export.js?v=36"></script>
+<script src="/tools/expense/js/guide.js?v=36"></script>
+<script src="/tools/expense/js/app.js?v=36"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
