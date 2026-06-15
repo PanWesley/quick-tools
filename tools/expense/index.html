@@ -13,13 +13,13 @@
 <meta http-equiv="cache-control" content="no-cache, must-revalidate">
 <meta name="theme-color" content="#2DBAA3">
 <!-- PWA Manifest (独立 manifest，支持生活账单子模块独立添加到主屏幕) -->
-<link rel="manifest" href="/tools/expense/manifest.json">
+<link rel="manifest" href="manifest.json">
 <!-- iOS Icons (生活账单专属图标) -->
 <link rel="apple-touch-icon" href="/icons/expense-icon-192x192.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/expense-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/expense-icon-192x192.png">
 <!-- PWA Styles -->
-<link rel="stylesheet" href="/shared/css/pwa.css?v=2">
+<link rel="stylesheet" href="../shared/css/pwa.css?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <title>生活账单 - Expense Tracker</title>
@@ -27,7 +27,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=31">
+<link rel="stylesheet" href="css/style.css?v=32">
 <style>
 /* More Menu (inline for reliability) */
     .more-menu {
@@ -577,13 +577,13 @@
     </div>
   </div>
 
-<script src="/tools/expense/js/db.js?v=36"></script>
-<script src="/tools/expense/js/chart.js?v=36"></script>
-<script src="/tools/expense/js/import-export.js?v=36"></script>
-<script src="/tools/expense/js/guide.js?v=36"></script>
-<script src="/tools/expense/js/app.js?v=36"></script>
+<script src="js/db.js?v=37"></script>
+<script src="js/chart.js?v=37"></script>
+<script src="js/import-export.js?v=37"></script>
+<script src="js/guide.js?v=37"></script>
+<script src="js/app.js?v=37"></script>
 <!-- PWA Scripts -->
-<script src="/shared/js/pwa.js?v=2"></script>
+<script src="../shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
 <script>
 if ('serviceWorker' in navigator) {
