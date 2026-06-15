@@ -108,6 +108,14 @@ header {
   user-select: none;
 }
 
+.logo h1 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  line-height: 1.2;
+}
+
 .logo svg {
   width: 28px;
   height: 28px;
@@ -341,7 +349,7 @@ main {
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-group.inline {
@@ -795,6 +803,8 @@ main {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   margin-bottom: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
 }
 
 .chart-half {
@@ -853,7 +863,8 @@ main {
 .expense-amount {
   font-size: 18px;
   font-weight: 700;
-  color: var(--danger);
+  color: var(--text);
+  font-family: var(--font-mono);
   margin-left: 12px;
   white-space: nowrap;
 }
@@ -1713,6 +1724,8 @@ main {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   position: sticky;
   top: 0;
   z-index: 5;
@@ -1771,7 +1784,7 @@ main {
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
-  animation: slideUp 0.25s ease;
+  animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .modal-card.modal-small {
@@ -2333,7 +2346,7 @@ main {
   }
 
   .chart-wrapper {
-    min-height: 240px;
+    min-height: 260px;
   }
 
   .form-card {
@@ -2394,7 +2407,7 @@ main {
     border-radius: 16px 16px 0 0;
     max-height: 60vh;
     z-index: 160;
-    animation: slideUp 0.3s ease;
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     padding: 20px 16px 16px;
     box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
   }
@@ -2482,6 +2495,27 @@ main {
 
   .modal-footer {
     padding: 12px 20px;
+  }
+
+  /* Touch Target: minimum 44x44px for mobile */
+  .expense-actions button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+  }
+
+  .form-group input,
+  .form-group select {
+    min-height: 44px;
+  }
+
+  .tag-chip {
+    padding: 8px 16px;
+    min-height: 40px;
   }
 
   .expense-date-header {
