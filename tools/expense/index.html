@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <script>
-  // 鍚屾璁剧疆涓婚锛岄槻姝㈤棯鐑侊紙蹇呴』鍦?<head> 鏈€鍓嶉潰锛?
+  // 同步设置主题，防止闪烁（必须在 <head> 最前面）
   (function() {
     var theme = localStorage.getItem('quick-tools-theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
@@ -12,9 +12,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="cache-control" content="no-cache, must-revalidate">
 <meta name="theme-color" content="#3D7B6E">
-<!-- PWA Manifest (鐙珛 manifest锛屾敮鎸佺敓娲昏处鍗曞瓙妯″潡鐙珛娣诲姞鍒颁富灞忓箷) -->
+<!-- PWA Manifest (独立 manifest，支持生活账单子模块独立添加到主屏幕) -->
 <link rel="manifest" href="/tools/expense/manifest.json">
-<!-- iOS Icons (鐢熸椿璐﹀崟涓撳睘鍥炬爣) -->
+<!-- iOS Icons (生活账单专属图标) -->
 <link rel="apple-touch-icon" href="/icons/expense-icon-192x192.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/expense-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/expense-icon-192x192.png">
@@ -22,7 +22,7 @@
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<title>鐢熸椿璐﹀崟 - Expense Tracker</title>
+<title>生活账单 - Expense Tracker</title>
 <!-- Chart.js for data visualization -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
@@ -93,8 +93,8 @@
     <h1>Expense Tracker</h1>
   </a>
   <div class="header-actions">
-    <button class="theme-toggle" onclick="toggleTheme()" title="鍒囨崲涓婚" aria-label="鍒囨崲娣辫壊妯″紡">
-      <span id="theme-icon">馃寵</span>
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题" aria-label="切换深色模式">
+      <span id="theme-icon">🌙</span>
     </button>
   </div>
 </header>
@@ -103,55 +103,55 @@
   <!-- Dashboard View -->
   <section class="view-section active" id="view-dashboard">
     <div class="dashboard-header">
-      <h2>馃搳 姒傝</h2>
-      <p class="subtitle">鏀嚭鎯呭喌涓€瑙?/p>
+      <h2>📊 概览</h2>
+      <p class="subtitle">支出情况一览</p>
     </div>
 
     <!-- Filter Bar -->
     <div class="filter-bar dashboard-filter" id="dashboard-filter-bar">
-      <select id="dash-time-range" title="鏃堕棿鑼冨洿" aria-label="閫夋嫨鏃堕棿鑼冨洿">
-        <option value="this-month">鏈湀</option>
-        <option value="last-month">涓婃湀</option>
-        <option value="last-7">鏈€杩?澶?/option>
-        <option value="last-30">鏈€杩?0澶?/option>
-        <option value="this-year">浠婂勾</option>
-        <option value="custom">鑷畾涔?/option>
+      <select id="dash-time-range" title="时间范围" aria-label="选择时间范围">
+        <option value="this-month">本月</option>
+        <option value="last-month">上月</option>
+        <option value="last-7">最近7天</option>
+        <option value="last-30">最近30天</option>
+        <option value="this-year">今年</option>
+        <option value="custom">自定义</option>
       </select>
       <div class="custom-date-range" id="dash-custom-range" style="display:none;gap:8px;flex-wrap:wrap;">
-        <input type="date" id="dash-date-start" title="寮€濮嬫棩鏈? aria-label="鑷畾涔夊紑濮嬫棩鏈?>
-        <input type="date" id="dash-date-end" title="缁撴潫鏃ユ湡" aria-label="鑷畾涔夌粨鏉熸棩鏈?>
+        <input type="date" id="dash-date-start" title="开始日期" aria-label="自定义开始日期">
+        <input type="date" id="dash-date-end" title="结束日期" aria-label="自定义结束日期">
       </div>
-      <button class="btn-secondary" id="dash-tag-btn" title="閫夋嫨鏍囩" onclick="toggleTagPopup()">馃彿锔?鏍囩</button>
+      <button class="btn-secondary" id="dash-tag-btn" title="选择标签" onclick="toggleTagPopup()">🏷️ 标签</button>
       <div class="selected-filter-tags" id="dash-selected-tags"></div>
       <div class="tag-popup" id="dash-tag-popup" style="display:none;">
         <div class="tag-popup-header">
-          <span>閫夋嫨鏍囩</span>
-          <button class="btn-close" onclick="toggleTagPopup()" aria-label="鍏抽棴">
+          <span>选择标签</span>
+          <button class="btn-close" onclick="toggleTagPopup()" aria-label="关闭">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
         <div class="tag-groups" id="dash-tag-groups"></div>
         <div class="tag-popup-footer">
-          <button class="btn-secondary" onclick="clearTagFilter()">娓呴櫎</button>
-          <button class="btn-primary" onclick="applyTagFilter()">纭畾</button>
+          <button class="btn-secondary" onclick="clearTagFilter()">清除</button>
+          <button class="btn-primary" onclick="applyTagFilter()">确定</button>
         </div>
       </div>
       <div class="amount-range">
-        <input type="number" id="dash-amount-min" placeholder="鏈€浣庨噾棰?楼" step="0.01" min="0" title="鏈€浣庨噾棰? aria-label="鏈€浣庨噾棰?>
-        <span class="amount-sep">鈥?/span>
-        <input type="number" id="dash-amount-max" placeholder="鏈€楂橀噾棰?楼" step="0.01" min="0" title="鏈€楂橀噾棰? aria-label="鏈€楂橀噾棰?>
+        <input type="number" id="dash-amount-min" placeholder="最低金额 ¥" step="0.01" min="0" title="最低金额" aria-label="最低金额">
+        <span class="amount-sep">—</span>
+        <input type="number" id="dash-amount-max" placeholder="最高金额 ¥" step="0.01" min="0" title="最高金额" aria-label="最高金额">
       </div>
-      <input type="text" id="dash-search" placeholder="鎼滅储澶囨敞鎴栧垎绫烩€? title="鎼滅储" aria-label="鎼滅储澶囨敞鎴栧垎绫?>
+      <input type="text" id="dash-search" placeholder="搜索备注或分类…" title="搜索" aria-label="搜索备注或分类">
     </div>
 
     <!-- Dashboard Hero -->
         <div class="dashboard-hero" id="dashboard-hero">
-          <div class="hero-label">鏈湀鏀嚭</div>
-          <div class="hero-amount" id="dash-total">楼0.00</div>
+          <div class="hero-label">本月支出</div>
+          <div class="hero-amount" id="dash-total">¥0.00</div>
           <div class="hero-summary">
-            <span class="hero-trend" id="dash-trend-text">鈥?/span>
-            <span class="hero-dot">路</span>
-            <span class="hero-count" id="dash-count-text">0 绗旀敮鍑?/span>
+            <span class="hero-trend" id="dash-trend-text">—</span>
+            <span class="hero-dot">·</span>
+            <span class="hero-count" id="dash-count-text">0 笔支出</span>
           </div>
         </div>
 
@@ -167,21 +167,21 @@
               <path d="M78 22h8M82 18v8" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </div>
-          <h3>寮€濮嬭褰?/h3>
-          <p>鐐瑰嚮搴曢儴"璁拌处"鎸夐挳锛? 绉掑畬鎴愪竴绗旇褰?/p>
-          <button class="btn-primary" onclick="switchView('add')">璁扮涓€绗?/button>
+          <h3>开始记录</h3>
+          <p>点击底部"记账"按钮，3 秒完成一笔记录</p>
+          <button class="btn-primary" onclick="switchView('add')">记第一笔</button>
         </div>
 
     <!-- Charts Row 1: Pie + Bar -->
     <div class="chart-row">
       <div class="chart-card chart-half">
-        <h3>鍒嗙被鍗犳瘮 <span class="chart-mode-toggle" id="pie-mode-toggle" onclick="togglePieMode()" style="cursor:pointer;font-size:12px;font-weight:400;color:var(--primary);margin-left:8px;">鎸夋爣绛?/span></h3>
+        <h3>分类占比 <span class="chart-mode-toggle" id="pie-mode-toggle" onclick="togglePieMode()" style="cursor:pointer;font-size:12px;font-weight:400;color:var(--primary);margin-left:8px;">按标签</span></h3>
         <div class="chart-wrapper doughnut">
           <canvas id="categoryChart"></canvas>
         </div>
       </div>
       <div class="chart-card chart-half">
-        <h3>TOP 5 鍒嗙被</h3>
+        <h3>TOP 5 分类</h3>
         <div class="chart-wrapper">
           <canvas id="topCategoryChart"></canvas>
         </div>
@@ -191,11 +191,11 @@
     <!-- Charts Row 2: Line Trend -->
     <div class="chart-card">
       <h3>
-        <span id="trend-chart-title">杩?澶╂敮鍑鸿秼鍔?/span>
+        <span id="trend-chart-title">近7天支出趋势</span>
         <select id="trend-time-range" class="trend-range-select" onchange="changeTrendRange()">
-          <option value="7">杩?澶?/option>
-          <option value="this-month">鏈湀</option>
-          <option value="last-month">涓婃湀</option>
+          <option value="7">近7天</option>
+          <option value="this-month">本月</option>
+          <option value="last-month">上月</option>
         </select>
       </h3>
       <div class="chart-wrapper">
@@ -207,66 +207,66 @@
   <!-- Add Expense View -->
   <section class="view-section" id="view-add">
     <div class="page-header">
-      <h2>鉃?璁颁竴绗?/h2>
-      <p class="subtitle">蹇€熻褰曟柊鐨勬敮鍑?/p>
+      <h2>➕ 记一笔</h2>
+      <p class="subtitle">快速记录新的支出</p>
     </div>
 
     <!-- Mode Toggle -->
     <div class="mode-toggle-bar">
-      <button class="mode-btn active" id="mode-form-btn" onclick="switchEntryMode('form')">琛ㄥ崟</button>
-      <button class="mode-btn" id="mode-nl-btn" onclick="switchEntryMode('nl')">鑷劧璇█</button>
+      <button class="mode-btn active" id="mode-form-btn" onclick="switchEntryMode('form')">表单</button>
+      <button class="mode-btn" id="mode-nl-btn" onclick="switchEntryMode('nl')">自然语言</button>
     </div>
 
     <!-- Recent Templates -->
     <div class="recent-templates" id="recent-templates">
-      <div class="templates-label">鏈€杩戞ā鏉?/div>
+      <div class="templates-label">最近模板</div>
       <div class="templates-chips" id="templates-chips"></div>
     </div>
 
     <!-- Form Mode -->
     <div class="form-card entry-mode" id="entry-form-mode">
       <div class="form-group">
-        <label for="exp-date">鏃ユ湡</label>
+        <label for="exp-date">日期</label>
         <input type="date" id="exp-date">
       </div>
       <div class="form-group">
-        <label for="exp-item-name">椤圭洰鍚嶇О</label>
-        <input type="text" id="exp-item-name" placeholder="渚嬪锛氬崍椁愩€佹墦杞︹€?>
+        <label for="exp-item-name">项目名称</label>
+        <input type="text" id="exp-item-name" placeholder="例如：午餐、打车…">
       </div>
       <div class="form-group">
-        <label for="exp-amount">閲戦 <span class="required">*</span></label>
+        <label for="exp-amount">金额 <span class="required">*</span></label>
         <div class="input-prefix">
-          <span class="prefix">楼</span>
+          <span class="prefix">¥</span>
           <input type="number" id="exp-amount" placeholder="0.00" step="0.01" min="0">
         </div>
       </div>
       <div class="form-group">
-        <label for="exp-tags-input">鏍囩</label>
+        <label for="exp-tags-input">标签</label>
         <div class="tag-input-wrap">
-          <input type="text" id="exp-tags-input" placeholder="杈撳叆鏍囩锛岀敤绌烘牸/閫楀彿/鍥炶溅鍒嗛殧鈥? autocomplete="off">
+          <input type="text" id="exp-tags-input" placeholder="输入标签，用空格/逗号/回车分隔…" autocomplete="off">
           <div class="tag-suggestions" id="tag-suggestions" style="display:none;"></div>
         </div>
         <div class="selected-tags" id="selected-tags"></div>
       </div>
       <div class="form-actions">
-        <button class="btn-primary" onclick="saveQuickExpense()">馃捑 淇濆瓨</button>
-        <button class="btn-secondary" onclick="resetQuickForm()">馃攧 閲嶇疆</button>
+        <button class="btn-primary" onclick="saveQuickExpense()">💾 保存</button>
+        <button class="btn-secondary" onclick="resetQuickForm()">🔄 重置</button>
       </div>
     </div>
 
     <!-- Natural Language Mode -->
     <div class="form-card entry-mode" id="entry-nl-mode" style="display:none;">
       <div class="form-group">
-        <label for="nl-input">鑷劧璇█杈撳叆</label>
-        <textarea id="nl-input" rows="5" placeholder="鏍煎紡锛氭棩鏈?椤圭洰 閲戦 鏍囩\n渚嬪锛氭槰澶?鍗堥 35 椁愰ギ 缇庡洟\n      6-10 鎵撹溅 22 浜ら€?婊存淮\n鏀寔澶氭潯涓€璧疯緭鍏ワ紝姣忚涓€鏉?></textarea>
+        <label for="nl-input">自然语言输入</label>
+        <textarea id="nl-input" rows="5" placeholder="格式：日期 项目 金额 标签\n例如：昨天 午餐 35 餐饮 美团\n      6-10 打车 22 交通 滴滴\n支持多条一起输入，每行一条"></textarea>
       </div>
       <div class="nl-preview" id="nl-preview" style="display:none;">
-        <div class="nl-preview-title">瑙ｆ瀽缁撴灉锛堝彲鐐瑰嚮缂栬緫锛?/div>
+        <div class="nl-preview-title">解析结果（可点击编辑）</div>
         <div class="nl-preview-content" id="nl-preview-content"></div>
       </div>
       <div class="form-actions">
-        <button class="btn-primary" id="nl-save-btn" onclick="saveNLExpense()" disabled>馃捑 纭淇濆瓨</button>
-        <button class="btn-secondary" onclick="resetNLForm()">馃攧 娓呯┖</button>
+        <button class="btn-primary" id="nl-save-btn" onclick="saveNLExpense()" disabled>💾 确认保存</button>
+        <button class="btn-secondary" onclick="resetNLForm()">🔄 清空</button>
       </div>
     </div>
   </section>
@@ -274,58 +274,58 @@
   <!-- Expense List View -->
   <section class="view-section" id="view-list">
     <div class="page-header">
-      <h2>馃搵 璐﹀崟鏄庣粏</h2>
-      <p class="subtitle">鏌ョ湅鍜岀鐞嗘墍鏈夋敮鍑鸿褰?/p>
+      <h2>📋 账单明细</h2>
+      <p class="subtitle">查看和管理所有支出记录</p>
     </div>
     <div class="filter-bar">
-      <input type="text" id="list-search" placeholder="鎼滅储澶囨敞鎴栧垎绫烩€? oninput="renderExpenseList()">
+      <input type="text" id="list-search" placeholder="搜索备注或分类…" oninput="renderExpenseList()">
       <select id="list-filter-category" onchange="renderExpenseList()">
-        <option value="">鍏ㄩ儴鍒嗙被</option>
+        <option value="">全部分类</option>
       </select>
       <select id="list-sort" onchange="renderExpenseList()">
-        <option value="date-desc">鏃ユ湡 鈫?/option>
-        <option value="date-asc">鏃ユ湡 鈫?/option>
-        <option value="amount-desc">閲戦 鈫?/option>
-        <option value="amount-asc">閲戦 鈫?/option>
+        <option value="date-desc">日期 ↓</option>
+        <option value="date-asc">日期 ↑</option>
+        <option value="amount-desc">金额 ↓</option>
+        <option value="amount-asc">金额 ↑</option>
       </select>
     </div>
     <div class="list-card" id="expense-list">
       <div class="empty-state">
-        <div class="empty-icon">馃摑</div>
-        <p>鏆傛棤鏀嚭璁板綍</p>
-        <button class="btn-primary" onclick="switchView('add')">璁颁竴绗?/button>
+        <div class="empty-icon">📝</div>
+        <p>暂无支出记录</p>
+        <button class="btn-primary" onclick="switchView('add')">记一笔</button>
       </div>
     </div>
     <div class="load-more-wrap" id="load-more-wrap" style="display:none;">
-      <button class="btn-secondary" id="load-more-btn" onclick="loadMoreExpenses()">鍔犺浇鏇村</button>
+      <button class="btn-secondary" id="load-more-btn" onclick="loadMoreExpenses()">加载更多</button>
     </div>
   </section>
 
   <!-- Tags View -->
   <section class="view-section" id="view-tags">
     <div class="page-header">
-      <h2>馃彿锔?鏍囩绠＄悊</h2>
-      <p class="subtitle">绠＄悊鏀嚭鍒嗙被鍜岃嚜瀹氫箟鏍囩</p>
+      <h2>🏷️ 标签管理</h2>
+      <p class="subtitle">管理支出分类和自定义标签</p>
     </div>
     <div class="form-card">
       <div class="form-group inline tags-form-row">
-        <input type="text" id="new-tag-name" placeholder="杈撳叆鏂版爣绛惧悕绉扳€?>
-        <select id="new-tag-group" title="鎵€灞炲垎缁?></select>
+        <input type="text" id="new-tag-name" placeholder="输入新标签名称…">
+        <select id="new-tag-group" title="所属分组"></select>
         <input type="color" id="new-tag-color" value="#2DBAA3">
-        <button class="btn-primary" onclick="addNewTag()">鉃?娣诲姞鏍囩</button>
+        <button class="btn-primary" onclick="addNewTag()">➕ 添加标签</button>
       </div>
     </div>
     <div class="form-card" style="margin-top:12px;">
       <div class="form-group inline tags-form-row">
-        <input type="text" id="new-group-name" placeholder="杈撳叆鏂板垎缁勫悕绉扳€?>
+        <input type="text" id="new-group-name" placeholder="输入新分组名称…">
         <input type="color" id="new-group-color" value="#95a5a6">
-        <button class="btn-primary" onclick="addNewGroup()">鉃?鏂板缓鍒嗙粍</button>
+        <button class="btn-primary" onclick="addNewGroup()">➕ 新建分组</button>
       </div>
     </div>
     <div class="tags-card" id="tags-list">
       <div class="empty-state">
-        <div class="empty-icon">馃彿锔?/div>
-        <p>鏆傛棤鏍囩</p>
+        <div class="empty-icon">🏷️</div>
+        <p>暂无标签</p>
       </div>
     </div>
   </section>
@@ -334,37 +334,37 @@
   <div class="modal-overlay" id="edit-modal" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>鉁忥笍 缂栬緫鏀嚭</h3>
-        <button class="btn-close" onclick="closeEditModal()" aria-label="鍏抽棴">鉁?/button>
+        <h3>✏️ 编辑支出</h3>
+        <button class="btn-close" onclick="closeEditModal()" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="edit-amount">閲戦 <span class="required">*</span></label>
+          <label for="edit-amount">金额 <span class="required">*</span></label>
           <div class="input-prefix">
-            <span class="prefix">楼</span>
+            <span class="prefix">¥</span>
             <input type="number" id="edit-amount" placeholder="0.00" step="0.01" min="0">
           </div>
         </div>
         <div class="form-group">
-          <label for="edit-date">鏃ユ湡</label>
+          <label for="edit-date">日期</label>
           <input type="date" id="edit-date">
         </div>
         <div class="form-group">
-          <label for="edit-item-name">椤圭洰鍚嶇О</label>
-          <input type="text" id="edit-item-name" placeholder="渚嬪锛氬崍椁愩€佹墦杞︹€?>
+          <label for="edit-item-name">项目名称</label>
+          <input type="text" id="edit-item-name" placeholder="例如：午餐、打车…">
         </div>
         <div class="form-group">
-          <label>鏍囩</label>
+          <label>标签</label>
           <div class="tag-input-wrap">
-            <input type="text" id="edit-tags-input" placeholder="杈撳叆鏍囩锛岀敤绌烘牸/閫楀彿/鍥炶溅鍒嗛殧鈥? autocomplete="off">
+            <input type="text" id="edit-tags-input" placeholder="输入标签，用空格/逗号/回车分隔…" autocomplete="off">
             <div class="tag-suggestions" id="edit-tag-suggestions" style="display:none;"></div>
           </div>
           <div class="selected-tags" id="edit-selected-tags"></div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeEditModal()">鍙栨秷</button>
-        <button class="btn-primary" onclick="saveEditExpense()">馃捑 淇濆瓨</button>
+        <button class="btn-secondary" onclick="closeEditModal()">取消</button>
+        <button class="btn-primary" onclick="saveEditExpense()">💾 保存</button>
       </div>
     </div>
   </div>
@@ -373,15 +373,15 @@
   <div class="modal-overlay" id="delete-modal" style="display:none;">
     <div class="modal-card modal-small">
       <div class="modal-header">
-        <h3>馃棏锔?纭鍒犻櫎</h3>
-        <button class="btn-close" onclick="closeDeleteModal()" aria-label="鍏抽棴">鉁?/button>
+        <h3>🗑️ 确认删除</h3>
+        <button class="btn-close" onclick="closeDeleteModal()" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
-        <p>纭畾瑕佸垹闄よ繖鏉℃敮鍑鸿褰曞悧锛熸鎿嶄綔涓嶅彲鎭㈠銆?/p>
+        <p>确定要删除这条支出记录吗？此操作不可恢复。</p>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeDeleteModal()">鍙栨秷</button>
-        <button class="btn-danger" id="delete-confirm-btn" onclick="confirmDeleteExpense()">鍒犻櫎</button>
+        <button class="btn-secondary" onclick="closeDeleteModal()">取消</button>
+        <button class="btn-danger" id="delete-confirm-btn" onclick="confirmDeleteExpense()">删除</button>
       </div>
     </div>
   </div>
@@ -390,20 +390,20 @@
   <div class="modal-overlay" id="merge-modal" style="display:none;">
     <div class="modal-card modal-small">
       <div class="modal-header">
-        <h3>馃攢 鍚堝苟鏍囩</h3>
-        <button class="btn-close" onclick="closeMergeModal()" aria-label="鍏抽棴">鉁?/button>
+        <h3>🔀 合并标签</h3>
+        <button class="btn-close" onclick="closeMergeModal()" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
-        <p>灏嗘爣绛?<strong id="merge-source-name"></strong> 鍚堝苟鍒帮細</p>
+        <p>将标签 <strong id="merge-source-name"></strong> 合并到：</p>
         <div class="form-group">
           <select id="merge-target-select">
-            <option value="">閫夋嫨鐩爣鏍囩</option>
+            <option value="">选择目标标签</option>
           </select>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeMergeModal()">鍙栨秷</button>
-        <button class="btn-primary" onclick="confirmMergeTag()">纭鍚堝苟</button>
+        <button class="btn-secondary" onclick="closeMergeModal()">取消</button>
+        <button class="btn-primary" onclick="confirmMergeTag()">确认合并</button>
       </div>
     </div>
   </div>
@@ -411,48 +411,48 @@
   <!-- Settings View -->
   <section class="view-section" id="view-settings">
     <div class="page-header">
-      <h2>鈿欙笍 璁剧疆</h2>
-      <p class="subtitle">鏁版嵁绠＄悊涓庝釜鎬у寲閫夐」</p>
+      <h2>⚙️ 设置</h2>
+      <p class="subtitle">数据管理与个性化选项</p>
     </div>
     <div class="settings-group">
-      <h3>鏁版嵁瀵煎嚭</h3>
+      <h3>数据导出</h3>
       <div class="setting-item">
         <div class="setting-info">
-          <span class="setting-title">瀵煎嚭 CSV</span>
-          <span class="setting-desc">灏嗘敮鍑鸿褰曞鍑轰负 CSV 琛ㄦ牸</span>
+          <span class="setting-title">导出 CSV</span>
+          <span class="setting-desc">将支出记录导出为 CSV 表格</span>
         </div>
-        <button class="btn-secondary" onclick="exportCSV()">馃搫 CSV</button>
+        <button class="btn-secondary" onclick="exportCSV()">📄 CSV</button>
       </div>
       <div class="setting-item">
         <div class="setting-info">
-          <span class="setting-title">瀵煎嚭 JSON</span>
-          <span class="setting-desc">灏嗘墍鏈夋暟鎹紙鏀嚭 + 鏍囩锛夊鍑轰负 JSON 澶囦唤</span>
+          <span class="setting-title">导出 JSON</span>
+          <span class="setting-desc">将所有数据（支出 + 标签）导出为 JSON 备份</span>
         </div>
-        <button class="btn-secondary" onclick="exportJSON()">馃摛 JSON</button>
+        <button class="btn-secondary" onclick="exportJSON()">📤 JSON</button>
       </div>
     </div>
     <div class="settings-group">
-      <h3>鏁版嵁瀵煎叆</h3>
+      <h3>数据导入</h3>
       <div class="setting-item">
         <div class="setting-info">
-          <span class="setting-title">瀵煎叆鏂囦欢</span>
-          <span class="setting-desc">鏀寔 CSV / Excel (.xlsx) 鏍煎紡锛岃嚜鍔ㄨ瘑鍒瓧娈?/span>
+          <span class="setting-title">导入文件</span>
+          <span class="setting-desc">支持 CSV / Excel (.xlsx) 格式，自动识别字段</span>
         </div>
-        <button class="btn-secondary" onclick="document.getElementById('import-file-input').click()">馃摜 閫夋嫨鏂囦欢</button>
+        <button class="btn-secondary" onclick="document.getElementById('import-file-input').click()">📥 选择文件</button>
         <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="handleImportFile(this)">
       </div>
       <div id="import-preview-area" style="display:none;"></div>
       <div id="import-actions" class="import-actions" style="display:none;">
-        <button class="btn-secondary" onclick="cancelImport()">鍙栨秷</button>
-        <button class="btn-primary" onclick="confirmImport()">鉁?纭瀵煎叆</button>
+        <button class="btn-secondary" onclick="cancelImport()">取消</button>
+        <button class="btn-primary" onclick="confirmImport()">✅ 确认导入</button>
       </div>
     </div>
     <div class="settings-group">
-      <h3>婕旂ず涓庡紩瀵?/h3>
+      <h3>演示与引导</h3>
       <div class="setting-item">
         <div class="setting-info">
-          <span class="setting-title">婕旂ず妯″紡</span>
-          <span class="setting-desc">鍔犺浇 20 鏉＄ず渚嬫暟鎹綋楠屽姛鑳斤紙鍙殢鏃舵仮澶嶇湡瀹炴暟鎹級</span>
+          <span class="setting-title">演示模式</span>
+          <span class="setting-desc">加载 20 条示例数据体验功能（可随时恢复真实数据）</span>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="demo-mode-toggle" onchange="handleDemoModeToggle(this)">
@@ -461,28 +461,28 @@
       </div>
       <div class="setting-item">
         <div class="setting-info">
-          <span class="setting-title">閲嶆柊鏄剧ず寮曞</span>
-          <span class="setting-desc">鍐嶆鏌ョ湅鏂扮敤鎴峰姛鑳藉紩瀵?/span>
+          <span class="setting-title">重新显示引导</span>
+          <span class="setting-desc">再次查看新用户功能引导</span>
         </div>
-        <button class="btn-secondary" onclick="showGuideAgain()">馃殌 鏄剧ず寮曞</button>
+        <button class="btn-secondary" onclick="showGuideAgain()">🚀 显示引导</button>
       </div>
     </div>
     <div class="settings-group">
-      <h3>鍗遍櫓鎿嶄綔</h3>
+      <h3>危险操作</h3>
       <div class="setting-item danger">
         <div class="setting-info">
-          <span class="setting-title">娓呴櫎鎵€鏈夋暟鎹?/span>
-          <span class="setting-desc">姝ゆ搷浣滀笉鍙仮澶嶏紝璇疯皑鎱庢搷浣?/span>
+          <span class="setting-title">清除所有数据</span>
+          <span class="setting-desc">此操作不可恢复，请谨慎操作</span>
         </div>
-        <button class="btn-danger" onclick="confirmClearAllData()">馃棏锔?娓呴櫎</button>
+        <button class="btn-danger" onclick="confirmClearAllData()">🗑️ 清除</button>
       </div>
     </div>
     <div class="settings-group">
-      <h3>鍏充簬</h3>
+      <h3>关于</h3>
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-title">Expense Tracker</span>
-          <span class="setting-desc">绾墠绔疄鐜帮紝鏁版嵁瀛樺偍鍦ㄦ湰鍦?IndexedDB 涓?/span>
+          <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
         <span class="setting-version">v1.5.0</span>
       </div>
@@ -494,15 +494,15 @@
 <div class="modal-overlay" id="confirm-modal" style="display:none;">
   <div class="modal-card modal-small">
     <div class="modal-header">
-      <h3 id="confirm-modal-title">纭鎿嶄綔</h3>
-      <button class="btn-close" onclick="closeConfirmModal()" aria-label="鍏抽棴">鉁?/button>
+      <h3 id="confirm-modal-title">确认操作</h3>
+      <button class="btn-close" onclick="closeConfirmModal()" aria-label="关闭">✕</button>
     </div>
     <div class="modal-body">
       <p id="confirm-modal-message"></p>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeConfirmModal()">鍙栨秷</button>
-      <button class="btn-danger" id="confirm-modal-ok">纭</button>
+      <button class="btn-secondary" onclick="closeConfirmModal()">取消</button>
+      <button class="btn-danger" id="confirm-modal-ok">确认</button>
     </div>
   </div>
 </div>
@@ -511,13 +511,13 @@
 <div class="modal-overlay" id="custom-modal" style="display:none;">
   <div class="modal-card modal-small">
     <div class="modal-header">
-      <h3 id="custom-modal-title">鎻愮ず</h3>
-      <button class="btn-close" onclick="closeCustomModal()" aria-label="鍏抽棴">鉁?/button>
+      <h3 id="custom-modal-title">提示</h3>
+      <button class="btn-close" onclick="closeCustomModal()" aria-label="关闭">✕</button>
     </div>
     <div class="modal-body" id="custom-modal-body">
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeCustomModal()">鍏抽棴</button>
+      <button class="btn-secondary" onclick="closeCustomModal()">关闭</button>
     </div>
   </div>
 </div>
@@ -526,53 +526,53 @@
 <div class="modal-overlay" id="rename-modal" style="display:none;">
   <div class="modal-card modal-small">
     <div class="modal-header">
-      <h3 id="rename-modal-title">閲嶅懡鍚?/h3>
-      <button class="btn-close" onclick="closeRenameModal()" aria-label="鍏抽棴">鉁?/button>
+      <h3 id="rename-modal-title">重命名</h3>
+      <button class="btn-close" onclick="closeRenameModal()" aria-label="关闭">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label id="rename-modal-label" for="rename-modal-input">鏂板悕绉?/label>
-        <input type="text" id="rename-modal-input" placeholder="璇疯緭鍏ユ柊鍚嶇О鈥? autofocus>
+        <label id="rename-modal-label" for="rename-modal-input">新名称</label>
+        <input type="text" id="rename-modal-input" placeholder="请输入新名称…" autofocus>
       </div>
       <p id="rename-modal-error" class="rename-error" style="display:none;"></p>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeRenameModal()">鍙栨秷</button>
-      <button class="btn-primary" id="rename-modal-ok">纭</button>
+      <button class="btn-secondary" onclick="closeRenameModal()">取消</button>
+      <button class="btn-primary" id="rename-modal-ok">确认</button>
     </div>
   </div>
 </div>
 
 <!-- Bottom Navigation -->
 <nav class="bottom-nav">
-    <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" aria-label="姒傝">
+    <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" aria-label="概览">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-      <span>姒傝</span>
+      <span>概览</span>
     </button>
-    <button class="nav-item" data-view="list" onclick="switchView('list')" aria-label="璐﹀崟鏄庣粏">
+    <button class="nav-item" data-view="list" onclick="switchView('list')" aria-label="账单明细">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-      <span>鏄庣粏</span>
+      <span>明细</span>
     </button>
-    <button class="nav-item add-fab" data-view="add" onclick="switchView('add')" aria-label="璁颁竴绗?>
+    <button class="nav-item add-fab" data-view="add" onclick="switchView('add')" aria-label="记一笔">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </button>
-    <button class="nav-item" data-view="more" onclick="toggleMoreMenu()" aria-label="鏇村">
+    <button class="nav-item" data-view="more" onclick="toggleMoreMenu()" aria-label="更多">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
-      <span>鏇村</span>
+      <span>更多</span>
     </button>
   </nav>
 
-  <!-- 鏇村鑿滃崟娴眰 -->
+  <!-- 更多菜单浮层 -->
   <div class="more-menu" id="more-menu" style="display:none;">
     <div class="more-menu-backdrop" onclick="toggleMoreMenu()"></div>
     <div class="more-menu-panel">
       <button class="more-menu-item" onclick="switchView('tags'); toggleMoreMenu();">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
-        鏍囩绠＄悊
+        标签管理
       </button>
       <button class="more-menu-item" onclick="switchView('settings'); toggleMoreMenu();">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        璁剧疆
+        设置
       </button>
     </div>
   </div>
@@ -584,11 +584,11 @@
 <script src="/tools/expense/js/app.js?v=37"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
-<!-- Expense Tracker 鐙珛 Service Worker 娉ㄥ唽锛堣鐩?pwa.js 鐨勯粯璁?/sw.js 娉ㄥ唽锛?-->
+<!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // 鍏堟敞閿€鍙兘宸叉敞鍐岀殑涓荤珯 SW锛岄伩鍏嶅啿绐?
+    // 先注销可能已注册的主站 SW，避免冲突
     navigator.serviceWorker.getRegistrations().then((registrations) => {
       registrations.forEach((reg) => {
         if (reg.scope && !reg.scope.includes('/tools/expense')) {
@@ -597,7 +597,7 @@ if ('serviceWorker' in navigator) {
         }
       });
     });
-    // 娉ㄥ唽鐢熸椿璐﹀崟鐙珛 SW
+    // 注册生活账单独立 SW
     navigator.serviceWorker.register('/tools/expense/sw.js', { scope: '/tools/expense/' })
       .then((registration) => {
         console.log('[Expense PWA] SW registered:', registration.scope);
@@ -626,7 +626,7 @@ function toggleTheme() {
 
 function updateThemeIcon(theme) {
   const icon = document.getElementById('theme-icon');
-  if (icon) icon.textContent = theme === 'dark' ? '鈽€锔? : '馃寵';
+  if (icon) icon.textContent = theme === 'dark' ? '☀️' : '🌙';
 }
 
 // View switching (inline for immediate nav response)
@@ -669,4 +669,3 @@ document.addEventListener('DOMContentLoaded', initTheme);
 
 </body>
 </html>
-
