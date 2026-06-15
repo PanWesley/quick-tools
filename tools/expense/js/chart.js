@@ -485,21 +485,7 @@ async function updateDashboard(filters = {}) {
     });
   }
 
-  // Update stat cards
-  const total = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const count = expenses.length;
-  const avg = count > 0 ? total / count : 0;
-  const top = count > 0 ? Math.max(...expenses.map(e => e.amount || 0)) : 0;
-
-  const totalEl = document.getElementById('dash-total');
-  const countEl = document.getElementById('dash-count');
-  const avgEl = document.getElementById('dash-avg');
-  const topEl = document.getElementById('dash-top');
-
-  if (totalEl) totalEl.textContent = '¥' + total.toFixed(2);
-  if (countEl) countEl.textContent = String(count);
-  if (avgEl) avgEl.textContent = '¥' + avg.toFixed(2);
-  if (topEl) topEl.textContent = '¥' + top.toFixed(2);
+  // Note: Hero dashboard stats are now rendered by renderDashboardHero() in app.js (v1.5.0)
 
   // Render charts
   if (pieAggregationMode === 'group') {

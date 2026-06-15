@@ -9,7 +9,7 @@
   })();
 </script>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="cache-control" content="no-cache, must-revalidate">
 <meta name="theme-color" content="#2DBAA3">
 <!-- PWA Manifest (独立 manifest，支持生活账单子模块独立添加到主屏幕) -->
@@ -20,6 +20,8 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/expense-icon-192x192.png">
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <title>生活账单 - Expense Tracker</title>
 <!-- Chart.js for data visualization -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -77,20 +79,71 @@
     .stat-label { font-size: 11px !important; }
     .stat-value { font-size: 16px !important; }
   }
-</style>
+/* More Menu */
+    .more-menu {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      top: 0;
+      z-index: 200;
+    }
+    .more-menu-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      animation: fadeIn 0.2s ease;
+    }
+    .more-menu-panel {
+      position: absolute;
+      bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+      right: 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      min-width: 160px;
+    }
+    .more-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      background: none;
+      color: var(--text);
+      font-size: 15px;
+      font-family: var(--font-body);
+      cursor: pointer;
+      border-radius: 10px;
+      text-align: left;
+      touch-action: manipulation;
+      transition: background-color 0.15s;
+    }
+    .more-menu-item:active {
+      background: var(--surface-active);
+    }
+    .more-menu-item svg {
+      flex-shrink: 0;
+      color: var(--text-secondary);
+    }
+  </style>
 </head>
 <body>
 
 <header>
   <a class="logo" href="." onclick="switchView('dashboard'); return false;">
-    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <rect width="28" height="28" rx="6" fill="#2DBAA3"/>
       <path d="M8 10h12M8 14h8M8 18h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
     </svg>
     Expense Tracker
   </a>
   <div class="header-actions">
-    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题" aria-label="切换深色模式">
       <span id="theme-icon">🌙</span>
     </button>
   </div>
@@ -138,27 +191,36 @@
         <span class="amount-sep">—</span>
         <input type="number" id="dash-amount-max" placeholder="最高金额 ¥" step="0.01" min="0" title="最高金额">
       </div>
-      <input type="text" id="dash-search" placeholder="🔍 搜索备注或分类..." title="搜索">
+      <input type="text" id="dash-search" placeholder="搜索备注或分类…" title="搜索">
     </div>
 
-    <div class="dashboard-grid">
-      <div class="stat-card total" data-action="go-to-list">
-        <div class="stat-label">总支出</div>
-        <div class="stat-value" id="dash-total">¥0.00</div>
-      </div>
-      <div class="stat-card count" data-action="go-to-list">
-        <div class="stat-label">记账笔数</div>
-        <div class="stat-value" id="dash-count">0</div>
-      </div>
-      <div class="stat-card avg" data-action="go-to-list">
-        <div class="stat-label">日均支出</div>
-        <div class="stat-value" id="dash-avg">¥0.00</div>
-      </div>
-      <div class="stat-card top" data-action="go-to-list">
-        <div class="stat-label">最高单笔</div>
-        <div class="stat-value" id="dash-top">¥0.00</div>
-      </div>
-    </div>
+    <!-- Dashboard Hero -->
+        <div class="dashboard-hero" id="dashboard-hero">
+          <div class="hero-label">本月支出</div>
+          <div class="hero-amount" id="dash-total">¥0.00</div>
+          <div class="hero-summary">
+            <span class="hero-trend" id="dash-trend-text">—</span>
+            <span class="hero-dot">·</span>
+            <span class="hero-count" id="dash-count-text">0 笔支出</span>
+          </div>
+        </div>
+
+        <!-- Empty Dashboard State -->
+        <div class="empty-dashboard" id="empty-dashboard" style="display:none;">
+          <div class="empty-illustration">
+            <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+              <rect x="15" y="25" width="70" height="50" rx="8" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.4"/>
+              <line x1="25" y1="38" x2="75" y2="38" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+              <line x1="25" y1="48" x2="60" y2="48" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+              <line x1="25" y1="58" x2="68" y2="58" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+              <circle cx="82" cy="22" r="14" fill="var(--primary-light)" stroke="var(--primary)" stroke-width="1.5"/>
+              <path d="M78 22h8M82 18v8" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <h3>开始记录</h3>
+          <p>点击底部"记账"按钮，3 秒完成一笔记录</p>
+          <button class="btn-primary" onclick="switchView('add')">记第一笔</button>
+        </div>
 
     <!-- Charts Row 1: Pie + Bar -->
     <div class="chart-row">
@@ -219,7 +281,7 @@
       </div>
       <div class="form-group">
         <label for="exp-item-name">项目名称</label>
-        <input type="text" id="exp-item-name" placeholder="例如：午餐、打车...">
+        <input type="text" id="exp-item-name" placeholder="例如：午餐、打车…">
       </div>
       <div class="form-group">
         <label for="exp-amount">金额 <span class="required">*</span></label>
@@ -231,7 +293,7 @@
       <div class="form-group">
         <label for="exp-tags-input">标签</label>
         <div class="tag-input-wrap">
-          <input type="text" id="exp-tags-input" placeholder="输入标签，用空格/逗号/回车分隔..." autocomplete="off">
+          <input type="text" id="exp-tags-input" placeholder="输入标签，用空格/逗号/回车分隔…" autocomplete="off">
           <div class="tag-suggestions" id="tag-suggestions" style="display:none;"></div>
         </div>
         <div class="selected-tags" id="selected-tags"></div>
@@ -266,7 +328,7 @@
       <p class="subtitle">查看和管理所有支出记录</p>
     </div>
     <div class="filter-bar">
-      <input type="text" id="list-search" placeholder="🔍 搜索备注或分类..." oninput="renderExpenseList()">
+      <input type="text" id="list-search" placeholder="搜索备注或分类…" oninput="renderExpenseList()">
       <select id="list-filter-category" onchange="renderExpenseList()">
         <option value="">全部分类</option>
       </select>
@@ -297,7 +359,7 @@
     </div>
     <div class="form-card">
       <div class="form-group inline tags-form-row">
-        <input type="text" id="new-tag-name" placeholder="输入新标签名称...">
+        <input type="text" id="new-tag-name" placeholder="输入新标签名称…">
         <select id="new-tag-group" title="所属分组"></select>
         <input type="color" id="new-tag-color" value="#2DBAA3">
         <button class="btn-primary" onclick="addNewTag()">➕ 添加标签</button>
@@ -305,7 +367,7 @@
     </div>
     <div class="form-card" style="margin-top:12px;">
       <div class="form-group inline tags-form-row">
-        <input type="text" id="new-group-name" placeholder="输入新分组名称...">
+        <input type="text" id="new-group-name" placeholder="输入新分组名称…">
         <input type="color" id="new-group-color" value="#95a5a6">
         <button class="btn-primary" onclick="addNewGroup()">➕ 新建分组</button>
       </div>
@@ -323,7 +385,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <h3>✏️ 编辑支出</h3>
-        <button class="btn-close" onclick="closeEditModal()">✕</button>
+        <button class="btn-close" onclick="closeEditModal()" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -339,12 +401,12 @@
         </div>
         <div class="form-group">
           <label for="edit-item-name">项目名称</label>
-          <input type="text" id="edit-item-name" placeholder="例如：午餐、打车...">
+          <input type="text" id="edit-item-name" placeholder="例如：午餐、打车…">
         </div>
         <div class="form-group">
           <label>标签</label>
           <div class="tag-input-wrap">
-            <input type="text" id="edit-tags-input" placeholder="输入标签，用空格/逗号/回车分隔..." autocomplete="off">
+            <input type="text" id="edit-tags-input" placeholder="输入标签，用空格/逗号/回车分隔…" autocomplete="off">
             <div class="tag-suggestions" id="edit-tag-suggestions" style="display:none;"></div>
           </div>
           <div class="selected-tags" id="edit-selected-tags"></div>
@@ -362,7 +424,7 @@
     <div class="modal-card modal-small">
       <div class="modal-header">
         <h3>🗑️ 确认删除</h3>
-        <button class="btn-close" onclick="closeDeleteModal()">✕</button>
+        <button class="btn-close" onclick="closeDeleteModal()" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
         <p>确定要删除这条支出记录吗？此操作不可恢复。</p>
@@ -379,7 +441,7 @@
     <div class="modal-card modal-small">
       <div class="modal-header">
         <h3>🔀 合并标签</h3>
-        <button class="btn-close" onclick="closeMergeModal()">✕</button>
+        <button class="btn-close" onclick="closeMergeModal()" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
         <p>将标签 <strong id="merge-source-name"></strong> 合并到：</p>
@@ -472,7 +534,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.4.2</span>
+        <span class="setting-version">v1.5.0</span>
       </div>
     </div>
   </section>
@@ -483,7 +545,7 @@
   <div class="modal-card modal-small">
     <div class="modal-header">
       <h3 id="confirm-modal-title">确认操作</h3>
-      <button class="btn-close" onclick="closeConfirmModal()">✕</button>
+      <button class="btn-close" onclick="closeConfirmModal()" aria-label="关闭">✕</button>
     </div>
     <div class="modal-body">
       <p id="confirm-modal-message"></p>
@@ -500,7 +562,7 @@
   <div class="modal-card modal-small">
     <div class="modal-header">
       <h3 id="custom-modal-title">提示</h3>
-      <button class="btn-close" onclick="closeCustomModal()">✕</button>
+      <button class="btn-close" onclick="closeCustomModal()" aria-label="关闭">✕</button>
     </div>
     <div class="modal-body" id="custom-modal-body">
     </div>
@@ -515,12 +577,12 @@
   <div class="modal-card modal-small">
     <div class="modal-header">
       <h3 id="rename-modal-title">重命名</h3>
-      <button class="btn-close" onclick="closeRenameModal()">✕</button>
+      <button class="btn-close" onclick="closeRenameModal()" aria-label="关闭">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
         <label id="rename-modal-label" for="rename-modal-input">新名称</label>
-        <input type="text" id="rename-modal-input" placeholder="请输入新名称..." autofocus>
+        <input type="text" id="rename-modal-input" placeholder="请输入新名称…" autofocus>
       </div>
       <p id="rename-modal-error" class="rename-error" style="display:none;"></p>
     </div>
@@ -533,33 +595,43 @@
 
 <!-- Bottom Navigation -->
 <nav class="bottom-nav">
-  <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
-    <span class="nav-icon">📊</span>
-    <span class="nav-label">概览</span>
-  </button>
-  <button class="nav-item" data-view="add" onclick="switchView('add')">
-    <span class="nav-icon">➕</span>
-    <span class="nav-label">记账</span>
-  </button>
-  <button class="nav-item" data-view="list" onclick="switchView('list')">
-    <span class="nav-icon">📋</span>
-    <span class="nav-label">明细</span>
-  </button>
-  <button class="nav-item" data-view="tags" onclick="switchView('tags')">
-    <span class="nav-icon">🏷️</span>
-    <span class="nav-label">标签</span>
-  </button>
-  <button class="nav-item" data-view="settings" onclick="switchView('settings')">
-    <span class="nav-icon">⚙️</span>
-    <span class="nav-label">设置</span>
-  </button>
-</nav>
+    <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" aria-label="概览">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      <span>概览</span>
+    </button>
+    <button class="nav-item" data-view="list" onclick="switchView('list')" aria-label="账单明细">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+      <span>明细</span>
+    </button>
+    <button class="nav-item add-fab" data-view="add" onclick="switchView('add')" aria-label="记一笔">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+    <button class="nav-item" data-view="more" onclick="toggleMoreMenu()" aria-label="更多">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+      <span>更多</span>
+    </button>
+  </nav>
 
-<script src="/tools/expense/js/db.js?v=34"></script>
-<script src="/tools/expense/js/chart.js?v=34"></script>
-<script src="/tools/expense/js/import-export.js?v=34"></script>
-<script src="/tools/expense/js/guide.js?v=34"></script>
-<script src="/tools/expense/js/app.js?v=34"></script>
+  <!-- 更多菜单浮层 -->
+  <div class="more-menu" id="more-menu" style="display:none;">
+    <div class="more-menu-backdrop" onclick="toggleMoreMenu()"></div>
+    <div class="more-menu-panel">
+      <button class="more-menu-item" onclick="switchView('tags'); toggleMoreMenu();">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+        标签管理
+      </button>
+      <button class="more-menu-item" onclick="switchView('settings'); toggleMoreMenu();">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        设置
+      </button>
+    </div>
+  </div>
+
+<script src="/tools/expense/js/db.js?v=35"></script>
+<script src="/tools/expense/js/chart.js?v=35"></script>
+<script src="/tools/expense/js/import-export.js?v=35"></script>
+<script src="/tools/expense/js/guide.js?v=35"></script>
+<script src="/tools/expense/js/app.js?v=35"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
@@ -643,7 +715,7 @@ window.addEventListener('popstate', function(e) {
 
 document.addEventListener('DOMContentLoaded', initTheme);
 </script>
-<div class="toast" id="toast"></div>
+<div id="toast" class="toast" aria-live="polite"></div>
 
 </body>
 </html>

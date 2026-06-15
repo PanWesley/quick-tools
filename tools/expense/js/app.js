@@ -106,7 +106,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (viewName === 'tags') {
       renderTagsList();
     }
+    // Close more menu after switching
+    const menu = document.getElementById('more-menu');
+    if (menu) menu.style.display = 'none';
   };
+
+  // Scroll shrink header (v1.5.0 mobile optimization)
+  let lastScrollY = 0;
+  window.addEventListener('scroll', () => {
+    const header = document.querySelector('header');
+    const currentScrollY = window.scrollY;
+    if (window.innerWidth <= 768) {
+      if (currentScrollY > 40 && currentScrollY > lastScrollY) {
+        header.classList.add('shrink');
+      } else if (currentScrollY < 10) {
+        header.classList.remove('shrink');
+      }
+    }
+    lastScrollY = currentScrollY;
+  }, { passive: true });
 });
 
 // ============================================
@@ -169,6 +187,149 @@ function triggerDashboardUpdate() {
   }, 300);
 }
 
+function renderDashboardHero() {
+  const totalEl = document.getElementById('dash-total');
+  const trendEl = document.getElementById('dash-trend-text');
+  const countEl = document.getElementById('dash-count-text');
+  const emptyEl = document.getElementById('empty-dashboard');
+
+  if (!totalEl || !emptyEl) return;
+
+  // Get filtered expenses (same logic as updateDashboard in index.html)
+  (async () => {
+    let expenses = await getExpenses();
+
+    // Apply current filters
+    const filters = window._dashboardFilters || {};
+    if (filters.timeRange && filters.timeRange !== 'custom') {
+      const { start, end } = getTimeRangeByName(filters.timeRange);
+      expenses = expenses.filter(e => e.date >= start && e.date <= end);
+    } else if (filters.customStart && filters.customEnd) {
+      expenses = expenses.filter(e => e.date >= filters.customStart && e.date <= filters.customEnd);
+    }
+    if (filters.tags && filters.tags.length > 0) {
+      expenses = expenses.filter(e => e.tags && e.tags.some(t => filters.tags.includes(t)));
+    }
+    if (filters.minAmount) {
+      expenses = expenses.filter(e => e.amount >= parseFloat(filters.minAmount));
+    }
+    if (filters.maxAmount) {
+      expenses = expenses.filter(e => e.amount <= parseFloat(filters.maxAmount));
+    }
+    if (filters.search && filters.search.trim()) {
+      const q = filters.search.toLowerCase();
+      expenses = expenses.filter(e =>
+        (e.note || '').toLowerCase().includes(q) ||
+        (e.category || '').toLowerCase().includes(q)
+      );
+    }
+
+    const total = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const count = expenses.length;
+
+    // Show empty state
+    if (count === 0) {
+      if (emptyEl) emptyEl.style.display = 'flex';
+      if (document.getElementById('dashboard-hero')) {
+        document.getElementById('dashboard-hero').style.display = 'none';
+      }
+      // Hide chart sections
+      const chartRows = document.querySelectorAll('.chart-row');
+      chartRows.forEach(r => r.style.display = 'none');
+      const chartCards = document.querySelectorAll('.chart-card');
+      chartCards.forEach(c => {
+        if (c.querySelector('.chart-row')) return;
+        c.style.display = 'none';
+      });
+      return;
+    }
+
+    // Hide empty, show hero
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (document.getElementById('dashboard-hero')) {
+      document.getElementById('dashboard-hero').style.display = 'block';
+    }
+    // Show chart sections
+    const chartRows = document.querySelectorAll('.chart-row');
+    chartRows.forEach(r => r.style.display = 'grid');
+    const chartCards = document.querySelectorAll('.chart-card');
+    chartCards.forEach(c => c.style.display = 'block');
+
+    // Format total
+    if (totalEl) {
+      totalEl.textContent = `¥${total.toFixed(2)}`;
+      // Add pop animation
+      totalEl.classList.remove('updated');
+      void totalEl.offsetWidth;
+      totalEl.classList.add('updated');
+    }
+
+    // Count
+    if (countEl) {
+      countEl.textContent = `${count} 笔支出`;
+    }
+
+    // Trend vs previous period
+    if (trendEl) {
+      if (!filters.timeRange || filters.timeRange === 'this-month') {
+        // Compare to last month
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const lastMonthStart = new Date(year, month - 1, 1).toISOString().slice(0, 10);
+        const lastMonthEnd = new Date(year, month, 0).toISOString().slice(0, 10);
+        let lastMonthExpenses = await getExpenses();
+        lastMonthExpenses = lastMonthExpenses.filter(e => e.date >= lastMonthStart && e.date <= lastMonthEnd);
+        const lastTotal = lastMonthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+        if (lastTotal === 0) {
+          trendEl.textContent = '首月记录';
+        } else if (total > lastTotal) {
+          const pct = ((total - lastTotal) / lastTotal * 100).toFixed(0);
+          trendEl.innerHTML = `较上月 <span style="color:${total > lastTotal ? 'var(--danger)' : 'var(--success)'}">↑ ${pct}%</span>`;
+        } else {
+          const pct = ((lastTotal - total) / lastTotal * 100).toFixed(0);
+          trendEl.innerHTML = `较上月 <span style="color:${total > lastTotal ? 'var(--danger)' : 'var(--success)'}">↓ ${pct}%</span>`;
+        }
+      } else {
+        trendEl.textContent = '—';
+      }
+    }
+  })();
+}
+
+// Helper: get time range start/end by name (copied from index.html)
+function getTimeRangeByName(name) {
+  const now = new Date();
+  let start, end;
+  switch (name) {
+    case 'this-week':
+      start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      end = new Date(now);
+      break;
+    case 'this-month':
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now);
+      break;
+    case 'last-month':
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+      break;
+    case 'last-30':
+      start = new Date(now);
+      start.setDate(now.getDate() - 30);
+      end = new Date(now);
+      break;
+    default:
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now);
+  }
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10)
+  };
+}
+
 async function refreshDashboard() {
   const timeRange = document.getElementById('dash-time-range');
   const customRange = document.getElementById('dash-custom-range');
@@ -190,6 +351,8 @@ async function refreshDashboard() {
 
   window._dashboardFilters = filters;
   await updateDashboard(filters);
+  // Render hero dashboard (v1.5.0)
+  renderDashboardHero();
 }
 
 // ============================================
@@ -2253,3 +2416,14 @@ async function generateTestData() {
 
 // Expose for manual trigger
 window.generateTestData = generateTestData;
+
+// ============================================
+// More Menu (v1.5.0)
+// ============================================
+
+window.toggleMoreMenu = function() {
+  const menu = document.getElementById('more-menu');
+  if (!menu) return;
+  const isVisible = menu.style.display !== 'none';
+  menu.style.display = isVisible ? 'none' : 'block';
+};
