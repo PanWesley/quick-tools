@@ -4,7 +4,10 @@
 <script>
   // 同步设置主题，防止闪烁（必须在 <head> 最前面）
   (function() {
-    var theme = localStorage.getItem('quick-tools-theme') || 'light';
+    var preference = localStorage.getItem('quick-tools-theme') || 'light';
+    var theme = preference === 'system'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : preference;
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
@@ -28,59 +31,6 @@
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="/tools/expense/css/style.css?v=35">
-<style>
-/* More Menu (inline for reliability) */
-    .more-menu {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      top: 0;
-      z-index: 200;
-    }
-    .more-menu-backdrop {
-      position: absolute;
-      inset: 0;
-      background: rgba(0,0,0,0.3);
-      animation: fadeIn 0.2s ease;
-    }
-    .more-menu-panel {
-      position: absolute;
-      bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-      right: 16px;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 8px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-      animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      min-width: 160px;
-    }
-    .more-menu-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      width: 100%;
-      padding: 12px 16px;
-      border: none;
-      background: none;
-      color: var(--text);
-      font-size: 15px;
-      font-family: var(--font-body);
-      cursor: pointer;
-      border-radius: 10px;
-      text-align: left;
-      touch-action: manipulation;
-      transition: background-color 0.15s;
-    }
-    .more-menu-item:active {
-      background: var(--surface-active);
-    }
-    .more-menu-item svg {
-      flex-shrink: 0;
-      color: var(--text-secondary);
-    }
-  </style>
 </head>
 <body>
 
@@ -93,8 +43,8 @@
     <h1>Expense Tracker</h1>
   </a>
   <div class="header-actions">
-    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题" aria-label="切换深色模式">
-      <span id="theme-icon">🌙</span>
+    <button class="theme-toggle" onclick="switchView('settings')" title="设置" aria-label="打开设置">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
     </button>
   </div>
 </header>
@@ -415,6 +365,29 @@
       <p class="subtitle">数据管理与个性化选项</p>
     </div>
     <div class="settings-group">
+      <h3>外观</h3>
+      <div class="setting-item theme-setting">
+        <div class="setting-info">
+          <span class="setting-title">主题模式</span>
+          <span class="setting-desc">选择浅色、深色，或跟随手机系统设置</span>
+        </div>
+        <div class="theme-options" role="radiogroup" aria-label="主题模式">
+          <label>
+            <input type="radio" name="theme-preference" value="light" onchange="setThemePreference(this.value)">
+            <span>浅色</span>
+          </label>
+          <label>
+            <input type="radio" name="theme-preference" value="dark" onchange="setThemePreference(this.value)">
+            <span>深色</span>
+          </label>
+          <label>
+            <input type="radio" name="theme-preference" value="system" onchange="setThemePreference(this.value)">
+            <span>跟随系统</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="settings-group">
       <h3>数据导出</h3>
       <div class="setting-item">
         <div class="setting-info">
@@ -556,32 +529,17 @@
     <button class="nav-item add-fab" data-view="add" onclick="switchView('add')" aria-label="记一笔">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </button>
-    <button class="nav-item" data-view="more" onclick="toggleMoreMenu()" aria-label="更多">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
-      <span>更多</span>
+    <button class="nav-item" data-view="tags" onclick="switchView('tags')" aria-label="标签管理">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+      <span>标签</span>
     </button>
   </nav>
-
-  <!-- 更多菜单浮层 -->
-  <div class="more-menu" id="more-menu" style="display:none;">
-    <div class="more-menu-backdrop" onclick="toggleMoreMenu()"></div>
-    <div class="more-menu-panel">
-      <button class="more-menu-item" onclick="switchView('tags')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
-        标签管理
-      </button>
-      <button class="more-menu-item" onclick="switchView('settings')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        设置
-      </button>
-    </div>
-  </div>
 
 <script src="/tools/expense/js/db.js?v=37"></script>
 <script src="/tools/expense/js/chart.js?v=37"></script>
 <script src="/tools/expense/js/import-export.js?v=37"></script>
 <script src="/tools/expense/js/guide.js?v=37"></script>
-<script src="/tools/expense/js/app.js?v=37"></script>
+<script src="/tools/expense/js/app.js?v=38"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
@@ -610,23 +568,54 @@ if ('serviceWorker' in navigator) {
 </script>
 <script>
 // Theme Management (inline for instant theme sync)
+const themeMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function getThemePreference() {
+  return localStorage.getItem('quick-tools-theme') || 'light';
+}
+
+function resolveTheme(preference) {
+  if (preference === 'system') {
+    return themeMediaQuery && themeMediaQuery.matches ? 'dark' : 'light';
+  }
+  return preference === 'dark' ? 'dark' : 'light';
+}
+
+function applyThemePreference(preference) {
+  const theme = resolveTheme(preference);
+  document.documentElement.setAttribute('data-theme', theme);
+  updateThemeControls(preference);
+  if (typeof refreshChartTheme === 'function') {
+    setTimeout(refreshChartTheme, 50);
+  }
+}
+
 function initTheme() {
-  const savedTheme = localStorage.getItem('quick-tools-theme') || 'light';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  updateThemeIcon(savedTheme);
+  applyThemePreference(getThemePreference());
 }
 
-function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('quick-tools-theme', newTheme);
-  updateThemeIcon(newTheme);
+function setThemePreference(preference) {
+  localStorage.setItem('quick-tools-theme', preference);
+  applyThemePreference(preference);
 }
 
-function updateThemeIcon(theme) {
-  const icon = document.getElementById('theme-icon');
-  if (icon) icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+function updateThemeControls(preference) {
+  document.querySelectorAll('input[name="theme-preference"]').forEach(function(input) {
+    input.checked = input.value === preference;
+  });
+}
+
+if (themeMediaQuery) {
+  const handleSystemThemeChange = function() {
+    if (getThemePreference() === 'system') {
+      applyThemePreference('system');
+    }
+  };
+  if (themeMediaQuery.addEventListener) {
+    themeMediaQuery.addEventListener('change', handleSystemThemeChange);
+  } else if (themeMediaQuery.addListener) {
+    themeMediaQuery.addListener(handleSystemThemeChange);
+  }
 }
 
 // View switching (inline for immediate nav response)

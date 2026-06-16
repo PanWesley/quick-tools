@@ -106,9 +106,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (viewName === 'tags') {
       renderTagsList();
     }
-    // Close more menu after switching
-    const menu = document.getElementById('more-menu');
-    if (menu) menu.style.display = 'none';
   };
 
   // Scroll shrink header (v1.5.0 mobile optimization)
@@ -126,19 +123,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     lastScrollY = currentScrollY;
   }, { passive: true });
 });
-
-// ============================================
-// Theme Toggle Integration
-// ============================================
-
-const originalToggleTheme = window.toggleTheme;
-window.toggleTheme = function() {
-  if (originalToggleTheme) originalToggleTheme();
-  // Re-render charts with new theme colors after a short delay
-  setTimeout(() => {
-    refreshChartTheme();
-  }, 50);
-};
 
 // ============================================
 // Dashboard Filters
@@ -2427,13 +2411,3 @@ async function generateTestData() {
 // Expose for manual trigger
 window.generateTestData = generateTestData;
 
-// ============================================
-// More Menu (v1.5.0)
-// ============================================
-
-window.toggleMoreMenu = function() {
-  const menu = document.getElementById('more-menu');
-  if (!menu) return;
-  const isVisible = menu.style.display !== 'none';
-  menu.style.display = isVisible ? 'none' : 'block';
-};
