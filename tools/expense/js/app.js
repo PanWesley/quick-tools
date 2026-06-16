@@ -320,6 +320,15 @@ function getTimeRangeByName(name) {
       start.setDate(now.getDate() - 30);
       end = new Date(now);
       break;
+    case 'last-7':
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+      end = new Date(now);
+      break;
+    case 'this-year':
+      start = new Date(now.getFullYear(), 0, 1);
+      end = new Date(now);
+      break;
     default:
       start = new Date(now.getFullYear(), now.getMonth(), 1);
       end = new Date(now);
@@ -2293,6 +2302,7 @@ window.confirmImport = async function() {
     showToast(msg);
 
     await loadTags();
+    renderTagsList();
     renderExpenseList();
     refreshDashboard();
   } catch (err) {
