@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (viewName === 'list') {
       renderExpenseList();
     } else if (viewName === 'tags') {
-      renderTagsList();
+      loadTags();
     }
   };
 
@@ -546,6 +546,8 @@ async function loadTags() {
   renderTagCloud();
   await renderTagsList();
 }
+
+window.loadTags = loadTags;
 
 function populateCategorySelects() {
   const catSelect = document.getElementById('exp-category');
@@ -2286,9 +2288,8 @@ window.confirmImport = async function() {
     showToast(msg);
 
     await loadTags();
-    renderTagsList();
-    renderExpenseList();
-    refreshDashboard();
+    await renderExpenseList();
+    await refreshDashboard();
   } catch (err) {
     showToast('导入失败: ' + err.message);
   }

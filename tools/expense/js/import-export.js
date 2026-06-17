@@ -609,7 +609,7 @@ async function executeImport(mappedRecords) {
       if (!name) continue;
       let id = tagNameToId[name];
       if (!id) {
-        const newTag = await addTag({ name, color: generateTagColor(name) });
+        const newTag = await addTag({ name, color: generateTagColor(name), parentId: 'group-category' });
         id = newTag.id;
         tagNameToId[name] = id;
         createdTags++;

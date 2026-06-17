@@ -30,7 +30,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=35">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=36">
 </head>
 <body>
 
@@ -457,7 +457,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.5.0</span>
+        <span class="setting-version">v1.5.2</span>
       </div>
     </div>
   </section>
@@ -528,6 +528,7 @@
     </button>
     <button class="nav-item add-fab" data-view="add" onclick="switchView('add')" aria-label="记一笔">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      <span>记账</span>
     </button>
     <button class="nav-item" data-view="tags" onclick="switchView('tags')" aria-label="标签管理">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
@@ -539,7 +540,7 @@
 <script src="/tools/expense/js/chart.js?v=37"></script>
 <script src="/tools/expense/js/import-export.js?v=37"></script>
 <script src="/tools/expense/js/guide.js?v=37"></script>
-<script src="/tools/expense/js/app.js?v=38"></script>
+<script src="/tools/expense/js/app.js?v=39"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
@@ -647,8 +648,8 @@ window.addEventListener('popstate', function(e) {
     window.refreshDashboard();
   } else if (typeof window.renderExpenseList === 'function' && viewName === 'list') {
     window.renderExpenseList();
-  } else if (typeof window.renderTagsList === 'function' && viewName === 'tags') {
-    window.renderTagsList();
+  } else if (typeof window.loadTags === 'function' && viewName === 'tags') {
+    window.loadTags();
   }
 });
 

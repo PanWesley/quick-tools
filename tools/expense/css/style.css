@@ -1,6 +1,6 @@
 /* ============================================
    Expense Tracker - Stylesheet
-   Theme: Forest Canopy (温润的日式账本) v1.5.0
+   Theme: Forest Canopy (温润的日式账本) v1.5.2
    ============================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap');
@@ -1394,35 +1394,24 @@ h1, h2 {
 
 /* FAB 记账按钮 */
 .nav-item.add-fab {
-  position: relative;
-  top: -16px;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--primary);
-  color: #fff;
-  box-shadow: 0 4px 16px rgba(61, 123, 110, 0.35);
-  border: 3px solid var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .nav-item.add-fab:active {
-  transform: scale(0.92);
-  box-shadow: 0 2px 8px rgba(61, 123, 110, 0.25);
+  transform: scale(0.94);
 }
 
 .nav-item.add-fab svg {
-  width: 24px;
-  height: 24px;
-  margin-bottom: 0;
+  width: 20px;
+  height: 20px;
+  margin-bottom: 2px;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--primary);
   color: #fff;
+  box-sizing: content-box;
+  box-shadow: 0 2px 8px rgba(61, 123, 110, 0.22);
 }
 
 /* Scrollbar */
