@@ -451,13 +451,23 @@
       </div>
     </div>
     <div class="settings-group">
+      <h3>问题反馈</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">联系我们</span>
+          <span class="setting-desc">遇到问题或建议？发送邮件至 <span class="feedback-email-text" id="feedback-email-text" onclick="copyFeedbackEmail(this)" title="点击复制邮箱">billnest_feedback@outlook.com</span></span>
+        </div>
+        <button class="btn-secondary" onclick="window.open('mailto:billnest_feedback@outlook.com?subject=生活账单问题反馈', '_blank', 'noopener,noreferrer')">✉️ 发送邮件</button>
+      </div>
+    </div>
+    <div class="settings-group">
       <h3>关于</h3>
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.5.2</span>
+        <span class="setting-version">v1.5.3</span>
       </div>
     </div>
   </section>

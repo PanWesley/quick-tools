@@ -1179,6 +1179,41 @@ function showToast(message) {
 }
 
 // ============================================
+// Feedback Email Copy
+// ============================================
+
+function copyFeedbackEmail(el) {
+  const email = el.textContent.trim();
+
+  const fallback = function () {
+    const ta = document.createElement('textarea');
+    ta.value = email;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('邮箱地址已复制');
+    } catch (e) {
+      showToast('复制失败，请手动复制');
+    }
+    document.body.removeChild(ta);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(email).then(function () {
+      showToast('邮箱地址已复制');
+    }).catch(function () {
+      fallback();
+    });
+  } else {
+    fallback();
+  }
+}
+
+// ============================================
 // Custom Confirm Modal
 // ============================================
 

@@ -1245,6 +1245,20 @@ h1, h2 {
   flex-shrink: 0;
 }
 
+.feedback-email-text {
+  color: var(--primary);
+  font-weight: 600;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--primary);
+}
+
+.feedback-email-text:hover {
+  opacity: 0.8;
+}
+
 .theme-options {
   display: inline-flex;
   align-items: center;
