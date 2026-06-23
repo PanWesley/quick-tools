@@ -30,6 +30,9 @@ let tagSuggestionMatches = [];
 let listViewPageSize = 20;
 let listViewCurrentOffset = 0;
 let listViewAllExpenses = [];
+let activeSwipeExpenseId = null;
+let listTouchState = null;
+let listLongPressTimer = null;
 
 // Edit modal state
 let editingExpenseId = null;
@@ -633,62 +636,87 @@ function initQuickExpenseForm() {
   renderRecentTemplates();
 }
 
+function getVisibleTagOptions(query, selectedIds) {
+  const q = (query || '').trim().toLowerCase();
+  const recentlyUsed = getRecentlyUsedTagIds();
+  return allTags
+    .filter(tag => !selectedIds.includes(tag.id))
+    .filter(tag => {
+      if (!q) return true;
+      const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
+      return tag.name.toLowerCase().includes(q) || (group && group.name.toLowerCase().includes(q));
+    })
+    .sort((a, b) => {
+      const recentA = recentlyUsed.indexOf(a.id);
+      const recentB = recentlyUsed.indexOf(b.id);
+      if (recentA !== recentB) {
+        if (recentA === -1) return 1;
+        if (recentB === -1) return -1;
+        return recentA - recentB;
+      }
+      return a.name.localeCompare(b.name, 'zh-CN');
+    });
+}
+
+function renderGroupedTagDropdown(containerId, query, selectedIds, selectFnName, createFnName) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const q = (query || '').trim();
+  const visibleTags = getVisibleTagOptions(q, selectedIds);
+  const exactExists = allTags.some(tag => tag.name === q);
+  const tagsByGroup = {};
+  visibleTags.forEach(tag => {
+    const groupId = tag.parentId || 'group-uncategorized';
+    if (!tagsByGroup[groupId]) tagsByGroup[groupId] = [];
+    tagsByGroup[groupId].push(tag);
+  });
+
+  let html = '';
+  for (const group of allTagGroups) {
+    const tags = tagsByGroup[group.id] || [];
+    if (tags.length === 0) continue;
+    html += `
+      <div class="tag-picker-group">
+        <div class="tag-picker-group-title">
+          <span class="tag-group-dot" style="background:${escapeAttr(group.color)}"></span>
+          ${escapeHTML(group.name)}
+        </div>
+        <div class="tag-picker-options">
+          ${tags.map(tag => `
+            <button type="button" class="tag-suggestion-item tag-picker-option" data-id="${escapeAttr(tag.id)}" onclick="${selectFnName}('${escapeJSString(tag.id)}')">
+              <span class="tag-suggestion-dot" style="background:${escapeAttr(tag.color)}"></span>
+              <span>${escapeHTML(tag.name)}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  if (q && !exactExists) {
+    html += `
+      <button type="button" class="tag-suggestion-item new-tag" onclick="${createFnName}('${escapeJSString(q)}')">
+        <span class="tag-suggestion-dot" style="background:#2DBAA3"></span>
+        <span>新建标签 "${escapeHTML(q)}"</span>
+        <span class="tag-suggestion-group">未分类</span>
+      </button>
+    `;
+  }
+
+  if (!html) {
+    html = '<div class="tag-picker-empty">暂无可选标签</div>';
+  }
+  container.innerHTML = html;
+  container.style.display = 'block';
+}
+
 function onTagInput() {
   const input = document.getElementById('exp-tags-input');
-  const raw = input.value;
-  const parts = raw.split(/[,，\s]+/);
-  const current = parts[parts.length - 1] || '';
-
-  if (!current.trim()) {
-    hideTagSuggestions();
-    return;
-  }
-
-  const q = current.trim().toLowerCase();
-  // Sort: recently used tags first, then alphabetical
-  const recentlyUsed = getRecentlyUsedTagIds();
-  const scored = allTags.map(tag => {
-    const nameLower = tag.name.toLowerCase();
-    let score = 0;
-    if (nameLower === q) score += 100;
-    else if (nameLower.startsWith(q)) score += 50;
-    else if (nameLower.includes(q)) score += 20;
-    const recentIndex = recentlyUsed.indexOf(tag.id);
-    if (recentIndex >= 0) score += (recentlyUsed.length - recentIndex) * 10;
-    return { tag, score };
-  }).filter(item => item.score > 0 && !quickFormSelectedTags.includes(item.tag.id))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
-
-  tagSuggestionMatches = scored.map(s => s.tag);
+  const raw = input.value.trim();
+  tagSuggestionMatches = getVisibleTagOptions(raw, quickFormSelectedTags);
   suggestionHighlightIndex = -1;
-
-  const container = document.getElementById('tag-suggestions');
-  if (tagSuggestionMatches.length === 0) {
-    // Show option to create new tag
-    const current = raw.split(/[,，\s]+/).pop().trim();
-    if (current && !allTags.some(t => t.name === current)) {
-      container.innerHTML = `<div class="tag-suggestion-item new-tag" onclick="createNewTagFromSuggestion('${current.replace(/'/g, "\\'")}')">
-        <span class="tag-suggestion-dot" style="background:#2DBAA3"></span>
-        <span>新建标签 "${current}"</span>
-      </div>`;
-      container.style.display = 'block';
-      return;
-    }
-    hideTagSuggestions();
-    return;
-  }
-
-  container.innerHTML = tagSuggestionMatches.map((tag, i) => {
-    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
-    return `
-    <div class="tag-suggestion-item" data-index="${i}" data-id="${tag.id}" onclick="selectSuggestionTag('${tag.id}')">
-      <span class="tag-suggestion-dot" style="background:${tag.color}"></span>
-      <span>${tag.name}</span>
-      <span class="tag-suggestion-group">${group ? group.name : ''}</span>
-    </div>
-  `;}).join('');
-  container.style.display = 'block';
+  renderGroupedTagDropdown('tag-suggestions', raw, quickFormSelectedTags, 'selectSuggestionTag', 'createNewTagFromSuggestion');
 }
 
 function onTagInputKeydown(e) {
@@ -702,10 +730,12 @@ function onTagInputKeydown(e) {
   }
 
   if (e.key === 'ArrowDown') {
+    if (tagSuggestionMatches.length === 0) return;
     e.preventDefault();
     suggestionHighlightIndex = (suggestionHighlightIndex + 1) % tagSuggestionMatches.length;
     updateSuggestionHighlight();
   } else if (e.key === 'ArrowUp') {
+    if (tagSuggestionMatches.length === 0) return;
     e.preventDefault();
     suggestionHighlightIndex = (suggestionHighlightIndex - 1 + tagSuggestionMatches.length) % tagSuggestionMatches.length;
     updateSuggestionHighlight();
@@ -725,7 +755,7 @@ function onTagInputKeydown(e) {
 }
 
 function updateSuggestionHighlight() {
-  const items = document.querySelectorAll('.tag-suggestion-item');
+  const items = document.querySelectorAll('#tag-suggestions .tag-picker-option');
   items.forEach((el, i) => {
     if (i === suggestionHighlightIndex) el.classList.add('highlighted');
     else el.classList.remove('highlighted');
@@ -750,11 +780,9 @@ window.selectSuggestionTag = function(tagId) {
 window.createNewTagFromSuggestion = async function(name) {
   if (!name || allTags.some(t => t.name === name)) return;
   const newTag = await addTag({ name, color: '#2DBAA3' });
-  allTags.push(newTag);
+  await loadTags();
   quickFormSelectedTags.push(newTag.id);
   renderSelectedTags();
-  renderTagCloud();
-  populateCategorySelects();
   document.getElementById('exp-tags-input').value = '';
   hideTagSuggestions();
 };
@@ -774,11 +802,9 @@ function tryAddTagFromInput() {
       // Create new tag
       (async () => {
         const newTag = await addTag({ name: nameTrimmed, color: '#2DBAA3' });
-        allTags.push(newTag);
+        await loadTags();
         quickFormSelectedTags.push(newTag.id);
         renderSelectedTags();
-        renderTagCloud();
-        populateCategorySelects();
       })();
     }
   }
@@ -1407,6 +1433,24 @@ function getRecentlyUsedTagIds() {
   return ids;
 }
 
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function escapeAttr(value) {
+  return escapeHTML(value);
+}
+
+function escapeJSString(value) {
+  return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
+}
+
 // ============================================
 // Expense List
 // ============================================
@@ -1428,14 +1472,123 @@ function initListView() {
     listViewCurrentOffset = 0;
     renderExpenseList();
   });
+
+  const container = document.getElementById('expense-list');
+  if (!container) return;
+  container.addEventListener('click', onExpenseListClick);
+  container.addEventListener('pointerdown', onExpensePointerStart);
+  container.addEventListener('pointermove', onExpensePointerMove);
+  container.addEventListener('pointerup', onExpensePointerEnd);
+  container.addEventListener('pointercancel', clearListGestureState);
 }
 
-const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+function onExpenseListClick(e) {
+  const actionButton = e.target.closest('[data-expense-action]');
+  if (actionButton) {
+    e.stopPropagation();
+    const id = actionButton.closest('.expense-swipe-row')?.dataset.id;
+    if (!id) return;
+    closeActiveSwipeRow();
+    if (actionButton.dataset.expenseAction === 'edit') openEditModal(id);
+    if (actionButton.dataset.expenseAction === 'delete') openDeleteModal(id);
+    return;
+  }
 
-function formatDateWithWeekday(dateStr) {
-  const date = new Date(dateStr + 'T00:00:00');
-  const weekday = WEEKDAY_NAMES[date.getDay()];
-  return `${dateStr} ${weekday}`;
+  const row = e.target.closest('.expense-swipe-row');
+  if (!row) return;
+  if (row.classList.contains('actions-open')) {
+    closeActiveSwipeRow();
+    return;
+  }
+  openEditModal(row.dataset.id);
+}
+
+function onExpensePointerStart(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const row = e.target.closest('.expense-swipe-row');
+  if (!row || e.target.closest('[data-expense-action]')) return;
+  listTouchState = {
+    row,
+    id: row.dataset.id,
+    pointerId: e.pointerId,
+    startX: e.clientX,
+    startY: e.clientY,
+    deltaX: 0,
+    moved: false
+  };
+  if (row.setPointerCapture) {
+    try {
+      row.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // Some browsers do not allow capture after certain synthetic events.
+    }
+  }
+  clearTimeout(listLongPressTimer);
+  listLongPressTimer = setTimeout(() => {
+    if (listTouchState && !listTouchState.moved) {
+      openSwipeRow(listTouchState.id);
+      if (navigator.vibrate) navigator.vibrate(12);
+    }
+  }, 520);
+}
+
+function onExpensePointerMove(e) {
+  if (!listTouchState) return;
+  if (e.pointerId !== listTouchState.pointerId) return;
+  const dx = e.clientX - listTouchState.startX;
+  const dy = e.clientY - listTouchState.startY;
+  listTouchState.deltaX = dx;
+
+  if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+    listTouchState.moved = true;
+    clearTimeout(listLongPressTimer);
+  }
+
+  if (Math.abs(dx) > Math.abs(dy) && dx < -8) {
+    e.preventDefault();
+    const content = listTouchState.row.querySelector('.expense-item');
+    if (content) {
+      content.style.transform = `translateX(${Math.max(dx, -132)}px)`;
+    }
+  }
+}
+
+function onExpensePointerEnd(e) {
+  if (!listTouchState) return;
+  if (e.pointerId !== listTouchState.pointerId) return;
+  const { id, row, deltaX } = listTouchState;
+  clearTimeout(listLongPressTimer);
+  const content = row.querySelector('.expense-item');
+  if (content) content.style.transform = '';
+
+  if (deltaX < -56) {
+    openSwipeRow(id);
+  } else if (deltaX > 24) {
+    closeActiveSwipeRow();
+  }
+  clearListGestureState();
+}
+
+function clearListGestureState() {
+  clearTimeout(listLongPressTimer);
+  listLongPressTimer = null;
+  listTouchState = null;
+}
+
+function openSwipeRow(id) {
+  if (!id) return;
+  document.querySelectorAll('.expense-swipe-row.actions-open').forEach(row => {
+    if (row.dataset.id !== id) row.classList.remove('actions-open');
+  });
+  const row = Array.from(document.querySelectorAll('.expense-swipe-row')).find(item => item.dataset.id === id);
+  if (row) row.classList.add('actions-open');
+  activeSwipeExpenseId = id;
+}
+
+function closeActiveSwipeRow() {
+  if (!activeSwipeExpenseId) return;
+  document.querySelectorAll('.expense-swipe-row.actions-open').forEach(row => row.classList.remove('actions-open'));
+  activeSwipeExpenseId = null;
 }
 
 window.renderExpenseList = async function() {
@@ -1506,23 +1659,20 @@ window.renderExpenseList = async function() {
     return;
   }
 
-  // Group by date
-  const grouped = {};
-  for (const exp of expenses) {
-    if (!grouped[exp.date]) grouped[exp.date] = [];
-    grouped[exp.date].push(exp);
-  }
-
-  const sortedDates = Object.keys(grouped).sort((a, b) => {
+  // Group by month, WeChat-style.
+  const grouped = ExpenseListUtils.groupExpensesByMonth(expenses);
+  const sortedMonths = Object.keys(grouped).sort((a, b) => {
+    if (a === 'unknown') return 1;
+    if (b === 'unknown') return -1;
     if (sortValue === 'date-asc') return a.localeCompare(b);
     return b.localeCompare(a);
   });
 
   // Flatten with pagination
   let flatItems = [];
-  for (const date of sortedDates) {
-    flatItems.push({ type: 'header', date });
-    for (const exp of grouped[date]) {
+  for (const month of sortedMonths) {
+    flatItems.push({ type: 'header', month });
+    for (const exp of grouped[month].items) {
       flatItems.push({ type: 'expense', data: exp });
     }
   }
@@ -1533,31 +1683,40 @@ window.renderExpenseList = async function() {
   let html = '';
   for (const item of visibleItems) {
     if (item.type === 'header') {
-      const dateTotal = grouped[item.date].reduce((sum, e) => sum + (e.amount || 0), 0);
+      const monthTotal = grouped[item.month].total;
       html += `
-        <div class="expense-date-header">
-          <span class="expense-date-label">${formatDateWithWeekday(item.date)}</span>
-          <span class="expense-date-total">¥${dateTotal.toFixed(2)}</span>
+        <div class="expense-month-header">
+          <span class="expense-month-label">${ExpenseListUtils.formatMonthLabel(item.month)}</span>
+          <span class="expense-month-total">支出 ¥${monthTotal.toFixed(2)}</span>
         </div>
       `;
     } else {
       const exp = item.data;
       const displayName = exp.note ? exp.note : (exp.category || '未命名');
+      const rowOpenClass = activeSwipeExpenseId === exp.id ? ' actions-open' : '';
       html += `
-        <div class="expense-item" data-id="${exp.id}">
-          <div class="expense-info">
-            <div class="expense-title">${displayName}</div>
-            <div class="expense-meta">
-              ${(exp.tags || []).map(tid => {
-                const tag = allTags.find(x => x.id === tid);
-                return tag ? `<span class="expense-tag-pill" style="background:${tag.color}22;color:${tag.color};border:1px solid ${tag.color}44">${tag.name}</span>` : '';
-              }).join('')}
-            </div>
+        <div class="expense-swipe-row${rowOpenClass}" data-id="${escapeAttr(exp.id)}">
+          <div class="expense-swipe-actions" aria-hidden="true">
+            <button class="swipe-action edit" data-expense-action="edit" title="编辑" aria-label="编辑">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>
+            </button>
+            <button class="swipe-action delete" data-expense-action="delete" title="删除" aria-label="删除">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
           </div>
-          <div class="expense-amount">¥${(exp.amount || 0).toFixed(2)}</div>
-          <div class="expense-actions">
-            <button class="btn-icon" onclick="openEditModal('${exp.id}')" title="编辑">✏️</button>
-            <button class="btn-icon delete" onclick="openDeleteModal('${exp.id}')" title="删除">🗑️</button>
+          <div class="expense-item">
+            <div class="expense-icon" aria-hidden="true">${escapeHTML(displayName.trim().charAt(0) || '账')}</div>
+            <div class="expense-info">
+              <div class="expense-title">${escapeHTML(displayName)}</div>
+              <div class="expense-meta">
+                <span class="expense-date-text">${ExpenseListUtils.formatExpenseDay(exp.date)}</span>
+                ${(exp.tags || []).map(tid => {
+                  const tag = allTags.find(x => x.id === tid);
+                  return tag ? `<span class="expense-tag-pill" style="background:${escapeAttr(tag.color)}22;color:${escapeAttr(tag.color)};border:1px solid ${escapeAttr(tag.color)}44">${escapeHTML(tag.name)}</span>` : '';
+                }).join('')}
+              </div>
+            </div>
+            <div class="expense-amount">-¥${(exp.amount || 0).toFixed(2)}</div>
           </div>
         </div>
       `;
@@ -1660,49 +1819,10 @@ window.saveEditExpense = async function() {
 
 function onEditTagInput() {
   const input = document.getElementById('edit-tags-input');
-  const raw = input.value;
-  const parts = raw.split(/[,，\s]+/);
-  const current = parts[parts.length - 1] || '';
-
-  if (!current.trim()) {
-    hideEditTagSuggestions();
-    return;
-  }
-
-  const q = current.trim().toLowerCase();
-  const recentlyUsed = getRecentlyUsedTagIds();
-  const scored = allTags.map(tag => {
-    const nameLower = tag.name.toLowerCase();
-    let score = 0;
-    if (nameLower === q) score += 100;
-    else if (nameLower.startsWith(q)) score += 50;
-    else if (nameLower.includes(q)) score += 20;
-    const recentIndex = recentlyUsed.indexOf(tag.id);
-    if (recentIndex >= 0) score += (recentlyUsed.length - recentIndex) * 10;
-    return { tag, score };
-  }).filter(item => item.score > 0 && !editFormSelectedTags.includes(item.tag.id))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
-
-  editTagSuggestionMatches = scored.map(s => s.tag);
+  const raw = input.value.trim();
+  editTagSuggestionMatches = getVisibleTagOptions(raw, editFormSelectedTags);
   editSuggestionHighlightIndex = -1;
-
-  const container = document.getElementById('edit-tag-suggestions');
-  if (editTagSuggestionMatches.length === 0) {
-    hideEditTagSuggestions();
-    return;
-  }
-
-  container.innerHTML = editTagSuggestionMatches.map((tag, i) => {
-    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
-    return `
-    <div class="tag-suggestion-item" data-index="${i}" data-id="${tag.id}" onclick="selectEditSuggestionTag('${tag.id}')">
-      <span class="tag-suggestion-dot" style="background:${tag.color}"></span>
-      <span>${tag.name}</span>
-      <span class="tag-suggestion-group">${group ? group.name : ''}</span>
-    </div>
-  `;}).join('');
-  container.style.display = 'block';
+  renderGroupedTagDropdown('edit-tag-suggestions', raw, editFormSelectedTags, 'selectEditSuggestionTag', 'createNewEditTagFromSuggestion');
 }
 
 function onEditTagInputKeydown(e) {
@@ -1716,10 +1836,12 @@ function onEditTagInputKeydown(e) {
   }
 
   if (e.key === 'ArrowDown') {
+    if (editTagSuggestionMatches.length === 0) return;
     e.preventDefault();
     editSuggestionHighlightIndex = (editSuggestionHighlightIndex + 1) % editTagSuggestionMatches.length;
     updateEditSuggestionHighlight();
   } else if (e.key === 'ArrowUp') {
+    if (editTagSuggestionMatches.length === 0) return;
     e.preventDefault();
     editSuggestionHighlightIndex = (editSuggestionHighlightIndex - 1 + editTagSuggestionMatches.length) % editTagSuggestionMatches.length;
     updateEditSuggestionHighlight();
@@ -1739,7 +1861,7 @@ function onEditTagInputKeydown(e) {
 }
 
 function updateEditSuggestionHighlight() {
-  const items = document.querySelectorAll('#edit-tag-suggestions .tag-suggestion-item');
+  const items = document.querySelectorAll('#edit-tag-suggestions .tag-picker-option');
   items.forEach((el, i) => {
     if (i === editSuggestionHighlightIndex) el.classList.add('highlighted');
     else el.classList.remove('highlighted');
@@ -1761,6 +1883,16 @@ window.selectEditSuggestionTag = function(tagId) {
   hideEditTagSuggestions();
 };
 
+window.createNewEditTagFromSuggestion = async function(name) {
+  if (!name || allTags.some(t => t.name === name)) return;
+  const newTag = await addTag({ name, color: '#2DBAA3' });
+  await loadTags();
+  editFormSelectedTags.push(newTag.id);
+  renderEditSelectedTags();
+  document.getElementById('edit-tags-input').value = '';
+  hideEditTagSuggestions();
+};
+
 function tryAddEditTagFromInput() {
   const input = document.getElementById('edit-tags-input');
   const raw = input.value.trim();
@@ -1776,11 +1908,9 @@ function tryAddEditTagFromInput() {
       // Create new tag
       (async () => {
         const newTag = await addTag({ name: nameTrimmed, color: '#2DBAA3' });
-        allTags.push(newTag);
+        await loadTags();
         editFormSelectedTags.push(newTag.id);
         renderEditSelectedTags();
-        renderTagCloud();
-        populateCategorySelects();
       })();
     }
   }
@@ -2446,4 +2576,3 @@ async function generateTestData() {
 
 // Expose for manual trigger
 window.generateTestData = generateTestData;
-
