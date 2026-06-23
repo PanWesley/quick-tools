@@ -40,6 +40,10 @@ let editFormSelectedTags = [];
 let editSuggestionHighlightIndex = -1;
 let editTagSuggestionMatches = [];
 
+// Tags management state
+let tagSearchQuery = '';
+let selectedManagedTagIds = [];
+
 // Delete modal state
 let pendingDeleteExpenseId = null;
 
@@ -543,6 +547,9 @@ window.toggleTagSelection = function(tagId) {
 };
 
 async function loadTags() {
+  if (typeof repairTagGroupIntegrity === 'function') {
+    await repairTagGroupIntegrity();
+  }
   allTags = await getTags();
   allTagGroups = await getTagGroups();
   populateCategorySelects();
@@ -684,7 +691,7 @@ function renderGroupedTagDropdown(containerId, query, selectedIds, selectFnName,
         </div>
         <div class="tag-picker-options">
           ${tags.map(tag => `
-            <button type="button" class="tag-suggestion-item tag-picker-option" data-id="${escapeAttr(tag.id)}" onclick="${selectFnName}('${escapeJSString(tag.id)}')">
+            <button type="button" class="tag-suggestion-item tag-picker-option" data-id="${escapeAttr(tag.id)}" onclick="${selectFnName}('${escapeJSAttr(tag.id)}')">
               <span class="tag-suggestion-dot" style="background:${escapeAttr(tag.color)}"></span>
               <span>${escapeHTML(tag.name)}</span>
             </button>
@@ -696,7 +703,7 @@ function renderGroupedTagDropdown(containerId, query, selectedIds, selectFnName,
 
   if (q && !exactExists) {
     html += `
-      <button type="button" class="tag-suggestion-item new-tag" onclick="${createFnName}('${escapeJSString(q)}')">
+      <button type="button" class="tag-suggestion-item new-tag" onclick="${createFnName}('${escapeJSAttr(q)}')">
         <span class="tag-suggestion-dot" style="background:#2DBAA3"></span>
         <span>新建标签 "${escapeHTML(q)}"</span>
         <span class="tag-suggestion-group">未分类</span>
@@ -1451,6 +1458,10 @@ function escapeJSString(value) {
   return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
 }
 
+function escapeJSAttr(value) {
+  return escapeAttr(escapeJSString(value));
+}
+
 // ============================================
 // Expense List
 // ============================================
@@ -1995,8 +2006,14 @@ window.addNewTag = async function() {
   const color = colorInput ? colorInput.value : '#2DBAA3';
   const groupId = groupSelect ? groupSelect.value : '';
 
+  if (!groupId) {
+    showToast('请先选择分组');
+    if (groupSelect) groupSelect.focus();
+    return;
+  }
   if (!name) {
     showToast('请输入标签名称');
+    if (nameInput) nameInput.focus();
     return;
   }
 
@@ -2006,11 +2023,11 @@ window.addNewTag = async function() {
     return;
   }
 
-  const tag = await addTag({ name, color, parentId: groupId || 'group-uncategorized' });
+  const tag = await addTag({ name, color, parentId: groupId });
   if (nameInput) nameInput.value = '';
-  if (groupSelect) groupSelect.value = '';
   await loadTags();
   renderTagSelector();
+  if (nameInput) nameInput.focus();
 };
 
 // Track collapsed state for groups
@@ -2022,9 +2039,23 @@ window.renderTagsList = async function() {
 
   // Update the group select dropdown
   const groupSelect = document.getElementById('new-tag-group');
+  const bulkMoveSelect = document.getElementById('bulk-move-group');
+  const groupOptions = allTagGroups.map(g => `<option value="${escapeAttr(g.id)}">${escapeHTML(g.name)}</option>`).join('');
   if (groupSelect) {
-    groupSelect.innerHTML = '<option value="">选择分组...</option>' +
-      allTagGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+    const current = groupSelect.value;
+    groupSelect.innerHTML = '<option value="">选择分组...</option>' + groupOptions;
+    if (allTagGroups.some(g => g.id === current)) {
+      groupSelect.value = current;
+    } else if (allTagGroups.some(g => g.id === 'group-category')) {
+      groupSelect.value = 'group-category';
+    }
+  }
+  if (bulkMoveSelect) {
+    const current = bulkMoveSelect.value;
+    bulkMoveSelect.innerHTML = '<option value="">移动到分组...</option>' + groupOptions;
+    if (allTagGroups.some(g => g.id === current)) {
+      bulkMoveSelect.value = current;
+    }
   }
 
   const expenses = await getExpenses();
@@ -2045,6 +2076,9 @@ window.renderTagsList = async function() {
     return;
   }
 
+  selectedManagedTagIds = selectedManagedTagIds.filter(id => allTags.some(tag => tag.id === id));
+  renderTagBulkActions();
+
   // Group tags by parentId
   const tagsByGroup = {};
   for (const group of allTagGroups) {
@@ -2052,25 +2086,35 @@ window.renderTagsList = async function() {
   }
 
   let html = '';
+  const query = tagSearchQuery.trim().toLowerCase();
   for (const group of allTagGroups) {
-    const tags = tagsByGroup[group.id] || [];
+    const originalTags = tagsByGroup[group.id] || [];
+    const groupMatches = query && group.name.toLowerCase().includes(query);
+    const tags = query && !groupMatches
+      ? originalTags.filter(tag => tag.name.toLowerCase().includes(query))
+      : originalTags;
+    if (query && !groupMatches && tags.length === 0) continue;
+
     const isCollapsed = collapsedGroups.has(group.id);
-    const totalCount = tags.reduce((sum, tag) => sum + (tagCounts[tag.id] || 0), 0);
+    const totalCount = originalTags.reduce((sum, tag) => sum + (tagCounts[tag.id] || 0), 0);
 
     html += `
-      <div class="tag-group-card" data-group-id="${group.id}">
-        <div class="tag-group-header" onclick="toggleGroupCollapse('${group.id}')">
+      <div class="tag-group-card" data-group-id="${escapeAttr(group.id)}">
+        <div class="tag-group-header" onclick="toggleGroupCollapse('${escapeJSAttr(group.id)}')">
           <div class="tag-group-left">
             <span class="tag-group-toggle ${isCollapsed ? 'collapsed' : ''}">▼</span>
-            <span class="tag-group-dot" style="background:${group.color}"></span>
-            <span class="tag-group-name">${group.name}</span>
-            <span class="tag-group-total">${tags.length} 标签 / ${totalCount} 笔</span>
+            <span class="tag-group-dot" style="background:${escapeAttr(group.color)}"></span>
+            <span class="tag-group-name">${escapeHTML(group.name)}</span>
+            <span class="tag-group-total">${originalTags.length} 标签 / ${totalCount} 笔</span>
           </div>
           <div class="tag-group-actions" onclick="event.stopPropagation();">
-            <button class="tag-group-action-btn" onclick="renameGroup('${group.id}')" title="重命名">
+            <button class="tag-group-action-btn primary" onclick="quickAddTagToGroup('${escapeJSAttr(group.id)}')" title="添加标签到此分组">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <button class="tag-group-action-btn" onclick="renameGroup('${escapeJSAttr(group.id)}')" title="重命名">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             </button>
-            <button class="tag-group-action-btn delete" onclick="removeGroup('${group.id}')" title="删除">
+            <button class="tag-group-action-btn delete" onclick="removeGroup('${escapeJSAttr(group.id)}')" title="删除">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </div>
@@ -2081,24 +2125,27 @@ window.renderTagsList = async function() {
               <span class="empty-text">此分组暂无标签</span>
             </div>
           ` : tags.map(tag => `
-            <div class="tree-tag-item" data-tag-id="${tag.id}">
+            <div class="tree-tag-item ${selectedManagedTagIds.includes(tag.id) ? 'selected' : ''}" data-tag-id="${escapeAttr(tag.id)}">
+              <button class="tag-select-toggle" onclick="toggleManagedTagSelection('${escapeJSAttr(tag.id)}')" title="选择标签" aria-label="选择标签">
+                ${selectedManagedTagIds.includes(tag.id) ? '✓' : ''}
+              </button>
               <div class="tag-display">
-                <div class="tag-color-dot" style="background:${tag.color}"></div>
-                <span class="tag-name">${tag.name}</span>
-                <span class="tag-count" onclick="filterByTagFromList('${tag.id}')" style="cursor:pointer;">${tagCounts[tag.id] || 0} 笔</span>
+                <div class="tag-color-dot" style="background:${escapeAttr(tag.color)}"></div>
+                <span class="tag-name">${escapeHTML(tag.name)}</span>
+                <span class="tag-count" onclick="filterByTagFromList('${escapeJSAttr(tag.id)}')" style="cursor:pointer;">${tagCounts[tag.id] || 0} 笔</span>
               </div>
               <div class="tag-actions">
-                <input type="color" class="tag-color-input" value="${tag.color}" title="更改颜色" onchange="changeTagColor('${tag.id}', this.value)">
-                <button class="tag-action-icon" onclick="renameTag('${tag.id}')" title="重命名">
+                <input type="color" class="tag-color-input" value="${escapeAttr(tag.color)}" title="更改颜色" onchange="changeTagColor('${escapeJSAttr(tag.id)}', this.value)">
+                <button class="tag-action-icon" onclick="renameTag('${escapeJSAttr(tag.id)}')" title="重命名">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                 </button>
-                <button class="tag-action-icon" onclick="moveTagPrompt('${tag.id}', '${tag.name}')" title="移动">
+                <button class="tag-action-icon" onclick="moveTagPrompt('${escapeJSAttr(tag.id)}', '${escapeJSAttr(tag.name)}')" title="移动">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>
                 </button>
-                <button class="tag-action-icon" onclick="openMergeModal('${tag.id}')" title="合并">
+                <button class="tag-action-icon" onclick="openMergeModal('${escapeJSAttr(tag.id)}')" title="合并">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
                 </button>
-                <button class="tag-action-icon delete" onclick="removeTag('${tag.id}')" title="删除">
+                <button class="tag-action-icon delete" onclick="removeTag('${escapeJSAttr(tag.id)}')" title="删除">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
               </div>
@@ -2109,12 +2156,80 @@ window.renderTagsList = async function() {
     `;
   }
 
-  container.innerHTML = html;
+  container.innerHTML = html || `
+    <div class="empty-state">
+      <div class="empty-icon">🏷️</div>
+      <p>没有匹配的标签</p>
+    </div>
+  `;
 };
 
 // ============================================
 // Tag Group Management Functions
 // ============================================
+
+function renderTagBulkActions() {
+  const bar = document.getElementById('tag-bulk-actions');
+  const count = document.getElementById('tag-bulk-count');
+  if (!bar || !count) return;
+
+  count.textContent = `已选 ${selectedManagedTagIds.length} 个标签`;
+  bar.style.display = selectedManagedTagIds.length > 0 ? 'flex' : 'none';
+}
+
+window.handleTagSearch = function(value) {
+  tagSearchQuery = value || '';
+  renderTagsList();
+};
+
+window.toggleManagedTagSelection = function(tagId) {
+  if (selectedManagedTagIds.includes(tagId)) {
+    selectedManagedTagIds = selectedManagedTagIds.filter(id => id !== tagId);
+  } else {
+    selectedManagedTagIds.push(tagId);
+  }
+  renderTagBulkActions();
+  renderTagsList();
+};
+
+window.clearTagSelection = function() {
+  selectedManagedTagIds = [];
+  renderTagBulkActions();
+  renderTagsList();
+};
+
+window.moveSelectedTags = async function() {
+  const select = document.getElementById('bulk-move-group');
+  const targetGroupId = select ? select.value : '';
+  if (selectedManagedTagIds.length === 0) {
+    showToast('请选择标签');
+    return;
+  }
+  if (!targetGroupId) {
+    showToast('请选择目标分组');
+    return;
+  }
+
+  for (const tagId of selectedManagedTagIds) {
+    await moveTagToGroup(tagId, targetGroupId);
+  }
+  const movedCount = selectedManagedTagIds.length;
+  selectedManagedTagIds = [];
+  await loadTags();
+  renderExpenseList();
+  refreshDashboard();
+  showToast(`已移动 ${movedCount} 个标签`);
+};
+
+window.quickAddTagToGroup = function(groupId) {
+  const groupSelect = document.getElementById('new-tag-group');
+  const nameInput = document.getElementById('new-tag-name');
+  if (groupSelect) groupSelect.value = groupId;
+  if (nameInput) {
+    nameInput.focus();
+    nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+};
 
 window.toggleGroupCollapse = function(groupId) {
   if (collapsedGroups.has(groupId)) {

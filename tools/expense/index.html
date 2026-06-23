@@ -30,7 +30,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=37">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=39">
 </head>
 <body>
 
@@ -257,20 +257,29 @@
       <h2>🏷️ 标签管理</h2>
       <p class="subtitle">管理支出分类和自定义标签</p>
     </div>
-    <div class="form-card">
-      <div class="form-group inline tags-form-row">
-        <input type="text" id="new-tag-name" placeholder="输入新标签名称…">
-        <select id="new-tag-group" title="所属分组"></select>
-        <input type="color" id="new-tag-color" value="#2DBAA3">
-        <button class="btn-primary" onclick="addNewTag()">➕ 添加标签</button>
-      </div>
-    </div>
-    <div class="form-card" style="margin-top:12px;">
+    <div class="form-card tag-create-card">
       <div class="form-group inline tags-form-row">
         <input type="text" id="new-group-name" placeholder="输入新分组名称…">
         <input type="color" id="new-group-color" value="#95a5a6">
         <button class="btn-primary" onclick="addNewGroup()">➕ 新建分组</button>
       </div>
+    </div>
+    <div class="form-card tag-create-card" style="margin-top:12px;">
+      <div class="form-group inline tags-form-row">
+        <select id="new-tag-group" title="所属分组"></select>
+        <input type="text" id="new-tag-name" placeholder="输入新标签名称…">
+        <input type="color" id="new-tag-color" value="#2DBAA3">
+        <button class="btn-primary" onclick="addNewTag()">➕ 添加标签</button>
+      </div>
+    </div>
+    <div class="tag-management-tools">
+      <input type="search" id="tag-search" placeholder="搜索分组或标签…" oninput="handleTagSearch(this.value)">
+    </div>
+    <div class="tag-bulk-actions" id="tag-bulk-actions" style="display:none;">
+      <span id="tag-bulk-count">已选 0 个标签</span>
+      <select id="bulk-move-group" title="移动到分组"></select>
+      <button class="btn-primary" onclick="moveSelectedTags()">移动</button>
+      <button class="btn-secondary" onclick="clearTagSelection()">取消</button>
     </div>
     <div class="tags-card" id="tags-list">
       <div class="empty-state">
@@ -467,7 +476,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.5.4</span>
+        <span class="setting-version">v1.5.5</span>
       </div>
     </div>
   </section>
@@ -546,12 +555,13 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/db.js?v=37"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=2"></script>
+<script src="/tools/expense/js/db.js?v=39"></script>
 <script src="/tools/expense/js/chart.js?v=37"></script>
 <script src="/tools/expense/js/import-export.js?v=37"></script>
 <script src="/tools/expense/js/guide.js?v=37"></script>
 <script src="/tools/expense/js/expense-list-utils.js?v=2"></script>
-<script src="/tools/expense/js/app.js?v=40"></script>
+<script src="/tools/expense/js/app.js?v=42"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->

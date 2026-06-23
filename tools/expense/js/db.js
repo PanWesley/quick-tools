@@ -141,6 +141,43 @@ async function initDB() {
       console.log('Tags migrated: parentId set to group-category');
     }
   }
+
+  await repairTagGroupIntegrity();
+}
+
+async function repairTagGroupIntegrity() {
+  const db = await openDB();
+  const [groups, tags] = await Promise.all([getTagGroups(), getTags()]);
+  const planner = window.TagManagementUtils && window.TagManagementUtils.planTagGroupRepair;
+  if (typeof planner !== 'function') {
+    return;
+  }
+
+  const plan = planner(tags, groups, DEFAULT_TAG_GROUPS, {
+    defaultTagParentId: 'group-category',
+    fallbackGroupId: 'group-uncategorized'
+  });
+
+  if (plan.groupsToAdd.length === 0 && plan.tagsToUpdate.length === 0) {
+    return;
+  }
+
+  const tx = db.transaction([STORE_TAG_GROUPS, STORE_TAGS], 'readwrite');
+  const groupStore = tx.objectStore(STORE_TAG_GROUPS);
+  const tagStore = tx.objectStore(STORE_TAGS);
+
+  for (const group of plan.groupsToAdd) {
+    groupStore.put(group);
+  }
+  for (const tag of plan.tagsToUpdate) {
+    tagStore.put(tag);
+  }
+
+  await transactionComplete(tx);
+  console.log('[Tags] Repaired tag groups:', {
+    groupsAdded: plan.groupsToAdd.length,
+    tagsUpdated: plan.tagsToUpdate.length
+  });
 }
 
 /**
@@ -643,10 +680,11 @@ async function importData(data) {
   const db = await openDB();
 
   // Clear existing data
-  const tx = db.transaction([STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS], 'readwrite');
+  const tx = db.transaction([STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS, STORE_TAG_GROUPS], 'readwrite');
   tx.objectStore(STORE_EXPENSES).clear();
   tx.objectStore(STORE_TAGS).clear();
   tx.objectStore(STORE_SETTINGS).clear();
+  tx.objectStore(STORE_TAG_GROUPS).clear();
   await transactionComplete(tx);
 
   // Import expenses
@@ -688,6 +726,8 @@ async function importData(data) {
     }
     await transactionComplete(tx5);
   }
+
+  await repairTagGroupIntegrity();
 }
 
 /**
@@ -729,6 +769,7 @@ window.getTagGroups = getTagGroups;
 window.updateTagGroup = updateTagGroup;
 window.deleteTagGroup = deleteTagGroup;
 window.moveTagToGroup = moveTagToGroup;
+window.repairTagGroupIntegrity = repairTagGroupIntegrity;
 
 openDB().then(() => {
   initDB().catch(err => console.error('DB init error:', err));
