@@ -32,6 +32,7 @@ let listViewCurrentOffset = 0;
 let listViewAllExpenses = [];
 let activeSwipeExpenseId = null;
 let listTouchState = null;
+let suppressExpenseClickUntil = 0;
 
 // Edit modal state
 let editingExpenseId = null;
@@ -1500,6 +1501,17 @@ function initListView() {
 
 function onExpenseListClick(e) {
   const actionButton = e.target.closest('[data-expense-action]');
+  if (ExpenseListUtils.shouldSuppressExpenseClick(
+    suppressExpenseClickUntil,
+    Date.now(),
+    Boolean(actionButton)
+  )) {
+    suppressExpenseClickUntil = 0;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
   if (actionButton) {
     e.stopPropagation();
     const id = actionButton.closest('.expense-swipe-row')?.dataset.id;
@@ -1520,7 +1532,10 @@ function onExpenseListClick(e) {
 }
 
 function onExpensePointerStart(e) {
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const allowMouseSwipe = e.pointerType === 'mouse'
+    && window.matchMedia('(max-width: 768px)').matches;
+  if ((e.pointerType === 'mouse' && !allowMouseSwipe)
+    || (typeof e.button === 'number' && e.button !== 0)) return;
   const row = e.target.closest('.expense-swipe-row');
   if (!row || e.target.closest('[data-expense-action]')) return;
   listTouchState = {
@@ -1529,7 +1544,10 @@ function onExpensePointerStart(e) {
     pointerId: e.pointerId,
     startX: e.clientX,
     startY: e.clientY,
-    deltaX: 0
+    deltaX: 0,
+    deltaY: 0,
+    pointerType: e.pointerType,
+    allowMouseSwipe
   };
   if (row.setPointerCapture) {
     try {
@@ -1546,6 +1564,7 @@ function onExpensePointerMove(e) {
   const dx = e.clientX - listTouchState.startX;
   const dy = e.clientY - listTouchState.startY;
   listTouchState.deltaX = dx;
+  listTouchState.deltaY = dy;
 
   if (Math.abs(dx) > Math.abs(dy) && dx < -8) {
     e.preventDefault();
@@ -1559,19 +1578,30 @@ function onExpensePointerMove(e) {
 function onExpensePointerEnd(e) {
   if (!listTouchState) return;
   if (e.pointerId !== listTouchState.pointerId) return;
-  const { id, row, deltaX } = listTouchState;
+  const { id, row, deltaX, deltaY, pointerType, allowMouseSwipe } = listTouchState;
   const content = row.querySelector('.expense-item');
   if (content) content.style.transform = '';
 
-  if (deltaX < -56) {
+  const gesture = ExpenseListUtils.getExpenseGestureResult({
+    pointerType,
+    deltaX,
+    deltaY,
+    allowMouseSwipe
+  });
+  if (gesture.suppressClick) {
+    suppressExpenseClickUntil = Date.now() + 400;
+  }
+  if (gesture.action === 'open') {
     openSwipeRow(id);
-  } else if (deltaX > 24) {
+  } else if (gesture.action === 'close') {
     closeActiveSwipeRow();
   }
   clearListGestureState();
 }
 
 function clearListGestureState() {
+  const content = listTouchState?.row?.querySelector('.expense-item');
+  if (content) content.style.transform = '';
   listTouchState = null;
 }
 
@@ -1697,7 +1727,7 @@ window.renderExpenseList = async function() {
       const primaryTag = ExpenseListUtils.selectPrimaryExpenseTag(exp.tags, allTags);
       html += `
         <div class="expense-swipe-row${rowOpenClass}" data-id="${escapeAttr(exp.id)}">
-          <div class="expense-swipe-actions" aria-hidden="true">
+          <div class="expense-swipe-actions">
             <button class="swipe-action edit" data-expense-action="edit" title="编辑" aria-label="编辑">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>
             </button>

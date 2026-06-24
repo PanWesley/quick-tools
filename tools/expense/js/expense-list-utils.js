@@ -73,6 +73,34 @@
     };
   }
 
+  function getExpenseGestureResult({
+    pointerType,
+    deltaX = 0,
+    deltaY = 0,
+    allowMouseSwipe = false
+  } = {}) {
+    if (pointerType === 'mouse' && !allowMouseSwipe) {
+      return { action: 'none', suppressClick: false };
+    }
+
+    const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 8;
+    if (!isHorizontalSwipe) {
+      return { action: 'none', suppressClick: false };
+    }
+
+    if (deltaX < -56) {
+      return { action: 'open', suppressClick: true };
+    }
+    if (deltaX > 24) {
+      return { action: 'close', suppressClick: true };
+    }
+    return { action: 'none', suppressClick: true };
+  }
+
+  function shouldSuppressExpenseClick(suppressUntil, now = Date.now(), isActionButton = false) {
+    return !isActionButton && Number(suppressUntil) > Number(now);
+  }
+
   const api = {
     getExpenseMonthKey,
     formatMonthLabel,
@@ -80,7 +108,9 @@
     groupExpensesByMonth,
     selectPrimaryExpenseTag,
     groupExpenseTags,
-    createExpenseDetailView
+    createExpenseDetailView,
+    getExpenseGestureResult,
+    shouldSuppressExpenseClick
   };
 
   root.ExpenseListUtils = api;

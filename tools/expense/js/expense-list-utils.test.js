@@ -5,7 +5,9 @@ const {
   formatExpenseDay,
   groupExpensesByMonth,
   createExpenseDetailView,
-  selectPrimaryExpenseTag
+  selectPrimaryExpenseTag,
+  getExpenseGestureResult,
+  shouldSuppressExpenseClick
 } = require('./expense-list-utils');
 
 assert.strictEqual(getExpenseMonthKey('2026-06-20'), '2026-06');
@@ -69,5 +71,29 @@ assert.deepStrictEqual(
     ]
   }
 );
+
+assert.deepStrictEqual(
+  getExpenseGestureResult({ pointerType: 'touch', deltaX: -80, deltaY: 4 }),
+  { action: 'open', suppressClick: true }
+);
+assert.deepStrictEqual(
+  getExpenseGestureResult({ pointerType: 'touch', deltaX: -30, deltaY: 2 }),
+  { action: 'none', suppressClick: true }
+);
+assert.deepStrictEqual(
+  getExpenseGestureResult({ pointerType: 'mouse', deltaX: -100, deltaY: 0 }),
+  { action: 'none', suppressClick: false }
+);
+assert.deepStrictEqual(
+  getExpenseGestureResult({ pointerType: 'mouse', deltaX: -100, deltaY: 0, allowMouseSwipe: true }),
+  { action: 'open', suppressClick: true }
+);
+assert.deepStrictEqual(
+  getExpenseGestureResult({ pointerType: 'touch', deltaX: -20, deltaY: 40 }),
+  { action: 'none', suppressClick: false }
+);
+assert.strictEqual(shouldSuppressExpenseClick(1200, 1000), true);
+assert.strictEqual(shouldSuppressExpenseClick(1200, 1200), false);
+assert.strictEqual(shouldSuppressExpenseClick(1200, 1000, true), false);
 
 console.log('expense-list-utils tests passed');

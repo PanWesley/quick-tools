@@ -911,6 +911,48 @@ h1, h2 {
   background: var(--bg);
 }
 
+@media (min-width: 769px) and (hover: hover) and (pointer: fine) {
+  .expense-swipe-actions {
+    inset: 0 14px 0 auto;
+    z-index: 2;
+    width: auto;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+
+  .expense-swipe-row:hover .expense-swipe-actions,
+  .expense-swipe-row:focus-within .expense-swipe-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  .swipe-action {
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+
+  .swipe-action:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+
+  .expense-item {
+    padding-right: 110px;
+    touch-action: auto;
+  }
+
+  .expense-swipe-row.actions-open .expense-item {
+    transform: none;
+  }
+}
+
 .expense-icon {
   width: 44px;
   height: 44px;
