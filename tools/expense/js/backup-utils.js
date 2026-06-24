@@ -1,7 +1,10 @@
 (function(root, factory) {
   const api = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  if (root) root.ExpenseBackupUtils = api;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  } else if (root) {
+    root.ExpenseBackupUtils = api;
+  }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
   const BACKUP_FORMAT_VERSION = 1;
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +35,15 @@
     return (isNumber || isNumericString) && Number.isFinite(Number(value));
   }
 
+  function isValidExpenseDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day;
+  }
+
   function validateBackupEnvelope(data) {
     const errors = [];
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -54,7 +66,11 @@
 
     asArray(data.expenses).forEach((expense, index) => {
       if (!expense || !expense.id) errors.push(`Expense ${index + 1} is missing id`);
-      if (!expense || !expense.date) errors.push(`Expense ${index + 1} is missing date`);
+      if (!expense || !expense.date) {
+        errors.push(`Expense ${index + 1} is missing date`);
+      } else if (!isValidExpenseDate(expense.date)) {
+        errors.push(`Expense ${index + 1} has an invalid date`);
+      }
       if (!expense || !isValidAmount(expense.amount)) {
         errors.push(`Expense ${index + 1} has an invalid amount`);
       }
@@ -64,17 +80,21 @@
   }
 
   function shouldRemindBackup(input = {}) {
-    const now = Date.parse(input.now || new Date().toISOString());
-    const snoozedUntil = input.snoozedUntil ? Date.parse(input.snoozedUntil) : 0;
+    const parsedNow = input.now ? Date.parse(input.now) : NaN;
+    const now = Number.isFinite(parsedNow) ? parsedNow : Date.now();
+    const parsedLastBackupAt = input.lastBackupAt ? Date.parse(input.lastBackupAt) : NaN;
+    const lastBackupAt = Number.isFinite(parsedLastBackupAt) ? parsedLastBackupAt : null;
+    const parsedSnoozedUntil = input.snoozedUntil ? Date.parse(input.snoozedUntil) : NaN;
+    const snoozedUntil = Number.isFinite(parsedSnoozedUntil) ? parsedSnoozedUntil : null;
     const newExpenseCount = Number(input.newExpenseCount || 0);
 
     if (snoozedUntil > now) return { remind: false, reason: null };
-    if (!input.lastBackupAt) {
+    if (lastBackupAt === null) {
       return newExpenseCount > 0
         ? { remind: true, reason: 'never' }
         : { remind: false, reason: null };
     }
-    if (now - Date.parse(input.lastBackupAt) >= 14 * DAY_MS) {
+    if (now - lastBackupAt >= 14 * DAY_MS) {
       return { remind: true, reason: 'age' };
     }
     if (newExpenseCount >= 30) return { remind: true, reason: 'count' };
@@ -100,7 +120,7 @@
     return Object.keys(value).sort().reduce((normalized, key) => {
       normalized[key] = normalizeRecord(value[key]);
       return normalized;
-    }, {});
+    }, Object.create(null));
   }
 
   function equalRecord(a, b) {
@@ -111,6 +131,7 @@
     const currentById = new Map(
       current.filter(item => item && item.id).map(item => [item.id, item])
     );
+    const incomingById = new Map();
     const fingerprints = new Set(current.map(fingerprint));
     const toAdd = [];
     const conflicts = [];
@@ -123,6 +144,14 @@
       }
 
       if (item && item.id) {
+        if (incomingById.has(item.id)) {
+          const firstIncoming = incomingById.get(item.id);
+          if (!equalRecord(firstIncoming, item)) {
+            conflicts.push({ current: firstIncoming, incoming: item });
+          }
+          continue;
+        }
+        incomingById.set(item.id, item);
         toAdd.push(item);
         fingerprints.add(fingerprint(item));
         continue;

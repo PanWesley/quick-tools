@@ -1,4 +1,19 @@
 const assert = require('assert');
+const backupUtilsPath = require.resolve('./backup-utils');
+const previousGlobalDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  'ExpenseBackupUtils'
+);
+delete globalThis.ExpenseBackupUtils;
+const backupUtils = require(backupUtilsPath);
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(globalThis, 'ExpenseBackupUtils'),
+  false
+);
+if (previousGlobalDescriptor) {
+  Object.defineProperty(globalThis, 'ExpenseBackupUtils', previousGlobalDescriptor);
+}
+
 const {
   BACKUP_FORMAT_VERSION,
   buildBackupEnvelope,
@@ -6,7 +21,7 @@ const {
   shouldRemindBackup,
   createExpenseFingerprint,
   planBackupMerge
-} = require('./backup-utils');
+} = backupUtils;
 
 const base = {
   databaseVersion: 2,
@@ -79,6 +94,20 @@ assert.strictEqual(
   3
 );
 
+const invalidDateBackup = validateBackupEnvelope({
+  ...envelope,
+  expenses: [
+    { id: 'bad-format', date: 'not-a-date', amount: 1 },
+    { id: 'impossible', date: '2026-02-30', amount: 1 },
+    { id: 'valid-leap-day', date: '2024-02-29', amount: 1 }
+  ]
+});
+assert.strictEqual(invalidDateBackup.valid, false);
+assert.strictEqual(
+  invalidDateBackup.errors.filter(error => error.includes('invalid date')).length,
+  2
+);
+
 assert.deepStrictEqual(
   shouldRemindBackup({
     now: '2026-06-24T00:00:00.000Z',
@@ -123,6 +152,33 @@ assert.deepStrictEqual(
     snoozedUntil: null
   }),
   { remind: false, reason: null }
+);
+assert.deepStrictEqual(
+  shouldRemindBackup({
+    now: 'invalid-now',
+    lastBackupAt: '2000-01-01T00:00:00.000Z',
+    newExpenseCount: 0,
+    snoozedUntil: null
+  }),
+  { remind: true, reason: 'age' }
+);
+assert.deepStrictEqual(
+  shouldRemindBackup({
+    now: '2026-06-24T00:00:00.000Z',
+    lastBackupAt: 'invalid-last-backup',
+    newExpenseCount: 1,
+    snoozedUntil: null
+  }),
+  { remind: true, reason: 'never' }
+);
+assert.deepStrictEqual(
+  shouldRemindBackup({
+    now: '2026-06-24T00:00:00.000Z',
+    lastBackupAt: null,
+    newExpenseCount: 1,
+    snoozedUntil: 'invalid-snooze'
+  }),
+  { remind: true, reason: 'never' }
 );
 
 assert.strictEqual(
@@ -209,5 +265,83 @@ const reorderedRecordPlan = planBackupMerge(
   }
 );
 assert.deepStrictEqual(reorderedRecordPlan.conflicts, []);
+
+const duplicateIncomingPlan = planBackupMerge(
+  {},
+  {
+    expenses: [
+      { id: 'e-same', date: '2026-06-04', amount: 1, note: 'Same' },
+      { note: 'Same', amount: 1, date: '2026-06-04', id: 'e-same' },
+      { id: 'e-conflict', date: '2026-06-05', amount: 2, note: 'First' },
+      { id: 'e-conflict', date: '2026-06-05', amount: 3, note: 'Second' }
+    ],
+    tags: [
+      { id: 't-same', name: 'Same' },
+      { name: 'Same', id: 't-same' },
+      { id: 't-conflict', name: 'First' },
+      { id: 't-conflict', name: 'Second' }
+    ],
+    tagGroups: [
+      { id: 'g-same', name: 'Same' },
+      { name: 'Same', id: 'g-same' },
+      { id: 'g-conflict', name: 'First' },
+      { id: 'g-conflict', name: 'Second' }
+    ]
+  }
+);
+assert.deepStrictEqual(
+  duplicateIncomingPlan.expensesToAdd.map(expense => [expense.id, expense.note]),
+  [['e-same', 'Same'], ['e-conflict', 'First']]
+);
+assert.deepStrictEqual(
+  duplicateIncomingPlan.tagsToAdd.map(tag => [tag.id, tag.name]),
+  [['t-same', 'Same'], ['t-conflict', 'First']]
+);
+assert.deepStrictEqual(
+  duplicateIncomingPlan.tagGroupsToAdd.map(group => [group.id, group.name]),
+  [['g-same', 'Same'], ['g-conflict', 'First']]
+);
+assert.deepStrictEqual(
+  duplicateIncomingPlan.conflicts.map(conflict => [
+    conflict.current.id,
+    conflict.current.note || conflict.current.name,
+    conflict.incoming.note || conflict.incoming.name
+  ]),
+  [
+    ['e-conflict', 'First', 'Second'],
+    ['t-conflict', 'First', 'Second'],
+    ['g-conflict', 'First', 'Second']
+  ]
+);
+
+const currentProtoMetadata = {};
+Object.defineProperty(currentProtoMetadata, '__proto__', {
+  value: 'current',
+  enumerable: true
+});
+const incomingProtoMetadata = {};
+Object.defineProperty(incomingProtoMetadata, '__proto__', {
+  value: 'incoming',
+  enumerable: true
+});
+const protoFieldPlan = planBackupMerge(
+  {
+    expenses: [{
+      id: 'proto-field',
+      date: '2026-06-06',
+      amount: 4,
+      metadata: currentProtoMetadata
+    }]
+  },
+  {
+    expenses: [{
+      id: 'proto-field',
+      date: '2026-06-06',
+      amount: 4,
+      metadata: incomingProtoMetadata
+    }]
+  }
+);
+assert.strictEqual(protoFieldPlan.conflicts.length, 1);
 
 console.log('backup-utils tests passed');
