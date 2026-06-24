@@ -55,14 +55,20 @@
       throw new Error('Encrypted backup contains invalid base64');
     }
 
+    let bytes;
     if (root && typeof root.atob === 'function') {
       const binary = root.atob(value);
-      return Uint8Array.from(binary, character => character.charCodeAt(0));
+      bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    } else if (typeof Buffer !== 'undefined') {
+      bytes = new Uint8Array(Buffer.from(value, 'base64'));
+    } else {
+      throw new Error('Base64 decoding is not available');
     }
-    if (typeof Buffer !== 'undefined') {
-      return new Uint8Array(Buffer.from(value, 'base64'));
+
+    if (bytesToBase64(bytes) !== value) {
+      throw new Error('Encrypted backup contains invalid base64');
     }
-    throw new Error('Base64 decoding is not available');
+    return bytes;
   }
 
   function decodeEnvelope(envelope) {

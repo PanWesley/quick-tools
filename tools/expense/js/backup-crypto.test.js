@@ -1,5 +1,8 @@
 const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
 const { webcrypto } = require('crypto');
+const { TextEncoder, TextDecoder } = require('util');
 
 const cryptoPath = require.resolve('./backup-crypto');
 const previousCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
@@ -27,6 +30,16 @@ assert.strictEqual(
 
 async function rejects(operation) {
   await assert.rejects(operation);
+}
+
+function makeNonCanonicalBase64(value) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const paddingIndex = value.indexOf('=');
+  const lastDataIndex = paddingIndex === -1 ? value.length - 1 : paddingIndex - 1;
+  const currentIndex = alphabet.indexOf(value[lastDataIndex]);
+  return value.slice(0, lastDataIndex)
+    + alphabet[currentIndex + 1]
+    + value.slice(lastDataIndex + 1);
 }
 
 (async () => {
@@ -72,6 +85,56 @@ async function rejects(operation) {
     () => decryptBackup({}, ''),
     /Unsupported encrypted backup format/
   );
+  await assert.rejects(
+    () => decryptBackup({
+      ...envelope,
+      kdf: {
+        ...envelope.kdf,
+        salt: makeNonCanonicalBase64(envelope.kdf.salt)
+      }
+    }, password),
+    /invalid base64/
+  );
+  await assert.rejects(
+    () => decryptBackup({
+      ...envelope,
+      kdf: {
+        ...envelope.kdf,
+        salt: `${envelope.kdf.salt}=`
+      }
+    }, password),
+    /invalid base64/
+  );
+  await assert.rejects(
+    () => decryptBackup({
+      ...envelope,
+      kdf: {
+        ...envelope.kdf,
+        salt: Buffer.alloc(15).toString('base64')
+      }
+    }, password),
+    /invalid parameters/
+  );
+  await assert.rejects(
+    () => decryptBackup({
+      ...envelope,
+      cipher: {
+        ...envelope.cipher,
+        iv: Buffer.alloc(11).toString('base64')
+      }
+    }, password),
+    /invalid parameters/
+  );
+  await assert.rejects(
+    () => decryptBackup({
+      ...envelope,
+      cipher: {
+        ...envelope.cipher,
+        name: 'AES-CBC'
+      }
+    }, password),
+    /Unsupported encrypted backup format/
+  );
 
   const secondEnvelope = await encryptBackup(plainText, password);
   assert.notStrictEqual(secondEnvelope.kdf.salt, envelope.kdf.salt);
@@ -92,6 +155,42 @@ async function rejects(operation) {
     ...envelope,
     version: 2
   }, password));
+
+  const browserGlobal = {
+    crypto: webcrypto,
+    TextEncoder,
+    TextDecoder,
+    btoa(value) {
+      return Buffer.from(value, 'binary').toString('base64');
+    },
+    atob(value) {
+      return Buffer.from(value, 'base64').toString('binary');
+    }
+  };
+  browserGlobal.window = browserGlobal;
+  browserGlobal.globalThis = browserGlobal;
+  vm.runInNewContext(
+    fs.readFileSync(cryptoPath, 'utf8'),
+    browserGlobal,
+    { filename: cryptoPath }
+  );
+  assert.ok(browserGlobal.ExpenseBackupCrypto);
+  assert.strictEqual(
+    browserGlobal.window.ExpenseBackupCrypto,
+    browserGlobal.ExpenseBackupCrypto
+  );
+  assert.strictEqual(
+    browserGlobal.globalThis.ExpenseBackupCrypto,
+    browserGlobal.ExpenseBackupCrypto
+  );
+  const browserEnvelope = await browserGlobal.ExpenseBackupCrypto.encryptBackup(
+    plainText,
+    password
+  );
+  assert.strictEqual(
+    await browserGlobal.ExpenseBackupCrypto.decryptBackup(browserEnvelope, password),
+    plainText
+  );
 
   console.log('backup-crypto tests passed');
 })().finally(() => {
