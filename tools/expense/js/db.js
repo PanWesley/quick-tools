@@ -12,6 +12,34 @@ const STORE_EXPENSES = 'expenses';
 const STORE_TAGS = 'tags';
 const STORE_TAG_GROUPS = 'tagGroups';
 const STORE_SETTINGS = 'settings';
+const SNAPSHOT_KEYS = ['expenses', 'tags', 'settings', 'tagGroups'];
+
+function normalizeRecordArray(value, name) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(name + ' must be an array');
+  }
+  return value.filter(record => record !== undefined);
+}
+
+function normalizeDatabaseSnapshot(snapshot = {}) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw new Error('Snapshot must be an object');
+  }
+
+  return SNAPSHOT_KEYS.reduce((normalized, key) => {
+    normalized[key] = normalizeRecordArray(snapshot[key], key);
+    return normalized;
+  }, {});
+}
+
+function mapSnapshotRecordsToStores(snapshot, storeNames) {
+  const normalized = normalizeDatabaseSnapshot(snapshot);
+  return SNAPSHOT_KEYS.reduce((recordsByStore, key) => {
+    recordsByStore[storeNames[key]] = normalized[key];
+    return recordsByStore;
+  }, {});
+}
 
 // Default categories (pre-populated tags)
 const DEFAULT_TAGS = [
@@ -618,6 +646,21 @@ async function getSettings(key, defaultValue = null) {
 }
 
 /**
+ * Get all setting records.
+ * @returns {Promise<Array>}
+ */
+async function getAllSettings() {
+  const db = await openDB();
+  const tx = db.transaction(STORE_SETTINGS, 'readonly');
+  const request = tx.objectStore(STORE_SETTINGS).getAll();
+
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
  * Set a setting value.
  * @param {string} key
  * @param {any} value
@@ -643,16 +686,7 @@ async function exportAllData() {
   const [expenses, tags, settings, tagGroups] = await Promise.all([
     getExpenses(),
     getTags(),
-    (async () => {
-      const db = await openDB();
-      const tx = db.transaction(STORE_SETTINGS, 'readonly');
-      const store = tx.objectStore(STORE_SETTINGS);
-      return new Promise((resolve, reject) => {
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
-    })(),
+    getAllSettings(),
     getTagGroups()
   ]);
 
@@ -667,6 +701,80 @@ async function exportAllData() {
 }
 
 /**
+ * Create a raw snapshot of all persisted stores.
+ * @returns {Promise<Object>}
+ */
+async function createDatabaseSnapshot() {
+  const [expenses, tags, settings, tagGroups] = await Promise.all([
+    getExpenses(),
+    getTags(),
+    getAllSettings(),
+    getTagGroups()
+  ]);
+
+  return { expenses, tags, settings, tagGroups };
+}
+
+/**
+ * Atomically replace all persisted stores with a snapshot.
+ * @param {Object} snapshot
+ * @returns {Promise<void>}
+ */
+async function replaceDatabaseSnapshot(snapshot) {
+  const normalized = normalizeDatabaseSnapshot(snapshot);
+  const db = await openDB();
+  const stores = [STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS, STORE_TAG_GROUPS];
+  const recordsByStore = mapSnapshotRecordsToStores(normalized, {
+    expenses: STORE_EXPENSES,
+    tags: STORE_TAGS,
+    settings: STORE_SETTINGS,
+    tagGroups: STORE_TAG_GROUPS
+  });
+  const tx = db.transaction(stores, 'readwrite');
+
+  for (const storeName of stores) {
+    const store = tx.objectStore(storeName);
+    store.clear();
+    for (const record of recordsByStore[storeName]) {
+      store.put(record);
+    }
+  }
+
+  await transactionComplete(tx);
+  await repairTagGroupIntegrity();
+}
+
+/**
+ * Atomically apply the additive writes from a backup merge plan.
+ * @param {Object} plan
+ * @returns {Promise<void>}
+ */
+async function applyBackupMergePlan(plan = {}) {
+  if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+    throw new Error('Merge plan must be an object');
+  }
+
+  const expensesToAdd = normalizeRecordArray(plan.expensesToAdd, 'expensesToAdd');
+  const tagsToAdd = normalizeRecordArray(plan.tagsToAdd, 'tagsToAdd');
+  const tagGroupsToAdd = normalizeRecordArray(plan.tagGroupsToAdd, 'tagGroupsToAdd');
+  const db = await openDB();
+  const tx = db.transaction(
+    [STORE_EXPENSES, STORE_TAGS, STORE_TAG_GROUPS],
+    'readwrite'
+  );
+  const expenseStore = tx.objectStore(STORE_EXPENSES);
+  const tagStore = tx.objectStore(STORE_TAGS);
+  const groupStore = tx.objectStore(STORE_TAG_GROUPS);
+
+  for (const record of expensesToAdd) expenseStore.put(record);
+  for (const record of tagsToAdd) tagStore.put(record);
+  for (const record of tagGroupsToAdd) groupStore.put(record);
+
+  await transactionComplete(tx);
+  await repairTagGroupIntegrity();
+}
+
+/**
  * Import data from a JSON object.
  * WARNING: This will overwrite existing data.
  * @param {Object} data
@@ -677,57 +785,12 @@ async function importData(data) {
     throw new Error('Invalid import data');
   }
 
-  const db = await openDB();
-
-  // Clear existing data
-  const tx = db.transaction([STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS, STORE_TAG_GROUPS], 'readwrite');
-  tx.objectStore(STORE_EXPENSES).clear();
-  tx.objectStore(STORE_TAGS).clear();
-  tx.objectStore(STORE_SETTINGS).clear();
-  tx.objectStore(STORE_TAG_GROUPS).clear();
-  await transactionComplete(tx);
-
-  // Import expenses
-  if (Array.isArray(data.expenses)) {
-    const tx2 = db.transaction(STORE_EXPENSES, 'readwrite');
-    const store = tx2.objectStore(STORE_EXPENSES);
-    for (const exp of data.expenses) {
-      if (exp.id) store.put(exp);
-    }
-    await transactionComplete(tx2);
-  }
-
-  // Import tags
-  if (Array.isArray(data.tags)) {
-    const tx3 = db.transaction(STORE_TAGS, 'readwrite');
-    const store = tx3.objectStore(STORE_TAGS);
-    for (const tag of data.tags) {
-      if (tag.id) store.put(tag);
-    }
-    await transactionComplete(tx3);
-  }
-
-  // Import settings
-  if (Array.isArray(data.settings)) {
-    const tx4 = db.transaction(STORE_SETTINGS, 'readwrite');
-    const store = tx4.objectStore(STORE_SETTINGS);
-    for (const setting of data.settings) {
-      if (setting.key !== undefined) store.put(setting);
-    }
-    await transactionComplete(tx4);
-  }
-
-  // Import tag groups
-  if (Array.isArray(data.tagGroups)) {
-    const tx5 = db.transaction(STORE_TAG_GROUPS, 'readwrite');
-    const store = tx5.objectStore(STORE_TAG_GROUPS);
-    for (const g of data.tagGroups) {
-      if (g.id) store.put(g);
-    }
-    await transactionComplete(tx5);
-  }
-
-  await repairTagGroupIntegrity();
+  await replaceDatabaseSnapshot({
+    expenses: data.expenses || [],
+    tags: data.tags || [],
+    settings: data.settings || [],
+    tagGroups: data.tagGroups || []
+  });
 }
 
 /**
@@ -748,29 +811,42 @@ async function clearAllData() {
 // Auto-initialize on module load
 // ============================================
 
-window.openDB = openDB;
-window.initDB = initDB;
-window.addExpense = addExpense;
-window.getExpenses = getExpenses;
-window.updateExpense = updateExpense;
-window.deleteExpense = deleteExpense;
-window.addTag = addTag;
-window.getTags = getTags;
-window.updateTag = updateTag;
-window.deleteTag = deleteTag;
-window.mergeTag = mergeTag;
-window.getSettings = getSettings;
-window.setSettings = setSettings;
-window.exportAllData = exportAllData;
-window.importData = importData;
-window.clearAllData = clearAllData;
-window.addTagGroup = addTagGroup;
-window.getTagGroups = getTagGroups;
-window.updateTagGroup = updateTagGroup;
-window.deleteTagGroup = deleteTagGroup;
-window.moveTagToGroup = moveTagToGroup;
-window.repairTagGroupIntegrity = repairTagGroupIntegrity;
+if (typeof window !== 'undefined') {
+  window.openDB = openDB;
+  window.initDB = initDB;
+  window.addExpense = addExpense;
+  window.getExpenses = getExpenses;
+  window.updateExpense = updateExpense;
+  window.deleteExpense = deleteExpense;
+  window.addTag = addTag;
+  window.getTags = getTags;
+  window.updateTag = updateTag;
+  window.deleteTag = deleteTag;
+  window.mergeTag = mergeTag;
+  window.getSettings = getSettings;
+  window.getAllSettings = getAllSettings;
+  window.setSettings = setSettings;
+  window.exportAllData = exportAllData;
+  window.createDatabaseSnapshot = createDatabaseSnapshot;
+  window.replaceDatabaseSnapshot = replaceDatabaseSnapshot;
+  window.applyBackupMergePlan = applyBackupMergePlan;
+  window.importData = importData;
+  window.clearAllData = clearAllData;
+  window.addTagGroup = addTagGroup;
+  window.getTagGroups = getTagGroups;
+  window.updateTagGroup = updateTagGroup;
+  window.deleteTagGroup = deleteTagGroup;
+  window.moveTagToGroup = moveTagToGroup;
+  window.repairTagGroupIntegrity = repairTagGroupIntegrity;
 
-openDB().then(() => {
-  initDB().catch(err => console.error('DB init error:', err));
-}).catch(err => console.error('DB open error:', err));
+  openDB().then(() => {
+    initDB().catch(err => console.error('DB init error:', err));
+  }).catch(err => console.error('DB open error:', err));
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    normalizeDatabaseSnapshot,
+    mapSnapshotRecordsToStores
+  };
+}
