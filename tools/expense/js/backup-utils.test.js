@@ -64,6 +64,21 @@ assert.deepStrictEqual(validateBackupEnvelope(null), {
   errors: ['Backup must be an object']
 });
 
+const emptyAmountBackup = validateBackupEnvelope({
+  ...envelope,
+  expenses: [
+    { id: 'empty', date: '2026-06-01', amount: '' },
+    { id: 'spaces', date: '2026-06-01', amount: '   ' },
+    { id: 'null', date: '2026-06-01', amount: null },
+    { id: 'numeric-string', date: '2026-06-01', amount: '12.50' }
+  ]
+});
+assert.strictEqual(emptyAmountBackup.valid, false);
+assert.strictEqual(
+  emptyAmountBackup.errors.filter(error => error.includes('invalid amount')).length,
+  3
+);
+
 assert.deepStrictEqual(
   shouldRemindBackup({
     now: '2026-06-24T00:00:00.000Z',
@@ -107,7 +122,7 @@ assert.deepStrictEqual(
     newExpenseCount: 0,
     snoozedUntil: null
   }),
-  { remind: false, reason: 'never' }
+  { remind: false, reason: null }
 );
 
 assert.strictEqual(
@@ -138,6 +153,10 @@ const newExpense = {
   note: 'New',
   tags: []
 };
+const sameFingerprintWithNewId = {
+  id: 'e3',
+  ...legacyExpense
+};
 const mergePlan = planBackupMerge(
   {
     expenses: [
@@ -150,7 +169,8 @@ const mergePlan = planBackupMerge(
   {
     expenses: [
       { id: 'e1', date: '2026-06-01', amount: 99, note: 'Backup conflict', tags: [] },
-      { id: 'legacy-copy', ...legacyExpense },
+      { ...legacyExpense },
+      sameFingerprintWithNewId,
       newExpense
     ],
     tags: [
@@ -163,11 +183,31 @@ const mergePlan = planBackupMerge(
     ]
   }
 );
-assert.deepStrictEqual(mergePlan.expensesToAdd, [newExpense]);
+assert.deepStrictEqual(mergePlan.expensesToAdd, [sameFingerprintWithNewId, newExpense]);
 assert.deepStrictEqual(mergePlan.tagsToAdd, [{ id: 't2', name: 'New tag' }]);
 assert.deepStrictEqual(mergePlan.tagGroupsToAdd, [{ id: 'g2', name: 'New group' }]);
 assert.strictEqual(mergePlan.conflicts.length, 2);
 assert.strictEqual(mergePlan.conflicts[0].current.note, 'Current');
 assert.strictEqual(mergePlan.conflicts[0].incoming.note, 'Backup conflict');
+
+const reorderedRecordPlan = planBackupMerge(
+  {
+    expenses: [{
+      id: 'same',
+      date: '2026-06-03',
+      amount: 15,
+      metadata: { source: 'manual', flags: ['reviewed', 'shared'] }
+    }]
+  },
+  {
+    expenses: [{
+      metadata: { flags: ['reviewed', 'shared'], source: 'manual' },
+      amount: 15,
+      date: '2026-06-03',
+      id: 'same'
+    }]
+  }
+);
+assert.deepStrictEqual(reorderedRecordPlan.conflicts, []);
 
 console.log('backup-utils tests passed');

@@ -26,6 +26,12 @@
     };
   }
 
+  function isValidAmount(value) {
+    const isNumber = typeof value === 'number';
+    const isNumericString = typeof value === 'string' && value.trim() !== '';
+    return (isNumber || isNumericString) && Number.isFinite(Number(value));
+  }
+
   function validateBackupEnvelope(data) {
     const errors = [];
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -49,7 +55,7 @@
     asArray(data.expenses).forEach((expense, index) => {
       if (!expense || !expense.id) errors.push(`Expense ${index + 1} is missing id`);
       if (!expense || !expense.date) errors.push(`Expense ${index + 1} is missing date`);
-      if (!expense || !Number.isFinite(Number(expense.amount))) {
+      if (!expense || !isValidAmount(expense.amount)) {
         errors.push(`Expense ${index + 1} has an invalid amount`);
       }
     });
@@ -63,7 +69,11 @@
     const newExpenseCount = Number(input.newExpenseCount || 0);
 
     if (snoozedUntil > now) return { remind: false, reason: null };
-    if (!input.lastBackupAt) return { remind: newExpenseCount > 0, reason: 'never' };
+    if (!input.lastBackupAt) {
+      return newExpenseCount > 0
+        ? { remind: true, reason: 'never' }
+        : { remind: false, reason: null };
+    }
     if (now - Date.parse(input.lastBackupAt) >= 14 * DAY_MS) {
       return { remind: true, reason: 'age' };
     }
@@ -84,8 +94,17 @@
     ]);
   }
 
+  function normalizeRecord(value) {
+    if (Array.isArray(value)) return value.map(normalizeRecord);
+    if (!value || typeof value !== 'object') return value;
+    return Object.keys(value).sort().reduce((normalized, key) => {
+      normalized[key] = normalizeRecord(value[key]);
+      return normalized;
+    }, {});
+  }
+
   function equalRecord(a, b) {
-    return JSON.stringify(a) === JSON.stringify(b);
+    return JSON.stringify(normalizeRecord(a)) === JSON.stringify(normalizeRecord(b));
   }
 
   function additionsAndConflicts(current, incoming, fingerprint) {
@@ -100,6 +119,12 @@
       if (item && item.id && currentById.has(item.id)) {
         const currentItem = currentById.get(item.id);
         if (!equalRecord(currentItem, item)) conflicts.push({ current: currentItem, incoming: item });
+        continue;
+      }
+
+      if (item && item.id) {
+        toAdd.push(item);
+        fingerprints.add(fingerprint(item));
         continue;
       }
 
