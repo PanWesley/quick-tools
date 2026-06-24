@@ -152,8 +152,8 @@
   }
 
   async function decryptBackup(envelope, password) {
-    requirePassword(password);
     const { salt, iv, data } = decodeEnvelope(envelope);
+    requirePassword(password);
     const key = await deriveKey(password, salt);
     const plainText = await cryptoApi.subtle.decrypt(
       { name: CIPHER_NAME, iv },

@@ -68,6 +68,10 @@ async function rejects(operation) {
   await rejects(() => encryptBackup(plainText, ''));
   await rejects(() => encryptBackup(plainText, '   '));
   await rejects(() => decryptBackup(envelope, ''));
+  await assert.rejects(
+    () => decryptBackup({}, ''),
+    /Unsupported encrypted backup format/
+  );
 
   const secondEnvelope = await encryptBackup(plainText, password);
   assert.notStrictEqual(secondEnvelope.kdf.salt, envelope.kdf.salt);
