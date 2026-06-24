@@ -30,7 +30,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=39">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=42">
 </head>
 <body>
 
@@ -289,6 +289,38 @@
     </div>
   </section>
 
+  <!-- Expense Detail Modal -->
+  <div class="modal-overlay" id="detail-modal" style="display:none;">
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h3>账单详情</h3>
+        <button class="btn-close" onclick="closeExpenseDetail()" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body expense-detail-body">
+        <div class="expense-detail-amount" id="detail-amount">¥0.00</div>
+        <div class="expense-detail-row">
+          <span>项目</span>
+          <strong id="detail-title">未命名</strong>
+        </div>
+        <div class="expense-detail-row">
+          <span>日期</span>
+          <strong id="detail-date"></strong>
+        </div>
+        <div class="expense-detail-row">
+          <span>分类</span>
+          <strong id="detail-category">未分类</strong>
+        </div>
+        <div class="expense-detail-row expense-detail-tags-row">
+          <span>标签</span>
+          <div class="expense-detail-tags" id="detail-tags"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="closeExpenseDetail()">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit Expense Modal -->
   <div class="modal-overlay" id="edit-modal" style="display:none;">
     <div class="modal-card">
@@ -461,12 +493,12 @@
     </div>
     <div class="settings-group">
       <h3>问题反馈</h3>
-      <div class="setting-item">
+      <div class="setting-item feedback-setting">
         <div class="setting-info">
           <span class="setting-title">联系我们</span>
           <span class="setting-desc">遇到问题或建议？发送邮件至 <span class="feedback-email-text" id="feedback-email-text" onclick="copyFeedbackEmail(this)" title="点击复制邮箱">billnest_feedback@outlook.com</span></span>
         </div>
-        <button class="btn-secondary" onclick="window.open('mailto:billnest_feedback@outlook.com?subject=生活账单问题反馈', '_blank', 'noopener,noreferrer')">✉️ 发送邮件</button>
+        <button class="btn-secondary feedback-mail-btn" onclick="window.open('mailto:billnest_feedback@outlook.com?subject=生活账单问题反馈', '_blank', 'noopener,noreferrer')">✉️ 发送邮件</button>
       </div>
     </div>
     <div class="settings-group">
@@ -476,7 +508,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.5.5</span>
+        <span class="setting-version">v1.5.6</span>
       </div>
     </div>
   </section>
@@ -560,8 +592,8 @@
 <script src="/tools/expense/js/chart.js?v=37"></script>
 <script src="/tools/expense/js/import-export.js?v=37"></script>
 <script src="/tools/expense/js/guide.js?v=37"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=2"></script>
-<script src="/tools/expense/js/app.js?v=42"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=4"></script>
+<script src="/tools/expense/js/app.js?v=45"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->

@@ -32,7 +32,6 @@ let listViewCurrentOffset = 0;
 let listViewAllExpenses = [];
 let activeSwipeExpenseId = null;
 let listTouchState = null;
-let listLongPressTimer = null;
 
 // Edit modal state
 let editingExpenseId = null;
@@ -1415,6 +1414,12 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.target === editOverlay) closeEditModal();
     });
   }
+  const detailOverlay = document.getElementById('detail-modal');
+  if (detailOverlay) {
+    detailOverlay.addEventListener('click', function(e) {
+      if (e.target === detailOverlay) closeExpenseDetail();
+    });
+  }
   const deleteOverlay = document.getElementById('delete-modal');
   if (deleteOverlay) {
     deleteOverlay.addEventListener('click', function(e) {
@@ -1511,7 +1516,7 @@ function onExpenseListClick(e) {
     closeActiveSwipeRow();
     return;
   }
-  openEditModal(row.dataset.id);
+  openExpenseDetail(row.dataset.id);
 }
 
 function onExpensePointerStart(e) {
@@ -1524,8 +1529,7 @@ function onExpensePointerStart(e) {
     pointerId: e.pointerId,
     startX: e.clientX,
     startY: e.clientY,
-    deltaX: 0,
-    moved: false
+    deltaX: 0
   };
   if (row.setPointerCapture) {
     try {
@@ -1534,13 +1538,6 @@ function onExpensePointerStart(e) {
       // Some browsers do not allow capture after certain synthetic events.
     }
   }
-  clearTimeout(listLongPressTimer);
-  listLongPressTimer = setTimeout(() => {
-    if (listTouchState && !listTouchState.moved) {
-      openSwipeRow(listTouchState.id);
-      if (navigator.vibrate) navigator.vibrate(12);
-    }
-  }, 520);
 }
 
 function onExpensePointerMove(e) {
@@ -1549,11 +1546,6 @@ function onExpensePointerMove(e) {
   const dx = e.clientX - listTouchState.startX;
   const dy = e.clientY - listTouchState.startY;
   listTouchState.deltaX = dx;
-
-  if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-    listTouchState.moved = true;
-    clearTimeout(listLongPressTimer);
-  }
 
   if (Math.abs(dx) > Math.abs(dy) && dx < -8) {
     e.preventDefault();
@@ -1568,7 +1560,6 @@ function onExpensePointerEnd(e) {
   if (!listTouchState) return;
   if (e.pointerId !== listTouchState.pointerId) return;
   const { id, row, deltaX } = listTouchState;
-  clearTimeout(listLongPressTimer);
   const content = row.querySelector('.expense-item');
   if (content) content.style.transform = '';
 
@@ -1581,8 +1572,6 @@ function onExpensePointerEnd(e) {
 }
 
 function clearListGestureState() {
-  clearTimeout(listLongPressTimer);
-  listLongPressTimer = null;
   listTouchState = null;
 }
 
@@ -1705,6 +1694,7 @@ window.renderExpenseList = async function() {
       const exp = item.data;
       const displayName = exp.note ? exp.note : (exp.category || '未命名');
       const rowOpenClass = activeSwipeExpenseId === exp.id ? ' actions-open' : '';
+      const primaryTag = ExpenseListUtils.selectPrimaryExpenseTag(exp.tags, allTags);
       html += `
         <div class="expense-swipe-row${rowOpenClass}" data-id="${escapeAttr(exp.id)}">
           <div class="expense-swipe-actions" aria-hidden="true">
@@ -1721,10 +1711,7 @@ window.renderExpenseList = async function() {
               <div class="expense-title">${escapeHTML(displayName)}</div>
               <div class="expense-meta">
                 <span class="expense-date-text">${ExpenseListUtils.formatExpenseDay(exp.date)}</span>
-                ${(exp.tags || []).map(tid => {
-                  const tag = allTags.find(x => x.id === tid);
-                  return tag ? `<span class="expense-tag-pill" style="background:${escapeAttr(tag.color)}22;color:${escapeAttr(tag.color)};border:1px solid ${escapeAttr(tag.color)}44">${escapeHTML(tag.name)}</span>` : '';
-                }).join('')}
+                ${primaryTag ? `<span class="expense-tag-pill" style="background:${escapeAttr(primaryTag.color)}22;color:${escapeAttr(primaryTag.color)};border:1px solid ${escapeAttr(primaryTag.color)}44">${escapeHTML(primaryTag.name)}</span>` : ''}
               </div>
             </div>
             <div class="expense-amount">-¥${(exp.amount || 0).toFixed(2)}</div>
@@ -1744,6 +1731,45 @@ window.renderExpenseList = async function() {
 window.loadMoreExpenses = function() {
   listViewCurrentOffset += listViewPageSize;
   renderExpenseList();
+};
+
+// ============================================
+// Expense Detail Modal
+// ============================================
+
+window.openExpenseDetail = async function(id) {
+  const expenses = await getExpenses();
+  const expense = expenses.find(item => item.id === id);
+  if (!expense) return;
+
+  const detail = ExpenseListUtils.createExpenseDetailView(expense, allTags, allTagGroups);
+  document.getElementById('detail-amount').textContent = detail.amount;
+  document.getElementById('detail-title').textContent = detail.title;
+  document.getElementById('detail-date').textContent = detail.dateLabel || detail.date || '未设置';
+  document.getElementById('detail-category').textContent = detail.category || '未分类';
+
+  const tagsContainer = document.getElementById('detail-tags');
+  tagsContainer.innerHTML = detail.tagGroups.length > 0
+    ? detail.tagGroups.map(group => `
+        <div class="expense-detail-tag-group">
+          <div class="expense-detail-tag-group-name">${escapeHTML(group.name)}</div>
+          <div class="expense-detail-tag-group-items">
+            ${group.tags.map(tag => `
+              <span class="expense-tag-pill" style="background:${escapeAttr(tag.color)}22;color:${escapeAttr(tag.color)};border:1px solid ${escapeAttr(tag.color)}44">
+                ${escapeHTML(tag.name)}
+              </span>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')
+    : '<span class="expense-detail-empty">无标签</span>';
+
+  document.getElementById('detail-modal').style.display = 'flex';
+};
+
+window.closeExpenseDetail = function() {
+  const modal = document.getElementById('detail-modal');
+  if (modal) modal.style.display = 'none';
 };
 
 // ============================================

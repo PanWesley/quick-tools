@@ -32,11 +32,55 @@
     }, {});
   }
 
+  function selectPrimaryExpenseTag(tagIds, tags, preferredGroupId = 'group-category') {
+    const tagMap = new Map((tags || []).map(tag => [tag.id, tag]));
+    const resolvedTags = (tagIds || []).map(id => tagMap.get(id)).filter(Boolean);
+    return resolvedTags.find(tag => tag.parentId === preferredGroupId) || resolvedTags[0] || null;
+  }
+
+  function groupExpenseTags(tagIds, tags, groups) {
+    const tagMap = new Map((tags || []).map(tag => [tag.id, tag]));
+    const groupMap = new Map((groups || []).map(group => [group.id, group]));
+    const buckets = new Map();
+
+    for (const id of tagIds || []) {
+      const tag = tagMap.get(id);
+      if (!tag) continue;
+      const group = groupMap.get(tag.parentId);
+      const groupId = group ? group.id : 'group-uncategorized';
+      const groupName = group ? group.name : '未分类';
+      const order = group ? (group.order || 0) : 999;
+      if (!buckets.has(groupId)) {
+        buckets.set(groupId, { id: groupId, name: groupName, order, tags: [] });
+      }
+      buckets.get(groupId).tags.push(tag);
+    }
+
+    return Array.from(buckets.values())
+      .sort((a, b) => a.order - b.order)
+      .map(({ order, ...group }) => group);
+  }
+
+  function createExpenseDetailView(expense, tags, groups) {
+    const record = expense || {};
+    return {
+      title: record.note || record.category || '未命名',
+      amount: `¥${(Number(record.amount) || 0).toFixed(2)}`,
+      date: record.date || '',
+      dateLabel: formatExpenseDay(record.date),
+      category: record.category || '',
+      tagGroups: groupExpenseTags(record.tags, tags, groups)
+    };
+  }
+
   const api = {
     getExpenseMonthKey,
     formatMonthLabel,
     formatExpenseDay,
-    groupExpensesByMonth
+    groupExpensesByMonth,
+    selectPrimaryExpenseTag,
+    groupExpenseTags,
+    createExpenseDetailView
   };
 
   root.ExpenseListUtils = api;
