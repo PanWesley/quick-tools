@@ -22,13 +22,21 @@ function normalizeRecordArray(value, name) {
   return value.filter(record => record !== undefined);
 }
 
+function normalizeSnapshotRecords(value, name) {
+  const records = normalizeRecordArray(value, name);
+  if (name === 'settings') {
+    return records.filter(record => record && record.key !== undefined);
+  }
+  return records.filter(record => record && record.id);
+}
+
 function normalizeDatabaseSnapshot(snapshot = {}) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
     throw new Error('Snapshot must be an object');
   }
 
   return SNAPSHOT_KEYS.reduce((normalized, key) => {
-    normalized[key] = normalizeRecordArray(snapshot[key], key);
+    normalized[key] = normalizeSnapshotRecords(snapshot[key], key);
     return normalized;
   }, {});
 }
@@ -39,6 +47,25 @@ function mapSnapshotRecordsToStores(snapshot, storeNames) {
     recordsByStore[storeNames[key]] = normalized[key];
     return recordsByStore;
   }, {});
+}
+
+function queueTransactionWrites(tx, recordsByStore, options = {}) {
+  try {
+    for (const [storeName, records] of Object.entries(recordsByStore)) {
+      const store = tx.objectStore(storeName);
+      if (options.clear) store.clear();
+      for (const record of records) {
+        store.put(record);
+      }
+    }
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch (abortError) {
+      // Preserve the original synchronous IndexedDB error.
+    }
+    throw error;
+  }
 }
 
 // Default categories (pre-populated tags)
@@ -732,13 +759,7 @@ async function replaceDatabaseSnapshot(snapshot) {
   });
   const tx = db.transaction(stores, 'readwrite');
 
-  for (const storeName of stores) {
-    const store = tx.objectStore(storeName);
-    store.clear();
-    for (const record of recordsByStore[storeName]) {
-      store.put(record);
-    }
-  }
+  queueTransactionWrites(tx, recordsByStore, { clear: true });
 
   await transactionComplete(tx);
   await repairTagGroupIntegrity();
@@ -758,17 +779,17 @@ async function applyBackupMergePlan(plan = {}) {
   const tagsToAdd = normalizeRecordArray(plan.tagsToAdd, 'tagsToAdd');
   const tagGroupsToAdd = normalizeRecordArray(plan.tagGroupsToAdd, 'tagGroupsToAdd');
   const db = await openDB();
-  const tx = db.transaction(
-    [STORE_EXPENSES, STORE_TAGS, STORE_TAG_GROUPS],
-    'readwrite'
-  );
-  const expenseStore = tx.objectStore(STORE_EXPENSES);
-  const tagStore = tx.objectStore(STORE_TAGS);
-  const groupStore = tx.objectStore(STORE_TAG_GROUPS);
+  const tx = db.transaction([
+    STORE_EXPENSES,
+    STORE_TAGS,
+    STORE_TAG_GROUPS
+  ], 'readwrite');
 
-  for (const record of expensesToAdd) expenseStore.put(record);
-  for (const record of tagsToAdd) tagStore.put(record);
-  for (const record of tagGroupsToAdd) groupStore.put(record);
+  queueTransactionWrites(tx, {
+    [STORE_EXPENSES]: expensesToAdd,
+    [STORE_TAGS]: tagsToAdd,
+    [STORE_TAG_GROUPS]: tagGroupsToAdd
+  });
 
   await transactionComplete(tx);
   await repairTagGroupIntegrity();
@@ -847,6 +868,7 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     normalizeDatabaseSnapshot,
-    mapSnapshotRecordsToStores
+    mapSnapshotRecordsToStores,
+    queueTransactionWrites
   };
 }
