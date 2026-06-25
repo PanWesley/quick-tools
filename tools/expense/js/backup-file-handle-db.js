@@ -65,10 +65,16 @@
       const completion = mode === 'readwrite'
         ? transactionToPromise(transaction)
         : null;
-      const result = await requestToPromise(
-        operation(transaction.objectStore(STORE_NAME))
-      );
-      if (completion) await completion;
+      let requestPromise;
+      try {
+        requestPromise = requestToPromise(
+          operation(transaction.objectStore(STORE_NAME))
+        );
+      } catch (error) {
+        requestPromise = Promise.reject(error);
+      }
+      if (!completion) return requestPromise;
+      const [result] = await Promise.all([requestPromise, completion]);
       return result;
     }
 

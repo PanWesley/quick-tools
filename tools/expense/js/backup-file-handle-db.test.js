@@ -95,6 +95,68 @@ function createFakeIndexedDB(options = {}) {
   };
 }
 
+function createDualFailureIndexedDB(operationName) {
+  return {
+    open() {
+      const openRequest = {};
+      queueMicrotask(() => {
+        const database = {
+          objectStoreNames: { contains: () => true },
+          transaction() {
+            const transaction = {
+              error: null,
+              objectStore() {
+                return {
+                  [operationName]() {
+                    const request = {};
+                    queueMicrotask(() => {
+                      request.error = new Error(`${operationName} request failed`);
+                      request.onerror();
+                      queueMicrotask(() => {
+                        transaction.error = new Error(
+                          `${operationName} transaction failed`
+                        );
+                        transaction.onerror();
+                      });
+                    });
+                    return request;
+                  }
+                };
+              }
+            };
+            return transaction;
+          }
+        };
+        openRequest.result = database;
+        openRequest.onsuccess();
+      });
+      return openRequest;
+    }
+  };
+}
+
+async function assertDualFailureIsContained(operationName, invoke) {
+  const unhandled = [];
+  const onUnhandled = reason => {
+    unhandled.push(reason);
+  };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const fileHandles = createExpenseBackupFileHandles({
+      indexedDB: createDualFailureIndexedDB(operationName)
+    });
+    await assert.rejects(
+      () => invoke(fileHandles),
+      new RegExp(`${operationName} request failed`)
+    );
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(unhandled, []);
+  } finally {
+    process.removeListener('unhandledRejection', onUnhandled);
+  }
+}
+
 const previousGlobalDescriptor = Object.getOwnPropertyDescriptor(
   globalThis,
   'ExpenseBackupFileHandles'
@@ -165,6 +227,13 @@ assert.strictEqual(
   failedTransaction.error = new Error('transaction failed');
   failedTransaction.onerror();
   await assert.rejects(failedSave, /transaction failed/);
+
+  await assertDualFailureIsContained('put', fileHandleDb => (
+    fileHandleDb.save(handle)
+  ));
+  await assertDualFailureIsContained('delete', fileHandleDb => (
+    fileHandleDb.clear()
+  ));
 
   console.log('backup-file-handle-db tests passed');
 })().finally(() => {
