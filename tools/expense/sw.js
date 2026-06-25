@@ -3,7 +3,7 @@
  * 提供离线缓存和 PWA 支持（生活账单子模块独立 SW）
  */
 
-const CACHE_NAME = 'expense-tracker-v1.5.7';
+const CACHE_NAME = 'expense-tracker-v1.5.7-safety1';
 const STATIC_ASSETS = [
   '/tools/expense/',
   '/tools/expense/index.html',
@@ -11,6 +11,7 @@ const STATIC_ASSETS = [
   '/tools/expense/css/style.css',
   '/tools/expense/js/db.js',
   '/tools/expense/js/tag-management-utils.js',
+  '/tools/expense/js/db-backup-utils.js',
   '/tools/expense/js/chart.js',
   '/tools/expense/js/import-export.js',
   '/tools/expense/js/guide.js',
