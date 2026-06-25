@@ -121,13 +121,18 @@
       deps.URL.revokeObjectURL(url);
     }
 
-    async function markBackupSuccessful(backup) {
-      const currentBackup = backup || await buildCurrentBackup();
+    async function markBackupSuccessful(backupOrExpenseCount) {
+      const currentBackup = typeof backupOrExpenseCount === 'number'
+        ? null
+        : backupOrExpenseCount || await buildCurrentBackup();
+      const expenseCount = typeof backupOrExpenseCount === 'number'
+        ? backupOrExpenseCount
+        : Array.isArray(currentBackup.expenses)
+          ? currentBackup.expenses.length
+          : 0;
       return setBackupMeta({
         lastBackupAt: now().toISOString(),
-        lastBackupExpenseCount: Array.isArray(currentBackup.expenses)
-          ? currentBackup.expenses.length
-          : 0,
+        lastBackupExpenseCount: expenseCount,
         newExpenseCount: 0,
         snoozedUntil: null
       });
@@ -230,7 +235,7 @@
     async function chooseAutomaticBackupFile() {
       if (typeof deps.showSaveFilePicker !== 'function') {
         await updateAutomaticStatus('unsupported');
-        return { ok: false, status: 'unsupported' };
+        return { supported: false };
       }
 
       try {
@@ -245,14 +250,23 @@
           await deps.fileHandles.save(handle);
         }
         await updateAutomaticStatus('ready');
-        return writeAutomaticBackup({ requestPermission: true, handle });
+        const writeResult = await writeAutomaticBackup({
+          requestPermission: true,
+          handle
+        });
+        return { supported: true, handle, ...writeResult };
       } catch (error) {
         const normalizedError = asError(error);
         const status = normalizedError.name === 'AbortError'
           ? 'selection-cancelled'
           : 'write-error';
         await updateAutomaticStatus(status);
-        return { ok: false, status, error: normalizedError };
+        return {
+          supported: true,
+          ok: false,
+          status,
+          error: normalizedError
+        };
       }
     }
 

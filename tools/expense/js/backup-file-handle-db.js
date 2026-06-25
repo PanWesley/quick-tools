@@ -20,6 +20,18 @@
     });
   }
 
+  function transactionToPromise(transaction) {
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(
+        transaction.error || new Error('Transaction aborted')
+      );
+      transaction.onerror = () => reject(
+        transaction.error || new Error('Transaction failed')
+      );
+    });
+  }
+
   function createExpenseBackupFileHandles(deps = {}) {
     const indexedDB = deps.indexedDB;
     let databasePromise;
@@ -50,7 +62,14 @@
     async function useStore(mode, operation) {
       const database = await openDatabase();
       const transaction = database.transaction(STORE_NAME, mode);
-      return requestToPromise(operation(transaction.objectStore(STORE_NAME)));
+      const completion = mode === 'readwrite'
+        ? transactionToPromise(transaction)
+        : null;
+      const result = await requestToPromise(
+        operation(transaction.objectStore(STORE_NAME))
+      );
+      if (completion) await completion;
+      return result;
     }
 
     return {
@@ -80,6 +99,7 @@
     DB_NAME,
     STORE_NAME,
     AUTOMATIC_BACKUP_KEY,
+    transactionToPromise,
     createExpenseBackupFileHandles
   };
 });

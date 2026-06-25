@@ -1,11 +1,12 @@
 const assert = require('assert');
 
-function createRequest(run) {
+function createRequest(run, afterSuccess) {
   const request = {};
   queueMicrotask(() => {
     try {
       request.result = run();
       if (request.onsuccess) request.onsuccess();
+      if (afterSuccess) afterSuccess();
     } catch (error) {
       request.error = error;
       if (request.onerror) request.onerror();
@@ -14,12 +15,14 @@ function createRequest(run) {
   return request;
 }
 
-function createFakeIndexedDB() {
+function createFakeIndexedDB(options = {}) {
   const databases = new Map();
   const opens = [];
+  const transactions = [];
 
   return {
     opens,
+    transactions,
     open(name, version) {
       opens.push({ name, version });
       const request = {};
@@ -45,20 +48,36 @@ function createFakeIndexedDB() {
               assert.strictEqual(storeName, 'handles');
               assert.ok(mode === 'readonly' || mode === 'readwrite');
               const transaction = {
+                error: null,
                 objectStore() {
                   return {
                     put(value, key) {
-                      return createRequest(() => records.set(key, value));
+                      return createRequest(
+                        () => records.set(key, value),
+                        () => {
+                          if (options.autoComplete !== false && transaction.oncomplete) {
+                            queueMicrotask(() => transaction.oncomplete());
+                          }
+                        }
+                      );
                     },
                     get(key) {
                       return createRequest(() => records.get(key));
                     },
                     delete(key) {
-                      return createRequest(() => records.delete(key));
+                      return createRequest(
+                        () => records.delete(key),
+                        () => {
+                          if (options.autoComplete !== false && transaction.oncomplete) {
+                            queueMicrotask(() => transaction.oncomplete());
+                          }
+                        }
+                      );
                     }
                   };
                 }
               };
+              transactions.push(transaction);
               return transaction;
             }
           };
@@ -117,6 +136,35 @@ assert.strictEqual(
     () => createExpenseBackupFileHandles({ indexedDB: null }).get(),
     /IndexedDB is not available/
   );
+
+  const controlledIndexedDB = createFakeIndexedDB({ autoComplete: false });
+  const controlledHandles = createExpenseBackupFileHandles({
+    indexedDB: controlledIndexedDB
+  });
+  let saveSettled = false;
+  const pendingSave = controlledHandles.save(handle).then(() => {
+    saveSettled = true;
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(saveSettled, false);
+  controlledIndexedDB.transactions[0].oncomplete();
+  await pendingSave;
+  assert.strictEqual(saveSettled, true);
+
+  const abortedClear = controlledHandles.clear();
+  await new Promise(resolve => setImmediate(resolve));
+  const clearTransaction = controlledIndexedDB.transactions[1];
+  clearTransaction.error = new Error('transaction aborted');
+  clearTransaction.onabort();
+  await assert.rejects(abortedClear, /transaction aborted/);
+
+  const failedSave = controlledHandles.save(handle);
+  await new Promise(resolve => setImmediate(resolve));
+  const failedTransaction = controlledIndexedDB.transactions[2];
+  assert.strictEqual(typeof failedTransaction.onerror, 'function');
+  failedTransaction.error = new Error('transaction failed');
+  failedTransaction.onerror();
+  await assert.rejects(failedSave, /transaction failed/);
 
   console.log('backup-file-handle-db tests passed');
 })().finally(() => {

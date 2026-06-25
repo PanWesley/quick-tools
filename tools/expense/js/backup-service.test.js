@@ -134,6 +134,9 @@ async function testMetadataAndDownloads() {
   });
   assert.strictEqual(settings.get('backupMeta').newExpenseCount, 0);
   assert.strictEqual(settings.get('backupMeta').lastBackupExpenseCount, 2);
+
+  await service.markBackupSuccessful(7);
+  assert.strictEqual(settings.get('backupMeta').lastBackupExpenseCount, 7);
 }
 
 async function testDownloadText() {
@@ -199,7 +202,14 @@ async function testAutomaticBackupSuccess() {
   });
 
   const result = await harness.service.chooseAutomaticBackupFile();
-  assert.deepStrictEqual(result, { ok: true, status: 'ready' });
+  assert.deepStrictEqual(result, {
+    supported: true,
+    handle,
+    ok: true,
+    status: 'ready'
+  });
+  const task7CompatibleHandle = result.supported ? result.handle : null;
+  assert.strictEqual(task7CompatibleHandle, handle);
   assert.strictEqual(harness.savedHandles[0], handle);
   assert.strictEqual(writes.length, 1);
   assert.strictEqual(closed, 1);
@@ -215,7 +225,7 @@ async function testAutomaticBackupFallbacks() {
   const unsupported = createHarness();
   assert.deepStrictEqual(
     await unsupported.service.chooseAutomaticBackupFile(),
-    { ok: false, status: 'unsupported' }
+    { supported: false }
   );
   assert.strictEqual(
     unsupported.settings.get('backupMeta').automaticFileStatus,
