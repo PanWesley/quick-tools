@@ -83,6 +83,115 @@
       </div>`;
   }
 
+  function createModalManager(options = {}) {
+    const documentRef = options.document;
+    const backgroundSelector = options.backgroundSelector || 'main, header, nav';
+    let active = null;
+
+    function getFocusables(modal) {
+      if (!modal || typeof modal.querySelectorAll !== 'function') return [];
+      const candidates = Array.from(modal.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), '
+        + 'textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+      ));
+      return candidates.filter(candidate => {
+        if (candidate.hidden || candidate.disabled) return false;
+        if (typeof candidate.getClientRects === 'function') {
+          return candidate.getClientRects().length > 0;
+        }
+        return true;
+      });
+    }
+
+    function restoreBackground(records) {
+      records.forEach(record => {
+        record.element.inert = record.inert;
+        if (record.ariaHidden === null) {
+          record.element.removeAttribute('aria-hidden');
+        } else {
+          record.element.setAttribute('aria-hidden', record.ariaHidden);
+        }
+      });
+    }
+
+    function close() {
+      if (!active) return;
+      const current = active;
+      active = null;
+      current.modal.style.display = 'none';
+      restoreBackground(current.background);
+      if (current.previousFocus
+        && typeof current.previousFocus.focus === 'function') {
+        current.previousFocus.focus();
+      }
+    }
+
+    function open(config = {}) {
+      if (!config.modal) return;
+      if (active) close();
+      const background = documentRef
+        && typeof documentRef.querySelectorAll === 'function'
+        ? Array.from(documentRef.querySelectorAll(backgroundSelector)).map(element => ({
+          element,
+          inert: Boolean(element.inert),
+          ariaHidden: element.getAttribute('aria-hidden')
+        }))
+        : [];
+      background.forEach(record => {
+        record.element.inert = true;
+        record.element.setAttribute('aria-hidden', 'true');
+      });
+      active = {
+        modal: config.modal,
+        close: config.close,
+        previousFocus: documentRef && documentRef.activeElement,
+        background
+      };
+      config.modal.style.display = 'flex';
+      const firstControl = getFocusables(config.modal)[0];
+      if (firstControl && typeof firstControl.focus === 'function') {
+        firstControl.focus();
+      } else if (typeof config.modal.focus === 'function') {
+        config.modal.focus();
+      }
+    }
+
+    function handleKeydown(event) {
+      if (!active) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (typeof active.close === 'function') {
+          active.close();
+        } else {
+          close();
+        }
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusables = getFocusables(active.modal);
+      if (focusables.length === 0) {
+        event.preventDefault();
+        if (typeof active.modal.focus === 'function') active.modal.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && documentRef.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && documentRef.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    if (documentRef && typeof documentRef.addEventListener === 'function') {
+      documentRef.addEventListener('keydown', handleKeydown);
+    }
+
+    return { open, close, handleKeydown };
+  }
+
   function createBackupUI(options = {}) {
     const documentRef = options.document || (root && root.document);
     const service = options.service || (root && root.ExpenseBackupService);
@@ -113,17 +222,14 @@
     let inspectedBackup = null;
     let restoring = false;
     let encrypting = false;
-    let previousFocus = null;
+    const modalManager = options.modalManager || createModalManager({
+      document: documentRef
+    });
 
     function element(id) {
       return documentRef && typeof documentRef.getElementById === 'function'
         ? documentRef.getElementById(id)
         : null;
-    }
-
-    function setModalVisible(id, visible) {
-      const modal = element(id);
-      if (modal) modal.style.display = visible ? 'flex' : 'none';
     }
 
     function setRestoreButtonsDisabled(disabled) {
@@ -217,9 +323,8 @@
       if (!file) return;
       selectedRestoreFile = file;
       inspectedBackup = null;
-      previousFocus = documentRef && documentRef.activeElement;
-      setModalVisible('backup-restore-modal', true);
-      const dialog = element('backup-restore-dialog');
+      const modal = element('backup-restore-modal');
+      modalManager.open({ modal, close: closeRestore });
       const summary = element('backup-restore-summary');
       const passwordArea = element('backup-password-area');
       const actions = element('backup-restore-actions');
@@ -227,7 +332,6 @@
       if (passwordArea) passwordArea.hidden = true;
       if (actions) actions.hidden = true;
       setRestoreButtonsDisabled(false);
-      if (dialog) dialog.focus();
       try {
         const result = await service.inspectBackupFile(file);
         if (result.requiresPassword) {
@@ -287,7 +391,7 @@
     }
 
     function closeRestore() {
-      setModalVisible('backup-restore-modal', false);
+      modalManager.close();
       const password = element('backup-restore-password');
       const summary = element('backup-restore-summary');
       const actions = element('backup-restore-actions');
@@ -298,8 +402,6 @@
       if (passwordArea) passwordArea.hidden = true;
       selectedRestoreFile = null;
       inspectedBackup = null;
-      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
-      previousFocus = null;
     }
 
     async function snooze() {
@@ -331,27 +433,26 @@
     }
 
     function openEncryptedBackup() {
-      previousFocus = documentRef && documentRef.activeElement;
       const password = element('backup-encrypted-password');
       const confirmation = element('backup-encrypted-confirm');
       const error = element('backup-encrypted-error');
       if (password) password.value = '';
       if (confirmation) confirmation.value = '';
       if (error) error.textContent = '';
-      setModalVisible('backup-encrypted-modal', true);
-      if (password) password.focus();
+      modalManager.open({
+        modal: element('backup-encrypted-modal'),
+        close: closeEncryptedBackup
+      });
     }
 
     function closeEncryptedBackup() {
-      setModalVisible('backup-encrypted-modal', false);
+      modalManager.close();
       const password = element('backup-encrypted-password');
       const confirmation = element('backup-encrypted-confirm');
       const error = element('backup-encrypted-error');
       if (password) password.value = '';
       if (confirmation) confirmation.value = '';
       if (error) error.textContent = '';
-      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
-      previousFocus = null;
     }
 
     async function createEncryptedBackup() {
@@ -421,6 +522,7 @@
     chooseDashboardReminder,
     renderReminderHtml,
     renderRestoreSummaryHtml,
+    createModalManager,
     createBackupUI
   };
 });

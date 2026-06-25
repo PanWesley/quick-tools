@@ -582,7 +582,8 @@
   <div class="modal-card modal-small" id="backup-restore-dialog" tabindex="-1">
     <div class="modal-header">
       <h3 id="backup-restore-title">恢复备份</h3>
-      <button class="btn-close" type="button" onclick="ExpenseBackupUI.closeRestore()" aria-label="关闭恢复备份">✕</button>
+      <button class="btn-close" id="backup-restore-close" type="button"
+        onclick="ExpenseBackupUI.closeRestore()" aria-label="关闭恢复备份">✕</button>
     </div>
     <div class="modal-body">
       <div class="backup-password-area" id="backup-password-area" hidden>
@@ -604,10 +605,11 @@
 <!-- Encrypted Backup Modal -->
 <div class="modal-overlay" id="backup-encrypted-modal" style="display:none;" role="dialog"
   aria-modal="true" aria-labelledby="backup-encrypted-title">
-  <div class="modal-card modal-small">
+  <div class="modal-card modal-small" tabindex="-1">
     <div class="modal-header">
       <h3 id="backup-encrypted-title">创建加密备份</h3>
-      <button class="btn-close" type="button" onclick="ExpenseBackupUI.closeEncryptedBackup()" aria-label="关闭加密备份">✕</button>
+      <button class="btn-close" id="backup-encrypted-close" type="button"
+        onclick="ExpenseBackupUI.closeEncryptedBackup()" aria-label="关闭加密备份">✕</button>
     </div>
     <div class="modal-body">
       <p class="safety-warning">密码无法找回。忘记密码后，此备份将无法恢复。</p>

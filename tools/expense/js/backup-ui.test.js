@@ -6,11 +6,12 @@ const {
   chooseDashboardReminder,
   renderReminderHtml,
   renderRestoreSummaryHtml,
+  createModalManager,
   createBackupUI
 } = require('./backup-ui');
 
 function createElement() {
-  return {
+  const value = {
     textContent: '',
     innerHTML: '',
     hidden: false,
@@ -25,6 +26,14 @@ function createElement() {
     setAttribute(name, value) {
       this.attributes[name] = String(value);
     },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name)
+        ? this.attributes[name]
+        : null;
+    },
+    removeAttribute(name) {
+      delete this.attributes[name];
+    },
     addEventListener(name, handler) {
       this.listeners[name] = handler;
     },
@@ -33,8 +42,37 @@ function createElement() {
     },
     focus() {
       this.focusCount += 1;
+      if (this.ownerDocument) this.ownerDocument.activeElement = this;
     }
   };
+  return value;
+}
+
+function createModalManagerHarness() {
+  const listeners = {};
+  const background = [createElement(), createElement(), createElement()];
+  background[1].setAttribute('aria-hidden', 'false');
+  const previous = createElement();
+  const first = createElement();
+  const middle = createElement();
+  const last = createElement();
+  const modal = createElement();
+  modal.style.display = 'none';
+  modal.querySelectorAll = () => [first, middle, last];
+  const document = {
+    activeElement: previous,
+    addEventListener(name, handler) {
+      listeners[name] = handler;
+    },
+    querySelectorAll(selector) {
+      assert.strictEqual(selector, 'main, header, nav');
+      return background;
+    }
+  };
+  [previous, first, middle, last, modal, ...background].forEach(item => {
+    item.ownerDocument = document;
+  });
+  return { document, listeners, background, previous, first, middle, last, modal };
 }
 
 function createHarness(overrides = {}) {
@@ -47,6 +85,7 @@ function createHarness(overrides = {}) {
     'backup-restore-input',
     'backup-restore-modal',
     'backup-restore-dialog',
+    'backup-restore-close',
     'backup-password-area',
     'backup-restore-password',
     'backup-restore-summary',
@@ -54,6 +93,7 @@ function createHarness(overrides = {}) {
     'backup-restore-merge',
     'backup-restore-replace',
     'backup-encrypted-modal',
+    'backup-encrypted-close',
     'backup-encrypted-password',
     'backup-encrypted-confirm',
     'backup-encrypted-error',
@@ -64,12 +104,38 @@ function createHarness(overrides = {}) {
   elements['dashboard-attention'].hidden = true;
   elements['backup-password-area'].hidden = true;
   elements['backup-restore-actions'].hidden = true;
+  const background = [createElement(), createElement(), createElement()];
 
   const document = {
+    activeElement: createElement(),
+    addEventListener() {},
     getElementById(id) {
       return elements[id] || null;
+    },
+    querySelectorAll(selector) {
+      assert.strictEqual(selector, 'main, header, nav');
+      return background;
     }
   };
+  Object.values(elements).forEach(item => {
+    item.ownerDocument = document;
+  });
+  background.forEach(item => {
+    item.ownerDocument = document;
+  });
+  document.activeElement.ownerDocument = document;
+  elements['backup-restore-modal'].querySelectorAll = () => [
+    elements['backup-restore-close'],
+    elements['backup-restore-password'],
+    elements['backup-restore-merge'],
+    elements['backup-restore-replace']
+  ];
+  elements['backup-encrypted-modal'].querySelectorAll = () => [
+    elements['backup-encrypted-close'],
+    elements['backup-encrypted-password'],
+    elements['backup-encrypted-confirm'],
+    elements['backup-encrypted-submit']
+  ];
   const toasts = [];
   const calls = [];
   const service = {
@@ -136,10 +202,64 @@ function createHarness(overrides = {}) {
       calls.push('dashboard');
     }
   });
-  return { ui, elements, toasts, calls, service };
+  return { ui, elements, background, document, toasts, calls, service };
 }
 
 async function run() {
+  const modalHarness = createModalManagerHarness();
+  let closedByEscape = 0;
+  const modalManager = createModalManager({
+    document: modalHarness.document
+  });
+  modalManager.open({
+    modal: modalHarness.modal,
+    close() {
+      closedByEscape += 1;
+      modalManager.close();
+    }
+  });
+  assert.strictEqual(modalHarness.modal.style.display, 'flex');
+  assert.strictEqual(modalHarness.document.activeElement, modalHarness.first);
+  modalHarness.background.forEach(item => {
+    assert.strictEqual(item.inert, true);
+    assert.strictEqual(item.getAttribute('aria-hidden'), 'true');
+  });
+
+  modalHarness.document.activeElement = modalHarness.last;
+  let tabPrevented = false;
+  modalHarness.listeners.keydown({
+    key: 'Tab',
+    shiftKey: false,
+    preventDefault() {
+      tabPrevented = true;
+    }
+  });
+  assert.strictEqual(tabPrevented, true);
+  assert.strictEqual(modalHarness.document.activeElement, modalHarness.first);
+
+  modalHarness.document.activeElement = modalHarness.first;
+  let shiftTabPrevented = false;
+  modalHarness.listeners.keydown({
+    key: 'Tab',
+    shiftKey: true,
+    preventDefault() {
+      shiftTabPrevented = true;
+    }
+  });
+  assert.strictEqual(shiftTabPrevented, true);
+  assert.strictEqual(modalHarness.document.activeElement, modalHarness.last);
+
+  modalHarness.listeners.keydown({
+    key: 'Escape',
+    preventDefault() {}
+  });
+  assert.strictEqual(closedByEscape, 1);
+  assert.strictEqual(modalHarness.modal.style.display, 'none');
+  assert.strictEqual(modalHarness.document.activeElement, modalHarness.previous);
+  assert.strictEqual(modalHarness.background[0].inert, false);
+  assert.strictEqual(modalHarness.background[0].getAttribute('aria-hidden'), null);
+  assert.strictEqual(modalHarness.background[1].getAttribute('aria-hidden'), 'false');
+
   assert.strictEqual(
     escapeHtml('<img src=x onerror="alert(1)">'),
     '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;'
@@ -229,7 +349,8 @@ async function run() {
   assert.strictEqual(harness.elements['backup-restore-input'].clickCount, 1);
   await harness.ui.handleRestoreFile({ name: 'plain.json', text: async () => '{}' });
   assert.strictEqual(harness.elements['backup-restore-modal'].style.display, 'flex');
-  assert.strictEqual(harness.elements['backup-restore-dialog'].focusCount, 1);
+  assert.strictEqual(harness.elements['backup-restore-close'].focusCount, 1);
+  harness.background.forEach(item => assert.strictEqual(item.inert, true));
   assert.strictEqual(harness.elements['backup-restore-actions'].hidden, false);
   assert.ok(!harness.elements['backup-restore-summary'].innerHTML.includes('<img'));
 
@@ -243,10 +364,11 @@ async function run() {
   assert.ok(harness.calls.includes('dashboard'));
   assert.ok(harness.toasts.includes('备份已合并；数据已恢复，但备份状态未能更新'));
   assert.ok(!harness.toasts.some(message => message.includes('metadata unavailable')));
+  harness.background.forEach(item => assert.strictEqual(item.inert, false));
 
   harness.ui.openEncryptedBackup();
   assert.strictEqual(harness.elements['backup-encrypted-modal'].style.display, 'flex');
-  assert.strictEqual(harness.elements['backup-encrypted-password'].focusCount, 1);
+  assert.strictEqual(harness.elements['backup-encrypted-close'].focusCount, 1);
   harness.elements['backup-encrypted-password'].value = 'secret';
   harness.elements['backup-encrypted-confirm'].value = 'different';
   await harness.ui.createEncryptedBackup();
