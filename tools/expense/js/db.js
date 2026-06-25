@@ -64,11 +64,6 @@ function requireTagGroupRepairPlanner(planner) {
   return planner;
 }
 
-function applyTagUpdates(tags, tagsToUpdate) {
-  const updatesById = new Map(tagsToUpdate.map(tag => [tag.id, tag]));
-  return tags.map(tag => updatesById.get(tag.id) || tag);
-}
-
 function prepareReplacementSnapshot(
   snapshot,
   planner,
@@ -267,10 +262,12 @@ async function repairTagGroupIntegrity() {
     return;
   }
 
-  const plan = planner(tags, groups, DEFAULT_TAG_GROUPS, {
-    defaultTagParentId: 'group-category',
-    fallbackGroupId: 'group-uncategorized'
-  });
+  const plan = planner(
+    tags,
+    groups,
+    DEFAULT_TAG_GROUPS,
+    DEFAULT_REPAIR_OPTIONS
+  );
 
   if (plan.groupsToAdd.length === 0 && plan.tagsToUpdate.length === 0) {
     return;

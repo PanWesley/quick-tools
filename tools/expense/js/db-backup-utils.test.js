@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const {
   normalizeDatabaseSnapshot,
   mapSnapshotRecordsToStores,
@@ -28,6 +30,15 @@ const repairOptions = {
 
 assert.ok(DEFAULT_TAG_GROUPS.length >= 5);
 assert.deepStrictEqual(DEFAULT_REPAIR_OPTIONS, repairOptions);
+
+const dbSource = fs.readFileSync(path.join(__dirname, 'db.js'), 'utf8');
+const repairFunctionSource = dbSource.match(
+  /async function repairTagGroupIntegrity\(\) \{[\s\S]*?\n\}/
+);
+assert.ok(repairFunctionSource);
+assert.match(repairFunctionSource[0], /DEFAULT_REPAIR_OPTIONS/);
+assert.doesNotMatch(repairFunctionSource[0], /defaultTagParentId|fallbackGroupId/);
+assert.doesNotMatch(dbSource, /function applyTagUpdates\(/);
 
 const replacement = prepareReplacementSnapshot({
   expenses: [{ id: 'expense-1' }],
