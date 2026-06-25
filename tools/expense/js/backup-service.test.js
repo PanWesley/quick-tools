@@ -125,10 +125,19 @@ function createRestoreHarness(options = {}) {
   const replaceCalls = [];
   const mergePlans = [];
   const metadataWrites = [];
+  const mergeExpected = Object.prototype.hasOwnProperty.call(
+    options,
+    'prepareMergeExpected'
+  )
+    ? options.prepareMergeExpected
+    : (current, plan) => ({
+      tags: [...current.tags, ...plan.tagsToAdd],
+      tagGroups: [...current.tagGroups, ...plan.tagGroupsToAdd]
+    });
   const service = createExpenseBackupService({
     backupUtils,
     backupCrypto,
-    prepareMergeExpected: options.prepareMergeExpected,
+    prepareMergeExpected: mergeExpected,
     async createDatabaseSnapshot() {
       snapshotCalls += 1;
       if (typeof options.onSnapshot === 'function') {
@@ -354,6 +363,18 @@ async function testRestoreBackup() {
     conflictCount: 1,
     newExpenseCount: 1
   });
+
+  const missingIntegrityDependency = createRestoreHarness({
+    current,
+    prepareMergeExpected: null
+  });
+  await assert.rejects(
+    missingIntegrityDependency.service.restoreBackup(mergeIncoming, 'merge'),
+    /备份完整性依赖未加载/
+  );
+  assert.deepStrictEqual(missingIntegrityDependency.getState(), current);
+  assert.strictEqual(missingIntegrityDependency.mergePlans.length, 0);
+  assert.strictEqual(missingIntegrityDependency.replaceCalls.length, 0);
 
   const sharedIdCurrent = createValidBackup({
     expenses: [{ id: 'shared-id', date: '2026-06-24', amount: 10 }],

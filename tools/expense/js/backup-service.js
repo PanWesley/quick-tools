@@ -398,6 +398,10 @@
         && typeof deps.applyBackupMergePlan !== 'function') {
         throw new Error('applyBackupMergePlan is not available');
       }
+      if (mode === 'merge'
+        && typeof deps.prepareMergeExpected !== 'function') {
+        throw new Error('备份完整性依赖未加载');
+      }
       if (typeof deps.backupUtils.planBackupMerge !== 'function'
         || typeof deps.backupUtils.createRestoreSummary !== 'function') {
         throw new Error('ExpenseBackupUtils restore helpers are not available');
@@ -412,7 +416,6 @@
         ? deps.backupUtils.planBackupMerge(safetySnapshot, backup)
         : null;
       const mergeTagIntegrity = mode === 'merge'
-        && typeof deps.prepareMergeExpected === 'function'
         ? deps.prepareMergeExpected(safetySnapshot, mergePlan)
         : null;
       let restoredSnapshot;
