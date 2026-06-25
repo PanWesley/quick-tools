@@ -61,13 +61,26 @@
       </div>`;
   }
 
-  function formatBackupDate(value) {
-    const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) return '未知日期';
-    return new Date(parsed).toISOString().slice(0, 16).replace('T', ' ');
+  function defaultDateFormatter(date) {
+    const parts = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}`;
   }
 
-  function renderRestoreSummaryHtml(result = {}) {
+  function formatBackupDate(value, formatter = defaultDateFormatter) {
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) return '未知日期';
+    return formatter(new Date(parsed));
+  }
+
+  function renderRestoreSummaryHtml(result = {}, dateFormatter) {
     const backup = result.backup || {};
     const summary = result.summary || {};
     const version = backup.appVersion
@@ -75,7 +88,7 @@
       : '';
     return `
       <div class="restore-summary">
-        <strong>备份时间 ${escapeHtml(formatBackupDate(backup.exportedAt))}</strong>
+        <strong>备份时间 ${escapeHtml(formatBackupDate(backup.exportedAt, dateFormatter))}</strong>
         ${version}
         <span>${safeCount(summary.expenseCount)} 笔账单 · ${safeCount(summary.tagCount)} 个标签</span>
         <span>${safeCount(summary.newExpenseCount)} 笔新增 · ${safeCount(summary.conflictCount)} 项冲突</span>
@@ -196,6 +209,7 @@
     const documentRef = options.document || (root && root.document);
     const service = options.service || (root && root.ExpenseBackupService);
     const now = options.now || (() => new Date());
+    const dateFormatter = options.dateFormatter;
     const toast = options.toast || (message => {
       if (root && typeof root.showToast === 'function') root.showToast(message);
     });
@@ -313,7 +327,7 @@
       const summary = element('backup-restore-summary');
       const actions = element('backup-restore-actions');
       const passwordArea = element('backup-password-area');
-      if (summary) summary.innerHTML = renderRestoreSummaryHtml(result);
+      if (summary) summary.innerHTML = renderRestoreSummaryHtml(result, dateFormatter);
       if (passwordArea) passwordArea.hidden = true;
       if (actions) actions.hidden = false;
       setRestoreButtonsDisabled(false);
@@ -519,6 +533,7 @@
   return {
     escapeHtml,
     formatRelativeStatus,
+    formatBackupDate,
     chooseDashboardReminder,
     renderReminderHtml,
     renderRestoreSummaryHtml,

@@ -3,6 +3,7 @@ const assert = require('assert');
 const {
   escapeHtml,
   formatRelativeStatus,
+  formatBackupDate,
   chooseDashboardReminder,
   renderReminderHtml,
   renderRestoreSummaryHtml,
@@ -206,6 +207,17 @@ function createHarness(overrides = {}) {
 }
 
 async function run() {
+  let formattedDate = null;
+  assert.strictEqual(
+    formatBackupDate('2026-06-23T12:30:00.000Z', date => {
+      formattedDate = date;
+      return '2026-06-23 20:30';
+    }),
+    '2026-06-23 20:30'
+  );
+  assert.ok(formattedDate instanceof Date);
+  assert.strictEqual(formattedDate.toISOString(), '2026-06-23T12:30:00.000Z');
+
   const modalHarness = createModalManagerHarness();
   let closedByEscape = 0;
   const modalManager = createModalManager({
@@ -314,8 +326,8 @@ async function run() {
       newExpenseCount: 3,
       conflictCount: 1
     }
-  });
-  assert.ok(summaryHtml.includes('2026-06-23 12:30'));
+  }, () => '2026-06-23 20:30');
+  assert.ok(summaryHtml.includes('2026-06-23 20:30'));
   assert.ok(summaryHtml.includes('4 笔账单'));
   assert.ok(summaryHtml.includes('2 个标签'));
   assert.ok(summaryHtml.includes('3 笔新增'));
