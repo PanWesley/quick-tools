@@ -7,6 +7,16 @@
       createDatabaseSnapshot: root.createDatabaseSnapshot,
       replaceDatabaseSnapshot: root.replaceDatabaseSnapshot,
       applyBackupMergePlan: root.applyBackupMergePlan,
+      prepareMergeExpected: root.ExpenseDBBackupUtils
+        && typeof root.ExpenseDBBackupUtils.prepareMergeExpected === 'function'
+        && root.TagManagementUtils
+        && typeof root.TagManagementUtils.planTagGroupRepair === 'function'
+        ? (current, plan) => root.ExpenseDBBackupUtils.prepareMergeExpected(
+          current,
+          plan,
+          root.TagManagementUtils.planTagGroupRepair
+        )
+        : null,
       backupUtils: root.ExpenseBackupUtils,
       backupCrypto: root.ExpenseBackupCrypto,
       getSettings: root.getSettings,
@@ -401,6 +411,10 @@
       const mergePlan = mode === 'merge'
         ? deps.backupUtils.planBackupMerge(safetySnapshot, backup)
         : null;
+      const mergeTagIntegrity = mode === 'merge'
+        && typeof deps.prepareMergeExpected === 'function'
+        ? deps.prepareMergeExpected(safetySnapshot, mergePlan)
+        : null;
       let restoredSnapshot;
 
       try {
@@ -436,22 +450,14 @@
                 ...safetySnapshot.expenses,
                 ...mergePlan.expensesToAdd
               ],
-              tags: [
-                ...safetySnapshot.tags,
-                ...mergePlan.tagsToAdd
-              ],
-              tagGroups: [
-                ...safetySnapshot.tagGroups,
-                ...mergePlan.tagGroupsToAdd
-              ],
+              tags: mergeTagIntegrity
+                ? mergeTagIntegrity.tags
+                : [...safetySnapshot.tags, ...mergePlan.tagsToAdd],
+              tagGroups: mergeTagIntegrity
+                ? mergeTagIntegrity.tagGroups
+                : [...safetySnapshot.tagGroups, ...mergePlan.tagGroupsToAdd],
               settings: safetySnapshot.settings
             },
-            allowExtraCollections: [
-              'expenses',
-              'tags',
-              'tagGroups',
-              'settings'
-            ],
             conflicts: mergePlan.conflicts
           });
       } catch (error) {

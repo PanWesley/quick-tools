@@ -8,6 +8,7 @@ const {
   transactionComplete
 } = require('./db');
 const { planTagGroupRepair } = require('./tag-management-utils');
+const { prepareMergedTagIntegrity } = require('./db-backup-utils');
 
 const defaultGroups = [
   { id: 'group-category', name: 'Category' },
@@ -69,6 +70,39 @@ assert.deepStrictEqual(mergeRecords.tags, [
     parentId: 'group-category'
   }
 ]);
+
+assert.deepStrictEqual(
+  prepareMergedTagIntegrity({
+    currentTags: [
+      { id: 'tag-existing', name: 'Existing', parentId: 'deleted-group' }
+    ],
+    currentTagGroups: [
+      { id: 'group-category', name: 'Category' }
+    ],
+    tagsToAdd: [
+      { id: 'tag-new', name: 'New' }
+    ],
+    tagGroupsToAdd: []
+  }, planTagGroupRepair, defaultGroups, repairOptions),
+  {
+    tags: [
+      {
+        id: 'tag-existing',
+        name: 'Existing',
+        parentId: 'group-uncategorized'
+      },
+      {
+        id: 'tag-new',
+        name: 'New',
+        parentId: 'group-category'
+      }
+    ],
+    tagGroups: [
+      { id: 'group-category', name: 'Category' },
+      { id: 'group-uncategorized', name: 'Uncategorized' }
+    ]
+  }
+);
 
 function createFakeTransaction(storeDefinitions, abortError) {
   const calls = [];

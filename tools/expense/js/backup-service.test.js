@@ -9,6 +9,10 @@ delete globalThis.ExpenseBackupService;
 const { createExpenseBackupService, DEFAULT_BACKUP_META } = require('./backup-service');
 const backupUtils = require('./backup-utils');
 const backupCrypto = require('./backup-crypto');
+const {
+  prepareMergeExpected
+} = require('./db-backup-utils');
+const { planTagGroupRepair } = require('./tag-management-utils');
 
 assert.strictEqual(
   Object.prototype.hasOwnProperty.call(globalThis, 'ExpenseBackupService'),
@@ -124,6 +128,7 @@ function createRestoreHarness(options = {}) {
   const service = createExpenseBackupService({
     backupUtils,
     backupCrypto,
+    prepareMergeExpected: options.prepareMergeExpected,
     async createDatabaseSnapshot() {
       snapshotCalls += 1;
       if (typeof options.onSnapshot === 'function') {
@@ -433,6 +438,116 @@ async function testRestoreBackup() {
   );
   assert.deepStrictEqual(originalContentFailure.getState(), current);
   assert.strictEqual(originalContentFailure.replaceCalls.length, 1);
+
+  const rogueExpenseFailure = createRestoreHarness({
+    current,
+    async onMerge({ plan, state, setState }) {
+      setState({
+        ...state,
+        expenses: [
+          ...state.expenses,
+          ...plan.expensesToAdd,
+          { id: 'rogue-expense', date: '2026-06-25', amount: 999 }
+        ],
+        tags: [...state.tags, ...plan.tagsToAdd],
+        tagGroups: [...state.tagGroups, ...plan.tagGroupsToAdd]
+      });
+    }
+  });
+  await assert.rejects(
+    rogueExpenseFailure.service.restoreBackup(noConflictIncoming, 'merge'),
+    /expenses.*content/i
+  );
+  assert.deepStrictEqual(rogueExpenseFailure.getState(), current);
+  assert.strictEqual(rogueExpenseFailure.replaceCalls.length, 1);
+
+  const rogueTagGroupFailure = createRestoreHarness({
+    current,
+    async onMerge({ plan, state, setState }) {
+      setState({
+        ...state,
+        expenses: [...state.expenses, ...plan.expensesToAdd],
+        tags: [
+          ...state.tags,
+          ...plan.tagsToAdd,
+          { id: 'rogue-tag', name: 'Rogue', parentId: 'rogue-group' }
+        ],
+        tagGroups: [
+          ...state.tagGroups,
+          ...plan.tagGroupsToAdd,
+          { id: 'rogue-group', name: 'Rogue group' }
+        ]
+      });
+    }
+  });
+  await assert.rejects(
+    rogueTagGroupFailure.service.restoreBackup(noConflictIncoming, 'merge'),
+    /tags.*content|tagGroups.*content/i
+  );
+  assert.deepStrictEqual(rogueTagGroupFailure.getState(), current);
+  assert.strictEqual(rogueTagGroupFailure.replaceCalls.length, 1);
+
+  const repairCurrent = createValidBackup({
+    expenses: [],
+    tags: [{
+      id: 'existing-invalid',
+      name: 'Existing invalid',
+      parentId: 'deleted-group'
+    }],
+    tagGroups: [{ id: 'group-category', name: 'Category' }],
+    settings: [{ key: 'currency', value: 'CNY' }]
+  });
+  const repairIncoming = createValidBackup({
+    expenses: [],
+    tags: [{ id: 'new-missing-parent', name: 'New missing parent' }],
+    tagGroups: [],
+    settings: []
+  });
+  const repairHarness = createRestoreHarness({
+    current: repairCurrent,
+    prepareMergeExpected(currentSnapshot, plan) {
+      return prepareMergeExpected(currentSnapshot, plan, planTagGroupRepair);
+    },
+    async onMerge({ plan, state, setState }) {
+      const repaired = prepareMergeExpected(state, plan, planTagGroupRepair);
+      setState({
+        ...state,
+        expenses: [...state.expenses, ...plan.expensesToAdd],
+        tags: repaired.tags,
+        tagGroups: repaired.tagGroups
+      });
+    }
+  });
+  const repairResult = await repairHarness.service.restoreBackup(
+    repairIncoming,
+    'merge'
+  );
+  assert.strictEqual(repairResult.restored, true);
+  assert.strictEqual(repairHarness.replaceCalls.length, 0);
+  assert.deepStrictEqual(repairHarness.getState().tags, [
+    {
+      id: 'existing-invalid',
+      name: 'Existing invalid',
+      parentId: 'group-uncategorized'
+    },
+    {
+      id: 'new-missing-parent',
+      name: 'New missing parent',
+      parentId: 'group-category'
+    }
+  ]);
+  assert.deepStrictEqual(repairHarness.getState().tagGroups, [
+    { id: 'group-category', name: 'Category' },
+    { id: 'group-payment', name: '支付方式', color: '#3498db', order: 0 },
+    { id: 'group-person', name: '人员', color: '#e91e63', order: 1 },
+    { id: 'group-channel', name: '渠道', color: '#9b59b6', order: 3 },
+    {
+      id: 'group-uncategorized',
+      name: '未分类',
+      color: '#95a5a6',
+      order: 99
+    }
+  ]);
 
   const writeFailure = createRestoreHarness({
     current,
