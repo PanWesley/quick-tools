@@ -2,8 +2,73 @@ const assert = require('assert');
 const {
   normalizeDatabaseSnapshot,
   mapSnapshotRecordsToStores,
-  queueTransactionWrites
+  queueTransactionWrites,
+  prepareReplacementSnapshot,
+  prepareMergeTransactionRecords,
+  transactionComplete
 } = require('./db');
+const { planTagGroupRepair } = require('./tag-management-utils');
+
+const defaultGroups = [
+  { id: 'group-category', name: 'Category' },
+  { id: 'group-uncategorized', name: 'Uncategorized' }
+];
+const repairOptions = {
+  defaultTagParentId: 'group-category',
+  fallbackGroupId: 'group-uncategorized'
+};
+
+const replacement = prepareReplacementSnapshot({
+  expenses: [{ id: 'expense-1' }],
+  tags: [
+    { id: 'tag-missing-parent', name: 'Missing parent' },
+    { id: 'tag-invalid-parent', name: 'Invalid parent', parentId: 'deleted-group' }
+  ],
+  settings: [],
+  tagGroups: []
+}, planTagGroupRepair, defaultGroups, repairOptions);
+
+assert.deepStrictEqual(replacement.tagGroups, defaultGroups);
+assert.deepStrictEqual(replacement.tags, [
+  { id: 'tag-missing-parent', name: 'Missing parent', parentId: 'group-category' },
+  {
+    id: 'tag-invalid-parent',
+    name: 'Invalid parent',
+    parentId: 'group-uncategorized'
+  }
+]);
+
+const mergeRecords = prepareMergeTransactionRecords({
+  currentTags: [
+    { id: 'tag-existing', name: 'Existing', parentId: 'deleted-group' }
+  ],
+  currentTagGroups: [
+    { id: 'group-category', name: 'Category' }
+  ],
+  expensesToAdd: [{ id: 'expense-new' }],
+  tagsToAdd: [
+    { id: 'tag-new', name: 'New' }
+  ],
+  tagGroupsToAdd: []
+}, planTagGroupRepair, defaultGroups, repairOptions);
+
+assert.deepStrictEqual(mergeRecords.expenses, [{ id: 'expense-new' }]);
+assert.deepStrictEqual(mergeRecords.tagGroups, [
+  { id: 'group-uncategorized', name: 'Uncategorized' }
+]);
+assert.deepStrictEqual(mergeRecords.tags, [
+  { id: 'tag-new', name: 'New' },
+  {
+    id: 'tag-existing',
+    name: 'Existing',
+    parentId: 'group-uncategorized'
+  },
+  {
+    id: 'tag-new',
+    name: 'New',
+    parentId: 'group-category'
+  }
+]);
 
 function createFakeTransaction(storeDefinitions, abortError) {
   const calls = [];
@@ -115,4 +180,27 @@ assert.deepStrictEqual(
   }
 );
 
-console.log('db-backup-utils tests passed');
+(async () => {
+  const events = [];
+  const asyncAbortTx = {
+    error: new Error('late transaction error'),
+    abort() {
+      queueMicrotask(() => {
+        events.push('abort');
+        this.onabort();
+        events.push('error');
+        this.onerror();
+      });
+    }
+  };
+  const completion = transactionComplete(asyncAbortTx);
+  asyncAbortTx.abort();
+
+  await assert.rejects(completion, /Transaction aborted/);
+  assert.deepStrictEqual(events, ['abort', 'error']);
+
+  console.log('db-backup-utils tests passed');
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

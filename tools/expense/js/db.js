@@ -49,6 +49,73 @@ function mapSnapshotRecordsToStores(snapshot, storeNames) {
   }, {});
 }
 
+function requireTagGroupRepairPlanner(planner) {
+  if (typeof planner !== 'function') {
+    throw new Error('Tag group repair planner is required');
+  }
+  return planner;
+}
+
+function applyTagUpdates(tags, tagsToUpdate) {
+  const updatesById = new Map(tagsToUpdate.map(tag => [tag.id, tag]));
+  return tags.map(tag => updatesById.get(tag.id) || tag);
+}
+
+function prepareReplacementSnapshot(
+  snapshot,
+  planner,
+  defaultGroups,
+  repairOptions
+) {
+  const normalized = normalizeDatabaseSnapshot(snapshot);
+  const repairPlan = requireTagGroupRepairPlanner(planner)(
+    normalized.tags,
+    normalized.tagGroups,
+    defaultGroups,
+    repairOptions
+  );
+
+  return {
+    ...normalized,
+    tags: applyTagUpdates(normalized.tags, repairPlan.tagsToUpdate),
+    tagGroups: [...normalized.tagGroups, ...repairPlan.groupsToAdd]
+  };
+}
+
+function prepareMergeTransactionRecords(
+  input,
+  planner,
+  defaultGroups,
+  repairOptions
+) {
+  const expensesToAdd = normalizeRecordArray(input.expensesToAdd, 'expensesToAdd');
+  const tagsToAdd = normalizeRecordArray(input.tagsToAdd, 'tagsToAdd');
+  const tagGroupsToAdd = normalizeRecordArray(
+    input.tagGroupsToAdd,
+    'tagGroupsToAdd'
+  );
+  const combinedTags = [
+    ...normalizeRecordArray(input.currentTags, 'currentTags'),
+    ...tagsToAdd
+  ];
+  const combinedGroups = [
+    ...normalizeRecordArray(input.currentTagGroups, 'currentTagGroups'),
+    ...tagGroupsToAdd
+  ];
+  const repairPlan = requireTagGroupRepairPlanner(planner)(
+    combinedTags,
+    combinedGroups,
+    defaultGroups,
+    repairOptions
+  );
+
+  return {
+    expenses: expensesToAdd,
+    tags: [...tagsToAdd, ...repairPlan.tagsToUpdate],
+    tagGroups: [...tagGroupsToAdd, ...repairPlan.groupsToAdd]
+  };
+}
+
 function queueTransactionWrites(tx, recordsByStore, options = {}) {
   try {
     for (const [storeName, records] of Object.entries(recordsByStore)) {
@@ -748,10 +815,20 @@ async function createDatabaseSnapshot() {
  * @returns {Promise<void>}
  */
 async function replaceDatabaseSnapshot(snapshot) {
-  const normalized = normalizeDatabaseSnapshot(snapshot);
+  const planner = window.TagManagementUtils
+    && window.TagManagementUtils.planTagGroupRepair;
+  const prepared = prepareReplacementSnapshot(
+    snapshot,
+    planner,
+    DEFAULT_TAG_GROUPS,
+    {
+      defaultTagParentId: 'group-category',
+      fallbackGroupId: 'group-uncategorized'
+    }
+  );
   const db = await openDB();
   const stores = [STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS, STORE_TAG_GROUPS];
-  const recordsByStore = mapSnapshotRecordsToStores(normalized, {
+  const recordsByStore = mapSnapshotRecordsToStores(prepared, {
     expenses: STORE_EXPENSES,
     tags: STORE_TAGS,
     settings: STORE_SETTINGS,
@@ -762,7 +839,6 @@ async function replaceDatabaseSnapshot(snapshot) {
   queueTransactionWrites(tx, recordsByStore, { clear: true });
 
   await transactionComplete(tx);
-  await repairTagGroupIntegrity();
 }
 
 /**
@@ -775,9 +851,22 @@ async function applyBackupMergePlan(plan = {}) {
     throw new Error('Merge plan must be an object');
   }
 
-  const expensesToAdd = normalizeRecordArray(plan.expensesToAdd, 'expensesToAdd');
-  const tagsToAdd = normalizeRecordArray(plan.tagsToAdd, 'tagsToAdd');
-  const tagGroupsToAdd = normalizeRecordArray(plan.tagGroupsToAdd, 'tagGroupsToAdd');
+  const [currentTags, currentTagGroups] = await Promise.all([
+    getTags(),
+    getTagGroups()
+  ]);
+  const planner = window.TagManagementUtils
+    && window.TagManagementUtils.planTagGroupRepair;
+  const records = prepareMergeTransactionRecords({
+    currentTags,
+    currentTagGroups,
+    expensesToAdd: plan.expensesToAdd,
+    tagsToAdd: plan.tagsToAdd,
+    tagGroupsToAdd: plan.tagGroupsToAdd
+  }, planner, DEFAULT_TAG_GROUPS, {
+    defaultTagParentId: 'group-category',
+    fallbackGroupId: 'group-uncategorized'
+  });
   const db = await openDB();
   const tx = db.transaction([
     STORE_EXPENSES,
@@ -786,13 +875,12 @@ async function applyBackupMergePlan(plan = {}) {
   ], 'readwrite');
 
   queueTransactionWrites(tx, {
-    [STORE_EXPENSES]: expensesToAdd,
-    [STORE_TAGS]: tagsToAdd,
-    [STORE_TAG_GROUPS]: tagGroupsToAdd
+    [STORE_EXPENSES]: records.expenses,
+    [STORE_TAGS]: records.tags,
+    [STORE_TAG_GROUPS]: records.tagGroups
   });
 
   await transactionComplete(tx);
-  await repairTagGroupIntegrity();
 }
 
 /**
@@ -869,6 +957,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     normalizeDatabaseSnapshot,
     mapSnapshotRecordsToStores,
-    queueTransactionWrites
+    prepareReplacementSnapshot,
+    prepareMergeTransactionRecords,
+    queueTransactionWrites,
+    transactionComplete
   };
 }
