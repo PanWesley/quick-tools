@@ -89,7 +89,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         // 网络失败：回退到缓存
-        return caches.match(request);
+        return caches.match(request, { ignoreSearch: true });
       })
   );
 });

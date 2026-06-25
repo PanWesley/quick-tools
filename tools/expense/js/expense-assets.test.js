@@ -46,6 +46,11 @@ assert.match(
   serviceWorker,
   /const CACHE_NAME = 'expense-tracker-v1\.5\.7-safety3';/
 );
+assert.match(
+  serviceWorker,
+  /caches\.match\(request,\s*\{\s*ignoreSearch:\s*true\s*\}\)/,
+  'offline fallback must match versioned asset requests against unversioned precache keys'
+);
 
 assert.match(html, /id="dashboard-attention"[^>]*hidden/);
 assert.match(html, /id="backup-restore-modal"/);
