@@ -24,10 +24,15 @@ function restoreGlobals() {
 
 async function run() {
   const counts = [];
+  const listeners = {};
   let persistentRequests = 0;
+  let backupRefreshes = 0;
   globalThis.window = globalThis;
   globalThis.document = {
-    addEventListener() {},
+    hidden: false,
+    addEventListener(name, handler) {
+      listeners[name] = handler;
+    },
     querySelectorAll() {
       return [];
     },
@@ -56,9 +61,23 @@ async function run() {
       return new Promise(() => {});
     }
   };
+  globalThis.ExpenseBackupUI = {
+    async refresh() {
+      backupRefreshes += 1;
+    }
+  };
   globalThis.ExpenseBackupService = service;
   delete require.cache[appPath];
   require('./app');
+
+  assert.strictEqual(typeof listeners.visibilitychange, 'function');
+  listeners.visibilitychange();
+  await Promise.resolve();
+  assert.strictEqual(backupRefreshes, 1);
+  globalThis.document.hidden = true;
+  listeners.visibilitychange();
+  await Promise.resolve();
+  assert.strictEqual(backupRefreshes, 1);
 
   await globalThis.afterExpenseCreated(2);
   await globalThis.afterExpenseCreated();

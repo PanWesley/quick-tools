@@ -1459,6 +1459,146 @@ h1, h2 {
   flex-shrink: 0;
 }
 
+.safety-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.safety-card-main,
+.safety-card-actions,
+.attention-card,
+.attention-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.safety-card-main > .setting-info {
+  min-width: 0;
+}
+
+.safety-card-main > .btn-primary {
+  flex-shrink: 0;
+}
+
+.safety-card-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.btn-text {
+  padding: 8px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-text:hover {
+  text-decoration: underline;
+}
+
+.safety-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.safety-more[hidden] {
+  display: none;
+}
+
+.safety-storage-status {
+  flex-basis: 100%;
+}
+
+.dashboard-attention[hidden] {
+  display: none;
+}
+
+.attention-card {
+  padding: 12px 14px;
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  background: var(--primary-light);
+  margin-bottom: 14px;
+}
+
+.attention-copy {
+  min-width: 0;
+}
+
+.attention-card strong,
+.attention-card span {
+  display: block;
+}
+
+.attention-card span {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.attention-actions {
+  flex-shrink: 0;
+}
+
+.backup-password-area {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.backup-password-area[hidden],
+#backup-restore-actions[hidden] {
+  display: none;
+}
+
+.backup-password-area input,
+#backup-encrypted-modal input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.restore-summary {
+  display: grid;
+  gap: 7px;
+}
+
+.restore-summary span,
+.restore-summary small {
+  color: var(--text-secondary);
+}
+
+.safety-warning {
+  margin-top: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-light);
+}
+
+.backup-modal-error {
+  min-height: 20px;
+  margin: 4px 0 0;
+  color: var(--danger) !important;
+  font-size: 13px !important;
+}
+
 .feedback-email-text {
   color: var(--primary);
   font-weight: 600;
@@ -3062,6 +3202,27 @@ h1, h2 {
 
   .settings-group {
     padding: 16px;
+  }
+
+  .safety-card-main,
+  .attention-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .safety-card-main > .btn-primary,
+  .attention-actions {
+    width: 100%;
+  }
+
+  .attention-actions > button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .safety-more > .btn-secondary {
+    flex: 1 1 150px;
+    min-width: 0;
   }
 
   body {

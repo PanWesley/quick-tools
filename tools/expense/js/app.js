@@ -43,6 +43,12 @@ async function afterExpenseCreated(count = 1) {
 
 window.afterExpenseCreated = afterExpenseCreated;
 
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && window.ExpenseBackupUI) {
+    window.ExpenseBackupUI.refresh().catch(() => {});
+  }
+});
+
 // Expose dashboard filters globally for chart.js theme refresh
 window._dashboardFilters = {};
 
@@ -114,6 +120,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render after potential demo mode init
   await renderExpenseList();
   await refreshDashboard();
+  if (window.ExpenseBackupUI) {
+    window.ExpenseBackupUI.refresh().catch(error => {
+      console.warn('Backup status unavailable', error);
+    });
+  }
 
   // Initialize guide on first visit
   try {
@@ -135,10 +146,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (_originalSwitchView) _originalSwitchView(viewName, skipHistory);
     if (viewName === 'dashboard') {
       refreshDashboard();
+      if (window.ExpenseBackupUI) window.ExpenseBackupUI.refresh().catch(() => {});
     } else if (viewName === 'list') {
       renderExpenseList();
     } else if (viewName === 'tags') {
       loadTags();
+    } else if (viewName === 'settings' && window.ExpenseBackupUI) {
+      window.ExpenseBackupUI.refresh().catch(() => {});
     }
   };
 
@@ -381,6 +395,8 @@ async function refreshDashboard() {
   // Render hero dashboard (v1.5.0)
   renderDashboardHero();
 }
+
+window.refreshDashboard = refreshDashboard;
 
 // ============================================
 // Tag Popup / Cloud

@@ -10,7 +10,8 @@ const requiredScripts = [
   '/tools/expense/js/backup-utils.js',
   '/tools/expense/js/backup-crypto.js',
   '/tools/expense/js/backup-file-handle-db.js',
-  '/tools/expense/js/backup-service.js'
+  '/tools/expense/js/backup-service.js',
+  '/tools/expense/js/backup-ui.js'
 ];
 
 const scriptSources = [...html.matchAll(/<script\s+src="([^"]+)"/g)]
@@ -43,7 +44,20 @@ requiredScripts.forEach((source, index) => {
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.5\.7-safety2';/
+  /const CACHE_NAME = 'expense-tracker-v1\.5\.7-safety3';/
 );
+
+assert.match(html, /id="dashboard-attention"[^>]*hidden/);
+assert.match(html, /id="backup-restore-modal"/);
+assert.match(html, /id="backup-encrypted-modal"/);
+assert.match(html, /<h3>表格导入<\/h3>/);
+assert.match(
+  fs.readFileSync(path.join(expenseRoot, 'css', 'style.css'), 'utf8'),
+  /\.safety-more\[hidden\]\s*\{\s*display:\s*none/
+);
+
+const appSource = fs.readFileSync(path.join(expenseRoot, 'js', 'app.js'), 'utf8');
+assert.match(appSource, /ExpenseBackupUI\.refresh\(\)/);
+assert.match(appSource, /visibilitychange/);
 
 console.log('expense asset loading tests passed');
