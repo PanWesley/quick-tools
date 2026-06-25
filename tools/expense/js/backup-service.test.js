@@ -350,6 +350,63 @@ async function testRestoreBackup() {
     newExpenseCount: 1
   });
 
+  const sharedIdCurrent = createValidBackup({
+    expenses: [{ id: 'shared-id', date: '2026-06-24', amount: 10 }],
+    tags: [{
+      id: 'shared-id',
+      name: 'Current tag',
+      parentId: 'group-category'
+    }],
+    tagGroups: [{ id: 'group-category', name: 'Category' }],
+    settings: []
+  });
+  const sharedIdIncoming = createValidBackup({
+    expenses: [{ id: 'shared-id', date: '2026-06-24', amount: 999 }],
+    tags: [{
+      id: 'shared-id',
+      name: 'Incoming tag',
+      parentId: 'group-category'
+    }],
+    tagGroups: [{ id: 'group-category', name: 'Category' }],
+    settings: []
+  });
+  const sharedIdMerge = createRestoreHarness({ current: sharedIdCurrent });
+  const sharedIdResult = await sharedIdMerge.service.restoreBackup(
+    sharedIdIncoming,
+    'merge'
+  );
+  assert.strictEqual(sharedIdResult.restored, true);
+  assert.strictEqual(sharedIdResult.summary.conflictCount, 2);
+  assert.deepStrictEqual(sharedIdMerge.getState(), sharedIdCurrent);
+  assert.strictEqual(sharedIdMerge.replaceCalls.length, 0);
+
+  const mergeContentFailure = createRestoreHarness({
+    current,
+    async onMerge({ state, setState }) {
+      setState({
+        ...state,
+        expenses: [
+          ...state.expenses,
+          { id: 'wrong-expense', date: '2026-06-25', amount: 30 }
+        ],
+        tags: [
+          ...state.tags,
+          { id: 'wrong-tag', name: 'Wrong', parentId: 'group-category' }
+        ],
+        tagGroups: [
+          ...state.tagGroups,
+          { id: 'wrong-group', name: 'Wrong group' }
+        ]
+      });
+    }
+  });
+  await assert.rejects(
+    mergeContentFailure.service.restoreBackup(mergeIncoming, 'merge'),
+    /expenses.*content/i
+  );
+  assert.deepStrictEqual(mergeContentFailure.getState(), current);
+  assert.strictEqual(mergeContentFailure.replaceCalls.length, 1);
+
   const writeFailure = createRestoreHarness({
     current,
     async onReplace({ call, snapshot, setState }) {
@@ -387,6 +444,30 @@ async function testRestoreBackup() {
   );
   assert.deepStrictEqual(verificationFailure.getState(), current);
   assert.strictEqual(verificationFailure.replaceCalls.length, 2);
+
+  const sameCountContentFailure = createRestoreHarness({
+    current,
+    async onReplace({ snapshot, setState }) {
+      setState(snapshot);
+    },
+    async onSnapshot({ call, state }) {
+      if (call === 2) {
+        return {
+          ...state,
+          expenses: [{
+            ...state.expenses[0],
+            amount: 999
+          }]
+        };
+      }
+    }
+  });
+  await assert.rejects(
+    sameCountContentFailure.service.restoreBackup(replacement, 'replace'),
+    /expenses content/i
+  );
+  assert.deepStrictEqual(sameCountContentFailure.getState(), current);
+  assert.strictEqual(sameCountContentFailure.replaceCalls.length, 2);
 
   const rollbackFailure = createRestoreHarness({
     current,

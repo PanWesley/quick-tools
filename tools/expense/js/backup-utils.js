@@ -127,7 +127,7 @@
     return JSON.stringify(normalizeRecord(a)) === JSON.stringify(normalizeRecord(b));
   }
 
-  function additionsAndConflicts(current, incoming, fingerprint) {
+  function additionsAndConflicts(current, incoming, fingerprint, collection) {
     const currentById = new Map(
       current.filter(item => item && item.id).map(item => [item.id, item])
     );
@@ -139,7 +139,9 @@
     for (const item of incoming) {
       if (item && item.id && currentById.has(item.id)) {
         const currentItem = currentById.get(item.id);
-        if (!equalRecord(currentItem, item)) conflicts.push({ current: currentItem, incoming: item });
+        if (!equalRecord(currentItem, item)) {
+          conflicts.push({ collection, current: currentItem, incoming: item });
+        }
         continue;
       }
 
@@ -147,7 +149,7 @@
         if (incomingById.has(item.id)) {
           const firstIncoming = incomingById.get(item.id);
           if (!equalRecord(firstIncoming, item)) {
-            conflicts.push({ current: firstIncoming, incoming: item });
+            conflicts.push({ collection, current: firstIncoming, incoming: item });
           }
           continue;
         }
@@ -174,17 +176,20 @@
     const expenses = additionsAndConflicts(
       asArray(current.expenses),
       asArray(incoming.expenses),
-      createExpenseFingerprint
+      createExpenseFingerprint,
+      'expenses'
     );
     const tags = additionsAndConflicts(
       asArray(current.tags),
       asArray(incoming.tags),
-      idFingerprint
+      idFingerprint,
+      'tags'
     );
     const groups = additionsAndConflicts(
       asArray(current.tagGroups),
       asArray(incoming.tagGroups),
-      idFingerprint
+      idFingerprint,
+      'tagGroups'
     );
 
     return {

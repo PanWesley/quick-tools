@@ -244,6 +244,8 @@ assert.deepStrictEqual(mergePlan.expensesToAdd, [sameFingerprintWithNewId, newEx
 assert.deepStrictEqual(mergePlan.tagsToAdd, [{ id: 't2', name: 'New tag' }]);
 assert.deepStrictEqual(mergePlan.tagGroupsToAdd, [{ id: 'g2', name: 'New group' }]);
 assert.strictEqual(mergePlan.conflicts.length, 2);
+assert.strictEqual(mergePlan.conflicts[0].collection, 'expenses');
+assert.strictEqual(mergePlan.conflicts[1].collection, 'tags');
 assert.strictEqual(mergePlan.conflicts[0].current.note, 'Current');
 assert.strictEqual(mergePlan.conflicts[0].incoming.note, 'Backup conflict');
 
@@ -304,14 +306,15 @@ assert.deepStrictEqual(
 );
 assert.deepStrictEqual(
   duplicateIncomingPlan.conflicts.map(conflict => [
+    conflict.collection,
     conflict.current.id,
     conflict.current.note || conflict.current.name,
     conflict.incoming.note || conflict.incoming.name
   ]),
   [
-    ['e-conflict', 'First', 'Second'],
-    ['t-conflict', 'First', 'Second'],
-    ['g-conflict', 'First', 'Second']
+    ['expenses', 'e-conflict', 'First', 'Second'],
+    ['tags', 't-conflict', 'First', 'Second'],
+    ['tagGroups', 'g-conflict', 'First', 'Second']
   ]
 );
 

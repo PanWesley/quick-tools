@@ -55,6 +55,64 @@
       === JSON.stringify(normalizedRecord(right));
   }
 
+  function stableSerialize(value) {
+    return JSON.stringify(normalizedRecord(value));
+  }
+
+  function recordIdentity(record) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return null;
+    if (record.id !== undefined && record.id !== null) {
+      return `id:${stableSerialize(record.id)}`;
+    }
+    if (record.key !== undefined && record.key !== null) {
+      return `key:${stableSerialize(record.key)}`;
+    }
+    return null;
+  }
+
+  function groupCollectionRecords(records) {
+    const keyed = new Map();
+    const anonymous = [];
+    records.forEach(record => {
+      const serialized = stableSerialize(record);
+      const identity = recordIdentity(record);
+      if (identity === null) {
+        anonymous.push(serialized);
+        return;
+      }
+      if (!keyed.has(identity)) keyed.set(identity, []);
+      keyed.get(identity).push(serialized);
+    });
+    keyed.forEach(values => values.sort());
+    anonymous.sort();
+    return { keyed, anonymous };
+  }
+
+  function includesSerializedRecords(actual, expected) {
+    const remaining = [...actual];
+    for (const serialized of expected) {
+      const index = remaining.indexOf(serialized);
+      if (index === -1) return false;
+      remaining.splice(index, 1);
+    }
+    return true;
+  }
+
+  function collectionMatches(actual, expected, options = {}) {
+    if (!options.allowExtra && actual.length !== expected.length) return false;
+    if (options.allowExtra && actual.length < expected.length) return false;
+    const actualGroups = groupCollectionRecords(actual);
+    const expectedGroups = groupCollectionRecords(expected);
+    for (const [identity, expectedRecords] of expectedGroups.keyed) {
+      const actualRecords = actualGroups.keyed.get(identity) || [];
+      if (!includesSerializedRecords(actualRecords, expectedRecords)) return false;
+    }
+    return includesSerializedRecords(
+      actualGroups.anonymous,
+      expectedGroups.anonymous
+    );
+  }
+
   function createExpenseBackupService(deps = {}) {
     const now = typeof deps.now === 'function' ? deps.now : () => new Date();
     const setTimer = deps.setTimeout || (
@@ -279,15 +337,31 @@
         }
       });
 
+      Object.entries(expectations.expectedCollections || {}).forEach(
+        ([key, expected]) => {
+          const allowExtra = Boolean(
+            expectations.allowExtraCollections
+            && expectations.allowExtraCollections.includes(key)
+          );
+          if (!collectionMatches(snapshot[key], expected, { allowExtra })) {
+            throw new Error(`Restored database ${key} content is invalid`);
+          }
+        }
+      );
+
       for (const conflict of expectations.conflicts || []) {
         const current = conflict && conflict.current;
         if (!current || !current.id) continue;
-        const collections = ['expenses', 'tags', 'tagGroups'];
-        const restored = collections
-          .map(key => snapshot[key].find(item => item && item.id === current.id))
-          .find(Boolean);
+        const collection = conflict.collection;
+        if (!['expenses', 'tags', 'tagGroups'].includes(collection)) {
+          throw new Error('Merge conflict is missing its collection type');
+        }
+        const restored = snapshot[collection]
+          .find(item => item && item.id === current.id);
         if (!restored || !recordsEqual(restored, current)) {
-          throw new Error(`Merge conflict ${current.id} did not preserve current data`);
+          throw new Error(
+            `Merge conflict ${collection}:${current.id} did not preserve current data`
+          );
         }
       }
     }
@@ -339,12 +413,13 @@
         restoredSnapshot = await deps.createDatabaseSnapshot();
         validateRestoredSnapshot(restoredSnapshot, mode === 'replace'
           ? {
-            exactCounts: true,
-            counts: {
-              expenses: backup.expenses.length,
-              tags: backup.tags.length,
-              settings: backup.settings.length
-            }
+            expectedCollections: {
+              expenses: backup.expenses,
+              tags: backup.tags,
+              tagGroups: backup.tagGroups,
+              settings: backup.settings
+            },
+            allowExtraCollections: ['tagGroups']
           }
           : {
             exactCounts: false,
@@ -356,12 +431,14 @@
                 + mergePlan.tagGroupsToAdd.length,
               settings: safetySnapshot.settings.length
             },
+            expectedCollections: {
+              expenses: mergePlan.expensesToAdd,
+              tags: mergePlan.tagsToAdd,
+              tagGroups: mergePlan.tagGroupsToAdd
+            },
+            allowExtraCollections: ['expenses', 'tags', 'tagGroups'],
             conflicts: mergePlan.conflicts
           });
-        if (mode === 'replace'
-          && restoredSnapshot.tagGroups.length < backup.tagGroups.length) {
-          throw new Error('Restored database tagGroups count is invalid');
-        }
       } catch (error) {
         const restoreError = asError(error);
         try {
