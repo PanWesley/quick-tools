@@ -438,6 +438,85 @@ async function testAutomaticBackupCoalescesWhileWriting() {
   assert.deepStrictEqual(completions, [1, 2]);
 }
 
+async function testChooseWaitsForScheduledWriteQueue() {
+  const timers = [];
+  const firstClose = createDeferred();
+  const writes = [];
+  let active = 0;
+  let maxActive = 0;
+  let snapshotNumber = 0;
+
+  function createHandle(name, closeGate) {
+    return {
+      name,
+      async queryPermission() {
+        return 'granted';
+      },
+      async createWritable() {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        return {
+          async write(text) {
+            writes.push({ handle: name, backup: JSON.parse(text) });
+          },
+          async close() {
+            if (closeGate) await closeGate.promise;
+            active -= 1;
+          }
+        };
+      }
+    };
+  }
+
+  const oldHandle = createHandle('old.json', firstClose);
+  const newHandle = createHandle('new.json');
+  const harness = createHarness({
+    async createDatabaseSnapshot() {
+      snapshotNumber += 1;
+      return {
+        metadata: { databaseVersion: 7 },
+        expenses: [{ id: `expense-${snapshotNumber}` }],
+        tags: [],
+        tagGroups: [],
+        settings: []
+      };
+    },
+    async showSaveFilePicker() {
+      return newHandle;
+    },
+    setTimeout(callback) {
+      timers.push(callback);
+      return timers.length;
+    },
+    clearTimeout() {},
+    onAutomaticBackupResult() {}
+  });
+  harness.setStoredHandle(oldHandle);
+
+  harness.service.scheduleAutomaticBackup();
+  const scheduledWrite = timers.shift()();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(writes.length, 1);
+  assert.strictEqual(writes[0].handle, 'old.json');
+  assert.strictEqual(writes[0].backup.expenses[0].id, 'expense-1');
+
+  const chosenWrite = harness.service.chooseAutomaticBackupFile();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(maxActive, 1);
+  assert.strictEqual(writes.length, 1);
+
+  firstClose.resolve();
+  const chooseResult = await chosenWrite;
+  await scheduledWrite;
+
+  assert.strictEqual(maxActive, 1);
+  assert.strictEqual(writes.length, 2);
+  assert.strictEqual(writes[1].handle, 'new.json');
+  assert.strictEqual(writes[1].backup.expenses[0].id, 'expense-2');
+  assert.strictEqual(chooseResult.handle, newHandle);
+  assert.strictEqual(chooseResult.written, true);
+}
+
 async function testAutomaticBackupResultsAreObservable() {
   const timers = [];
   const observed = [];
@@ -570,6 +649,7 @@ async function testPersistentStorage() {
   await testAutomaticBackupMetadataWarning();
   await testDebounce();
   await testAutomaticBackupCoalescesWhileWriting();
+  await testChooseWaitsForScheduledWriteQueue();
   await testAutomaticBackupResultsAreObservable();
   await testAutomaticBackupDefaultsToWarning();
   await testPersistentStorage();

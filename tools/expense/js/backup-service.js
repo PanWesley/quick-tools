@@ -51,6 +51,7 @@
     let automaticBackupTimer = null;
     let automaticBackupRunning = false;
     let automaticBackupDirty = false;
+    let automaticWriteTail = Promise.resolve();
     let service;
 
     function reportAutomaticBackupResult(result) {
@@ -224,7 +225,7 @@
       return handle.requestPermission(permissionOptions);
     }
 
-    async function writeAutomaticBackup(options = {}) {
+    async function performAutomaticBackupWrite(options = {}) {
       let backup;
       try {
         const handle = options.handle || (
@@ -276,6 +277,14 @@
         written: true,
         ...(metadataWarning ? { metadataWarning } : {})
       };
+    }
+
+    function writeAutomaticBackup(options = {}) {
+      const queuedWrite = automaticWriteTail.then(
+        () => performAutomaticBackupWrite(options)
+      );
+      automaticWriteTail = queuedWrite.catch(() => undefined);
+      return queuedWrite;
     }
 
     async function recordPersistentStorageStatus(status) {
