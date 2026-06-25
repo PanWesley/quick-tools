@@ -7,8 +7,15 @@ const {
   prepareMergeTransactionRecords,
   transactionComplete
 } = require('./db');
-const { planTagGroupRepair } = require('./tag-management-utils');
-const { prepareMergedTagIntegrity } = require('./db-backup-utils');
+const {
+  DEFAULT_TAG_GROUPS,
+  DEFAULT_REPAIR_OPTIONS,
+  planTagGroupRepair
+} = require('./tag-management-utils');
+const {
+  prepareMergedTagIntegrity,
+  prepareReplacementTagIntegrity
+} = require('./db-backup-utils');
 
 const defaultGroups = [
   { id: 'group-category', name: 'Category' },
@@ -18,6 +25,9 @@ const repairOptions = {
   defaultTagParentId: 'group-category',
   fallbackGroupId: 'group-uncategorized'
 };
+
+assert.ok(DEFAULT_TAG_GROUPS.length >= 5);
+assert.deepStrictEqual(DEFAULT_REPAIR_OPTIONS, repairOptions);
 
 const replacement = prepareReplacementSnapshot({
   expenses: [{ id: 'expense-1' }],
@@ -70,6 +80,35 @@ assert.deepStrictEqual(mergeRecords.tags, [
     parentId: 'group-category'
   }
 ]);
+
+assert.deepStrictEqual(
+  prepareReplacementTagIntegrity({
+    expenses: [{ id: 'expense-replace' }],
+    tags: [
+      { id: 'tag-missing', name: 'Missing parent' },
+      { id: 'tag-invalid', name: 'Invalid', parentId: 'deleted-group' }
+    ],
+    settings: [{ key: 'currency', value: 'CNY' }],
+    tagGroups: []
+  }),
+  {
+    expenses: [{ id: 'expense-replace' }],
+    tags: [
+      {
+        id: 'tag-missing',
+        name: 'Missing parent',
+        parentId: 'group-category'
+      },
+      {
+        id: 'tag-invalid',
+        name: 'Invalid',
+        parentId: 'group-uncategorized'
+      }
+    ],
+    settings: [{ key: 'currency', value: 'CNY' }],
+    tagGroups: DEFAULT_TAG_GROUPS
+  }
+);
 
 assert.deepStrictEqual(
   prepareMergedTagIntegrity({

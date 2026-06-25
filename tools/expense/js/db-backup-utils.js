@@ -1,22 +1,13 @@
 (function(root, factory) {
-  const api = factory();
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = api;
+    module.exports = factory(require('./tag-management-utils'));
   } else if (root) {
-    root.ExpenseDBBackupUtils = api;
+    root.ExpenseDBBackupUtils = factory(root.TagManagementUtils);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function() {
-  const DEFAULT_TAG_GROUPS = Object.freeze([
-    { id: 'group-payment', name: '支付方式', color: '#3498db', order: 0 },
-    { id: 'group-person', name: '人员', color: '#e91e63', order: 1 },
-    { id: 'group-category', name: '消费类型', color: '#f39c12', order: 2 },
-    { id: 'group-channel', name: '渠道', color: '#9b59b6', order: 3 },
-    { id: 'group-uncategorized', name: '未分类', color: '#95a5a6', order: 99 }
-  ]);
-  const DEFAULT_REPAIR_OPTIONS = Object.freeze({
-    defaultTagParentId: 'group-category',
-    fallbackGroupId: 'group-uncategorized'
-  });
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(tagUtils) {
+  const DEFAULT_TAG_GROUPS = tagUtils && tagUtils.DEFAULT_TAG_GROUPS;
+  const DEFAULT_REPAIR_OPTIONS = tagUtils && tagUtils.DEFAULT_REPAIR_OPTIONS;
+  const defaultPlanner = tagUtils && tagUtils.planTagGroupRepair;
 
   function asArray(value) {
     return Array.isArray(value) ? value : [];
@@ -34,11 +25,58 @@
     return [...records.values()];
   }
 
+  function normalizeSnapshot(snapshot = {}) {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      throw new Error('Snapshot must be an object');
+    }
+    const normalize = (value, key) => {
+      if (value === undefined) return [];
+      if (!Array.isArray(value)) throw new Error(`${key} must be an array`);
+      return value.filter(record => key === 'settings'
+        ? record && record.key !== undefined
+        : record && record.id);
+    };
+    return {
+      expenses: normalize(snapshot.expenses, 'expenses'),
+      tags: normalize(snapshot.tags, 'tags'),
+      settings: normalize(snapshot.settings, 'settings'),
+      tagGroups: normalize(snapshot.tagGroups, 'tagGroups')
+    };
+  }
+
+  function prepareReplacementTagIntegrity(
+    snapshot = {},
+    planner = defaultPlanner,
+    defaultGroups = DEFAULT_TAG_GROUPS,
+    repairOptions = DEFAULT_REPAIR_OPTIONS
+  ) {
+    if (typeof planner !== 'function'
+      || !Array.isArray(defaultGroups)
+      || !repairOptions) {
+      throw new Error('Tag group repair dependency is required');
+    }
+    const normalized = normalizeSnapshot(snapshot);
+    const repairPlan = planner(
+      normalized.tags,
+      normalized.tagGroups,
+      defaultGroups,
+      repairOptions
+    );
+    return {
+      ...normalized,
+      tags: applyRecordsById(normalized.tags, repairPlan.tagsToUpdate),
+      tagGroups: applyRecordsById(
+        normalized.tagGroups,
+        repairPlan.groupsToAdd
+      )
+    };
+  }
+
   function prepareMergedTagIntegrity(
     input = {},
-    planner,
-    defaultGroups,
-    repairOptions
+    planner = defaultPlanner,
+    defaultGroups = DEFAULT_TAG_GROUPS,
+    repairOptions = DEFAULT_REPAIR_OPTIONS
   ) {
     if (typeof planner !== 'function') {
       throw new Error('Tag group repair planner is required');
@@ -64,7 +102,7 @@
     };
   }
 
-  function prepareMergeExpected(current = {}, plan = {}, planner) {
+  function prepareMergeExpected(current = {}, plan = {}, planner = defaultPlanner) {
     return prepareMergedTagIntegrity({
       currentTags: current.tags,
       currentTagGroups: current.tagGroups,
@@ -76,6 +114,7 @@
   return {
     DEFAULT_TAG_GROUPS,
     DEFAULT_REPAIR_OPTIONS,
+    prepareReplacementTagIntegrity,
     prepareMergedTagIntegrity,
     prepareMergeExpected
   };

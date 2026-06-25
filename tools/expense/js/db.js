@@ -13,6 +13,14 @@ const STORE_TAGS = 'tags';
 const STORE_TAG_GROUPS = 'tagGroups';
 const STORE_SETTINGS = 'settings';
 const SNAPSHOT_KEYS = ['expenses', 'tags', 'settings', 'tagGroups'];
+const tagManagementUtils = typeof module !== 'undefined' && module.exports
+  ? require('./tag-management-utils')
+  : window.TagManagementUtils;
+const dbBackupUtils = typeof module !== 'undefined' && module.exports
+  ? require('./db-backup-utils')
+  : window.ExpenseDBBackupUtils;
+const DEFAULT_TAG_GROUPS = tagManagementUtils.DEFAULT_TAG_GROUPS;
+const DEFAULT_REPAIR_OPTIONS = tagManagementUtils.DEFAULT_REPAIR_OPTIONS;
 
 function normalizeRecordArray(value, name) {
   if (value === undefined) return [];
@@ -67,19 +75,12 @@ function prepareReplacementSnapshot(
   defaultGroups,
   repairOptions
 ) {
-  const normalized = normalizeDatabaseSnapshot(snapshot);
-  const repairPlan = requireTagGroupRepairPlanner(planner)(
-    normalized.tags,
-    normalized.tagGroups,
+  return dbBackupUtils.prepareReplacementTagIntegrity(
+    snapshot,
+    planner,
     defaultGroups,
     repairOptions
   );
-
-  return {
-    ...normalized,
-    tags: applyTagUpdates(normalized.tags, repairPlan.tagsToUpdate),
-    tagGroups: [...normalized.tagGroups, ...repairPlan.groupsToAdd]
-  };
 }
 
 function prepareMergeTransactionRecords(
@@ -145,15 +146,6 @@ const DEFAULT_TAGS = [
   { id: 'cat-medical', name: '医疗', color: '#e67e22' },
   { id: 'cat-education', name: '教育', color: '#1abc9c' },
   { id: 'cat-other', name: '其他', color: '#95a5a6' }
-];
-
-// Default tag groups (levels)
-const DEFAULT_TAG_GROUPS = [
-  { id: 'group-payment', name: '支付方式', color: '#3498db', order: 0 },
-  { id: 'group-person', name: '人员', color: '#e91e63', order: 1 },
-  { id: 'group-category', name: '消费类型', color: '#f39c12', order: 2 },
-  { id: 'group-channel', name: '渠道', color: '#9b59b6', order: 3 },
-  { id: 'group-uncategorized', name: '未分类', color: '#95a5a6', order: 99 }
 ];
 
 let dbInstance = null;
@@ -821,10 +813,7 @@ async function replaceDatabaseSnapshot(snapshot) {
     snapshot,
     planner,
     DEFAULT_TAG_GROUPS,
-    {
-      defaultTagParentId: 'group-category',
-      fallbackGroupId: 'group-uncategorized'
-    }
+    DEFAULT_REPAIR_OPTIONS
   );
   const db = await openDB();
   const stores = [STORE_EXPENSES, STORE_TAGS, STORE_SETTINGS, STORE_TAG_GROUPS];
@@ -863,10 +852,7 @@ async function applyBackupMergePlan(plan = {}) {
     expensesToAdd: plan.expensesToAdd,
     tagsToAdd: plan.tagsToAdd,
     tagGroupsToAdd: plan.tagGroupsToAdd
-  }, planner, DEFAULT_TAG_GROUPS, {
-    defaultTagParentId: 'group-category',
-    fallbackGroupId: 'group-uncategorized'
-  });
+  }, planner, DEFAULT_TAG_GROUPS, DEFAULT_REPAIR_OPTIONS);
   const db = await openDB();
   const tx = db.transaction([
     STORE_EXPENSES,

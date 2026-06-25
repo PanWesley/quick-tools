@@ -7,6 +7,8 @@
       createDatabaseSnapshot: root.createDatabaseSnapshot,
       replaceDatabaseSnapshot: root.replaceDatabaseSnapshot,
       applyBackupMergePlan: root.applyBackupMergePlan,
+      prepareReplacementExpected: root.ExpenseDBBackupUtils
+        && root.ExpenseDBBackupUtils.prepareReplacementTagIntegrity,
       prepareMergeExpected: root.ExpenseDBBackupUtils
         && typeof root.ExpenseDBBackupUtils.prepareMergeExpected === 'function'
         && root.TagManagementUtils
@@ -49,6 +51,16 @@
 
   function asError(error) {
     return error instanceof Error ? error : new Error(String(error));
+  }
+
+  function createRollbackFailure(originalError, rollbackError) {
+    const message = `Restore failed: ${originalError.message}; rollback failed: ${rollbackError.message}`;
+    const failure = typeof AggregateError === 'function'
+      ? new AggregateError([originalError, rollbackError], message)
+      : new Error(message);
+    failure.cause = originalError;
+    failure.rollbackError = rollbackError;
+    return failure;
   }
 
   function normalizedRecord(value) {
@@ -260,20 +272,31 @@
         throw new Error('备份文件不是有效 JSON');
       }
 
-      const encrypted = Boolean(
-        deps.backupCrypto
-        && typeof deps.backupCrypto.isEncryptedBackup === 'function'
-        && deps.backupCrypto.isEncryptedBackup(parsed)
+      const claimsEncrypted = Boolean(
+        parsed
+        && typeof parsed === 'object'
+        && !Array.isArray(parsed)
+        && parsed.format === 'expense-tracker-encrypted-backup'
       );
+      if (claimsEncrypted
+        && (!deps.backupCrypto
+          || typeof deps.backupCrypto.isEncryptedBackup !== 'function')) {
+        throw new Error('加密备份功能未加载');
+      }
+      const encrypted = claimsEncrypted
+        && deps.backupCrypto.isEncryptedBackup(parsed);
+      if (claimsEncrypted && !encrypted) {
+        throw new Error('加密备份格式不受支持或已损坏');
+      }
       if (encrypted && (typeof password !== 'string' || password.length === 0)) {
         return { encrypted: true, requiresPassword: true };
       }
 
       if (encrypted) {
+        if (typeof deps.backupCrypto.decryptBackup !== 'function') {
+          throw new Error('加密备份功能未加载');
+        }
         try {
-          if (typeof deps.backupCrypto.decryptBackup !== 'function') {
-            throw new Error('decrypt unavailable');
-          }
           const decryptedText = await deps.backupCrypto.decryptBackup(parsed, password);
           parsed = JSON.parse(decryptedText);
         } catch (error) {
@@ -394,6 +417,10 @@
       if (typeof deps.replaceDatabaseSnapshot !== 'function') {
         throw new Error('replaceDatabaseSnapshot is not available');
       }
+      if (mode === 'replace'
+        && typeof deps.prepareReplacementExpected !== 'function') {
+        throw new Error('备份完整性依赖未加载');
+      }
       if (mode === 'merge'
         && typeof deps.applyBackupMergePlan !== 'function') {
         throw new Error('applyBackupMergePlan is not available');
@@ -418,6 +445,9 @@
       const mergeTagIntegrity = mode === 'merge'
         ? deps.prepareMergeExpected(safetySnapshot, mergePlan)
         : null;
+      const replacementExpected = mode === 'replace'
+        ? deps.prepareReplacementExpected(backup)
+        : null;
       let restoredSnapshot;
 
       try {
@@ -431,12 +461,11 @@
         validateRestoredSnapshot(restoredSnapshot, mode === 'replace'
           ? {
             expectedCollections: {
-              expenses: backup.expenses,
-              tags: backup.tags,
-              tagGroups: backup.tagGroups,
-              settings: backup.settings
-            },
-            allowExtraCollections: ['tagGroups']
+              expenses: replacementExpected.expenses,
+              tags: replacementExpected.tags,
+              tagGroups: replacementExpected.tagGroups,
+              settings: replacementExpected.settings
+            }
           }
           : {
             exactCounts: false,
@@ -469,9 +498,7 @@
           await deps.replaceDatabaseSnapshot(safetySnapshot);
         } catch (rollbackError) {
           const rollbackFailure = asError(rollbackError);
-          throw new Error(
-            `Restore failed: ${restoreError.message}; rollback failed: ${rollbackFailure.message}`
-          );
+          throw createRollbackFailure(restoreError, rollbackFailure);
         }
         throw restoreError;
       }

@@ -10,7 +10,8 @@ const { createExpenseBackupService, DEFAULT_BACKUP_META } = require('./backup-se
 const backupUtils = require('./backup-utils');
 const backupCrypto = require('./backup-crypto');
 const {
-  prepareMergeExpected
+  prepareMergeExpected,
+  prepareReplacementTagIntegrity
 } = require('./db-backup-utils');
 const { planTagGroupRepair } = require('./tag-management-utils');
 
@@ -134,10 +135,17 @@ function createRestoreHarness(options = {}) {
       tags: [...current.tags, ...plan.tagsToAdd],
       tagGroups: [...current.tagGroups, ...plan.tagGroupsToAdd]
     });
+  const replacementExpected = Object.prototype.hasOwnProperty.call(
+    options,
+    'prepareReplacementExpected'
+  )
+    ? options.prepareReplacementExpected
+    : snapshot => snapshot;
   const service = createExpenseBackupService({
     backupUtils,
     backupCrypto,
     prepareMergeExpected: mergeExpected,
+    prepareReplacementExpected: replacementExpected,
     async createDatabaseSnapshot() {
       snapshotCalls += 1;
       if (typeof options.onSnapshot === 'function') {
@@ -244,6 +252,28 @@ async function testBackupParsing() {
     service.parseBackupText(JSON.stringify(encryptedEnvelope), 'wrong-password'),
     /密码错误或加密备份已损坏/
   );
+  const missingDecryptService = createExpenseBackupService({
+    backupUtils,
+    backupCrypto: {
+      isEncryptedBackup: backupCrypto.isEncryptedBackup
+    }
+  });
+  await assert.rejects(
+    missingDecryptService.parseBackupText(
+      JSON.stringify(encryptedEnvelope),
+      'correct-password'
+    ),
+    /加密备份功能未加载/
+  );
+  await assert.rejects(
+    service.parseBackupText(JSON.stringify({
+      format: 'expense-tracker-encrypted-backup',
+      version: 999,
+      kdf: {},
+      cipher: {}
+    }), 'password'),
+    /加密备份格式不受支持或已损坏/
+  );
   await assert.rejects(
     service.parseBackupText('{broken-json'),
     /备份文件不是有效 JSON/
@@ -335,6 +365,60 @@ async function testRestoreBackup() {
       newExpenseCount: 1
     }
   });
+
+  const repairReplacement = createValidBackup({
+    expenses: [{ id: 'replace-repair', date: '2026-06-25', amount: 20 }],
+    tags: [
+      { id: 'replace-missing', name: 'Missing parent' },
+      {
+        id: 'replace-invalid',
+        name: 'Invalid parent',
+        parentId: 'deleted-group'
+      }
+    ],
+    tagGroups: [],
+    settings: [{ key: 'currency', value: 'CNY' }]
+  });
+  const repairedReplaceHarness = createRestoreHarness({
+    current,
+    prepareReplacementExpected: prepareReplacementTagIntegrity,
+    async onReplace({ snapshot, setState }) {
+      setState(prepareReplacementTagIntegrity(snapshot));
+    }
+  });
+  const repairedReplaceResult = await repairedReplaceHarness.service
+    .restoreBackup(repairReplacement, 'replace');
+  assert.strictEqual(repairedReplaceResult.restored, true);
+  assert.strictEqual(repairedReplaceHarness.replaceCalls.length, 1);
+  assert.deepStrictEqual(
+    repairedReplaceHarness.getState(),
+    prepareReplacementTagIntegrity(repairReplacement)
+  );
+
+  const rogueReplaceGroup = createRestoreHarness({
+    current,
+    prepareReplacementExpected: prepareReplacementTagIntegrity,
+    async onReplace({ call, snapshot, setState }) {
+      if (call > 1) {
+        setState(snapshot);
+        return;
+      }
+      const prepared = prepareReplacementTagIntegrity(snapshot);
+      setState({
+        ...prepared,
+        tagGroups: [
+          ...prepared.tagGroups,
+          { id: 'rogue-replace-group', name: 'Rogue' }
+        ]
+      });
+    }
+  });
+  await assert.rejects(
+    rogueReplaceGroup.service.restoreBackup(repairReplacement, 'replace'),
+    /tagGroups.*content/i
+  );
+  assert.deepStrictEqual(rogueReplaceGroup.getState(), current);
+  assert.strictEqual(rogueReplaceGroup.replaceCalls.length, 2);
 
   const mergeIncoming = createValidBackup({
     expenses: [
@@ -632,19 +716,30 @@ async function testRestoreBackup() {
   assert.deepStrictEqual(sameCountContentFailure.getState(), current);
   assert.strictEqual(sameCountContentFailure.replaceCalls.length, 2);
 
+  const originalRestoreError = new Error('primary write failure');
+  const originalRollbackError = new Error('rollback storage failure');
   const rollbackFailure = createRestoreHarness({
     current,
     async onReplace({ call, snapshot, setState }) {
       if (call === 1) {
         setState(snapshot);
-        throw new Error('primary write failure');
+        throw originalRestoreError;
       }
-      throw new Error('rollback storage failure');
+      throw originalRollbackError;
     }
   });
   await assert.rejects(
     rollbackFailure.service.restoreBackup(replacement, 'replace'),
     error => {
+      assert.strictEqual(error.cause, originalRestoreError);
+      assert.strictEqual(error.rollbackError, originalRollbackError);
+      if (typeof AggregateError === 'function') {
+        assert.ok(error instanceof AggregateError);
+        assert.deepStrictEqual(error.errors, [
+          originalRestoreError,
+          originalRollbackError
+        ]);
+      }
       assert.match(error.message, /primary write failure/);
       assert.match(error.message, /rollback storage failure/);
       return true;
