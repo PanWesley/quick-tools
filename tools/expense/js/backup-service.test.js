@@ -7,6 +7,8 @@ const previousGlobalDescriptor = Object.getOwnPropertyDescriptor(
 delete globalThis.ExpenseBackupService;
 
 const { createExpenseBackupService, DEFAULT_BACKUP_META } = require('./backup-service');
+const backupUtils = require('./backup-utils');
+const backupCrypto = require('./backup-crypto');
 
 assert.strictEqual(
   Object.prototype.hasOwnProperty.call(globalThis, 'ExpenseBackupService'),
@@ -93,6 +95,338 @@ function createDeferred() {
     reject = promiseReject;
   });
   return { promise, resolve, reject };
+}
+
+function createValidBackup(overrides = {}) {
+  return {
+    formatVersion: 1,
+    databaseVersion: 2,
+    appVersion: '1.6.0',
+    exportedAt: '2026-06-25T08:00:00.000Z',
+    expenses: [],
+    tags: [],
+    tagGroups: [],
+    settings: [],
+    ...overrides
+  };
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createRestoreHarness(options = {}) {
+  let state = clone(options.current || createValidBackup());
+  let snapshotCalls = 0;
+  const replaceCalls = [];
+  const mergePlans = [];
+  const metadataWrites = [];
+  const service = createExpenseBackupService({
+    backupUtils,
+    backupCrypto,
+    async createDatabaseSnapshot() {
+      snapshotCalls += 1;
+      if (typeof options.onSnapshot === 'function') {
+        const result = await options.onSnapshot({
+          call: snapshotCalls,
+          state: clone(state)
+        });
+        if (result !== undefined) return clone(result);
+      }
+      return clone(state);
+    },
+    async replaceDatabaseSnapshot(snapshot) {
+      replaceCalls.push(clone(snapshot));
+      if (typeof options.onReplace === 'function') {
+        await options.onReplace({
+          call: replaceCalls.length,
+          snapshot: clone(snapshot),
+          setState(value) {
+            state = clone(value);
+          }
+        });
+        return;
+      }
+      state = clone(snapshot);
+    },
+    async applyBackupMergePlan(plan) {
+      mergePlans.push(clone(plan));
+      if (typeof options.onMerge === 'function') {
+        await options.onMerge({
+          call: mergePlans.length,
+          plan: clone(plan),
+          state: clone(state),
+          setState(value) {
+            state = clone(value);
+          }
+        });
+        return;
+      }
+      state.expenses.push(...clone(plan.expensesToAdd));
+      state.tags.push(...clone(plan.tagsToAdd));
+      state.tagGroups.push(...clone(plan.tagGroupsToAdd));
+    },
+    async getSettings() {
+      return null;
+    },
+    async setSettings(key, value) {
+      metadataWrites.push({ key, value: clone(value) });
+      if (options.metadataError) throw options.metadataError;
+    },
+    now() {
+      return new Date('2026-06-25T08:00:00.000Z');
+    }
+  });
+
+  return {
+    service,
+    replaceCalls,
+    mergePlans,
+    metadataWrites,
+    getState() {
+      return clone(state);
+    }
+  };
+}
+
+async function testBackupParsing() {
+  const service = createExpenseBackupService({
+    backupUtils,
+    backupCrypto
+  });
+  const plainBackup = createValidBackup({
+    expenses: [{ id: 'expense-1', date: '2026-06-25', amount: 12 }]
+  });
+
+  assert.deepStrictEqual(
+    await service.parseBackupText(JSON.stringify(plainBackup)),
+    {
+      encrypted: false,
+      requiresPassword: false,
+      backup: plainBackup
+    }
+  );
+
+  const encryptedEnvelope = await backupCrypto.encryptBackup(
+    JSON.stringify(plainBackup),
+    'correct-password'
+  );
+  assert.deepStrictEqual(
+    await service.parseBackupText(JSON.stringify(encryptedEnvelope)),
+    { encrypted: true, requiresPassword: true }
+  );
+  assert.deepStrictEqual(
+    await service.parseBackupText(
+      JSON.stringify(encryptedEnvelope),
+      'correct-password'
+    ),
+    {
+      encrypted: true,
+      requiresPassword: false,
+      backup: plainBackup
+    }
+  );
+  await assert.rejects(
+    service.parseBackupText(JSON.stringify(encryptedEnvelope), 'wrong-password'),
+    /密码错误或加密备份已损坏/
+  );
+  await assert.rejects(
+    service.parseBackupText('{broken-json'),
+    /备份文件不是有效 JSON/
+  );
+  await assert.rejects(
+    service.parseBackupText(JSON.stringify(createValidBackup({
+      formatVersion: 2
+    }))),
+    /newer app version/
+  );
+}
+
+async function testInspectBackupFile() {
+  let textCalls = 0;
+  const current = createValidBackup({
+    expenses: [{ id: 'current', date: '2026-06-24', amount: 10 }],
+    tags: [{ id: 'current-tag', name: 'Current' }]
+  });
+  const incoming = createValidBackup({
+    expenses: [
+      { id: 'current', date: '2026-06-24', amount: 99 },
+      { id: 'incoming', date: '2026-06-25', amount: 20 }
+    ],
+    tags: [{ id: 'incoming-tag', name: 'Incoming' }]
+  });
+  const service = createExpenseBackupService({
+    backupUtils,
+    backupCrypto,
+    async createDatabaseSnapshot() {
+      return current;
+    }
+  });
+  const result = await service.inspectBackupFile({
+    async text() {
+      textCalls += 1;
+      return JSON.stringify(incoming);
+    }
+  });
+
+  assert.strictEqual(textCalls, 1);
+  assert.deepStrictEqual(result, {
+    encrypted: false,
+    requiresPassword: false,
+    backup: incoming,
+    summary: {
+      expenseCount: 2,
+      tagCount: 1,
+      conflictCount: 1,
+      newExpenseCount: 1
+    }
+  });
+}
+
+async function testRestoreBackup() {
+  const current = createValidBackup({
+    expenses: [{ id: 'current', date: '2026-06-24', amount: 10 }],
+    tags: [{ id: 'current-tag', name: 'Current', parentId: 'group-category' }],
+    tagGroups: [{ id: 'group-category', name: 'Category' }],
+    settings: [{ key: 'currency', value: 'CNY' }]
+  });
+  const replacement = createValidBackup({
+    expenses: [{ id: 'replacement', date: '2026-06-25', amount: 20 }],
+    tags: [{ id: 'replacement-tag', name: 'Replacement', parentId: 'group-new' }],
+    tagGroups: [{ id: 'group-new', name: 'New group' }],
+    settings: [{ key: 'currency', value: 'USD' }]
+  });
+  const replaceHarness = createRestoreHarness({ current });
+  const replaceResult = await replaceHarness.service.restoreBackup(
+    replacement,
+    'replace'
+  );
+  assert.deepStrictEqual(replaceHarness.getState(), replacement);
+  assert.strictEqual(replaceHarness.replaceCalls.length, 1);
+  assert.deepStrictEqual(replaceHarness.metadataWrites[0].value, {
+    ...DEFAULT_BACKUP_META,
+    lastBackupAt: '2026-06-25T08:00:00.000Z',
+    lastBackupExpenseCount: 1,
+    newExpenseCount: 0,
+    snoozedUntil: null
+  });
+  assert.deepStrictEqual(replaceResult, {
+    restored: true,
+    mode: 'replace',
+    snapshot: replacement,
+    summary: {
+      expenseCount: 1,
+      tagCount: 1,
+      conflictCount: 0,
+      newExpenseCount: 1
+    }
+  });
+
+  const mergeIncoming = createValidBackup({
+    expenses: [
+      { id: 'current', date: '2026-06-24', amount: 999 },
+      { id: 'merged', date: '2026-06-25', amount: 30 }
+    ],
+    tags: [{ id: 'merged-tag', name: 'Merged', parentId: 'group-category' }],
+    tagGroups: [{ id: 'group-category', name: 'Category' }],
+    settings: []
+  });
+  const mergeHarness = createRestoreHarness({ current });
+  const mergeResult = await mergeHarness.service.restoreBackup(
+    mergeIncoming,
+    'merge'
+  );
+  assert.strictEqual(mergeHarness.replaceCalls.length, 0);
+  assert.strictEqual(mergeHarness.mergePlans.length, 1);
+  assert.strictEqual(mergeHarness.getState().expenses[0].amount, 10);
+  assert.deepStrictEqual(
+    mergeHarness.getState().expenses.map(expense => expense.id),
+    ['current', 'merged']
+  );
+  assert.deepStrictEqual(mergeResult.summary, {
+    expenseCount: 2,
+    tagCount: 1,
+    conflictCount: 1,
+    newExpenseCount: 1
+  });
+
+  const writeFailure = createRestoreHarness({
+    current,
+    async onReplace({ call, snapshot, setState }) {
+      if (call === 1) {
+        setState(snapshot);
+        throw new Error('write failed');
+      }
+      setState(snapshot);
+    }
+  });
+  await assert.rejects(
+    writeFailure.service.restoreBackup(replacement, 'replace'),
+    /write failed/
+  );
+  assert.deepStrictEqual(writeFailure.getState(), current);
+  assert.strictEqual(writeFailure.replaceCalls.length, 2);
+
+  const verificationFailure = createRestoreHarness({
+    current,
+    async onReplace({ snapshot, setState }) {
+      setState(snapshot);
+    },
+    async onSnapshot({ call, state }) {
+      if (call === 2) {
+        return {
+          ...state,
+          tagGroups: []
+        };
+      }
+    }
+  });
+  await assert.rejects(
+    verificationFailure.service.restoreBackup(replacement, 'replace'),
+    /reference|parent/i
+  );
+  assert.deepStrictEqual(verificationFailure.getState(), current);
+  assert.strictEqual(verificationFailure.replaceCalls.length, 2);
+
+  const rollbackFailure = createRestoreHarness({
+    current,
+    async onReplace({ call, snapshot, setState }) {
+      if (call === 1) {
+        setState(snapshot);
+        throw new Error('primary write failure');
+      }
+      throw new Error('rollback storage failure');
+    }
+  });
+  await assert.rejects(
+    rollbackFailure.service.restoreBackup(replacement, 'replace'),
+    error => {
+      assert.match(error.message, /primary write failure/);
+      assert.match(error.message, /rollback storage failure/);
+      return true;
+    }
+  );
+
+  const unknownMode = createRestoreHarness({ current });
+  await assert.rejects(
+    unknownMode.service.restoreBackup(replacement, 'append'),
+    /Unknown restore mode/
+  );
+  assert.deepStrictEqual(unknownMode.getState(), current);
+  assert.strictEqual(unknownMode.replaceCalls.length, 0);
+  assert.strictEqual(unknownMode.mergePlans.length, 0);
+
+  const metadataFailure = createRestoreHarness({
+    current,
+    metadataError: new Error('metadata failed')
+  });
+  const metadataResult = await metadataFailure.service.restoreBackup(
+    replacement,
+    'replace'
+  );
+  assert.deepStrictEqual(metadataFailure.getState(), replacement);
+  assert.strictEqual(metadataFailure.replaceCalls.length, 1);
+  assert.match(metadataResult.metadataWarning.message, /metadata failed/);
 }
 
 async function testMetadataAndDownloads() {
@@ -642,6 +976,9 @@ async function testPersistentStorage() {
 }
 
 (async () => {
+  await testBackupParsing();
+  await testInspectBackupFile();
+  await testRestoreBackup();
   await testMetadataAndDownloads();
   await testDownloadText();
   await testAutomaticBackupSuccess();

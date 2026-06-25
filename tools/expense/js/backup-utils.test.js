@@ -20,7 +20,8 @@ const {
   validateBackupEnvelope,
   shouldRemindBackup,
   createExpenseFingerprint,
-  planBackupMerge
+  planBackupMerge,
+  createRestoreSummary
 } = backupUtils;
 
 const base = {
@@ -343,5 +344,30 @@ const protoFieldPlan = planBackupMerge(
   }
 );
 assert.strictEqual(protoFieldPlan.conflicts.length, 1);
+
+const restoreSummary = createRestoreSummary(
+  {
+    expenses: [{ id: 'current-expense', date: '2026-06-01', amount: 10 }],
+    tags: [{ id: 'current-tag', name: 'Current tag' }],
+    tagGroups: []
+  },
+  {
+    expenses: [
+      { id: 'current-expense', date: '2026-06-01', amount: 20 },
+      { id: 'new-expense', date: '2026-06-02', amount: 30 }
+    ],
+    tags: [
+      { id: 'current-tag', name: 'Changed tag' },
+      { id: 'new-tag', name: 'New tag' }
+    ],
+    tagGroups: []
+  }
+);
+assert.deepStrictEqual(restoreSummary, {
+  expenseCount: 2,
+  tagCount: 2,
+  conflictCount: 2,
+  newExpenseCount: 1
+});
 
 console.log('backup-utils tests passed');

@@ -195,12 +195,23 @@
     };
   }
 
+  function createRestoreSummary(current = {}, incoming = {}) {
+    const plan = planBackupMerge(current, incoming);
+    return {
+      expenseCount: asArray(incoming.expenses).length,
+      tagCount: asArray(incoming.tags).length,
+      conflictCount: plan.conflicts.length,
+      newExpenseCount: plan.expensesToAdd.length
+    };
+  }
+
   return {
     BACKUP_FORMAT_VERSION,
     buildBackupEnvelope,
     validateBackupEnvelope,
     shouldRemindBackup,
     createExpenseFingerprint,
-    planBackupMerge
+    planBackupMerge,
+    createRestoreSummary
   };
 });
