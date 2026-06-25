@@ -85,6 +85,16 @@ function createHarness(overrides = {}) {
   };
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 async function testMetadataAndDownloads() {
   const harness = createHarness();
   const { service, settings, downloads, snapshot } = harness;
@@ -140,8 +150,23 @@ async function testMetadataAndDownloads() {
 }
 
 async function testDownloadText() {
-  const clicked = [];
-  const revoked = [];
+  const events = [];
+  const cleanups = [];
+  let attached = false;
+  let removed = false;
+  let revoked = false;
+  const link = {
+    click() {
+      assert.strictEqual(attached, true);
+      assert.strictEqual(revoked, false);
+      events.push('click');
+    },
+    remove() {
+      removed = true;
+      attached = false;
+      events.push('remove');
+    }
+  };
   const service = createExpenseBackupService({
     Blob: class FakeBlob {
       constructor(parts, options) {
@@ -155,24 +180,40 @@ async function testDownloadText() {
         return 'blob:test';
       },
       revokeObjectURL(url) {
-        revoked.push(url);
+        assert.strictEqual(url, 'blob:test');
+        revoked = true;
+        events.push('revoke');
       }
     },
     document: {
+      body: {
+        appendChild(node) {
+          assert.strictEqual(node, link);
+          attached = true;
+          events.push('append');
+        }
+      },
       createElement(tagName) {
         assert.strictEqual(tagName, 'a');
-        return {
-          click() {
-            clicked.push([this.href, this.download]);
-          }
-        };
+        return link;
       }
+    },
+    scheduleCleanup(callback, delay) {
+      assert.strictEqual(delay, 0);
+      cleanups.push(callback);
     }
   });
 
   service.downloadText('hello', 'backup.json', 'application/json');
-  assert.deepStrictEqual(clicked, [['blob:test', 'backup.json']]);
-  assert.deepStrictEqual(revoked, ['blob:test']);
+  assert.strictEqual(link.href, 'blob:test');
+  assert.strictEqual(link.download, 'backup.json');
+  assert.strictEqual(removed, true);
+  assert.strictEqual(revoked, false);
+  assert.deepStrictEqual(events, ['append', 'click', 'remove']);
+  assert.strictEqual(cleanups.length, 1);
+  cleanups[0]();
+  assert.strictEqual(revoked, true);
+  assert.deepStrictEqual(events, ['append', 'click', 'remove', 'revoke']);
 }
 
 async function testAutomaticBackupSuccess() {
@@ -206,7 +247,8 @@ async function testAutomaticBackupSuccess() {
     supported: true,
     handle,
     ok: true,
-    status: 'ready'
+    status: 'ready',
+    written: true
   });
   const task7CompatibleHandle = result.supported ? result.handle : null;
   assert.strictEqual(task7CompatibleHandle, handle);
@@ -244,7 +286,7 @@ async function testAutomaticBackupFallbacks() {
   denied.setStoredHandle(deniedHandle);
   assert.deepStrictEqual(
     await denied.service.writeAutomaticBackup({ requestPermission: true }),
-    { ok: false, status: 'permission-denied' }
+    { ok: false, status: 'permission-denied', written: false }
   );
   assert.strictEqual(
     denied.settings.get('backupMeta').automaticFileStatus,
@@ -255,13 +297,13 @@ async function testAutomaticBackupFallbacks() {
   noPrompt.setStoredHandle(deniedHandle);
   assert.deepStrictEqual(
     await noPrompt.service.writeAutomaticBackup(),
-    { ok: false, status: 'permission-required' }
+    { ok: false, status: 'permission-required', written: false }
   );
 
   const missing = createHarness();
   assert.deepStrictEqual(
     await missing.service.writeAutomaticBackup(),
-    { ok: false, status: 'not-configured' }
+    { ok: false, status: 'not-configured', written: false }
   );
 
   const broken = createHarness();
@@ -276,11 +318,38 @@ async function testAutomaticBackupFallbacks() {
   const brokenResult = await broken.service.writeAutomaticBackup();
   assert.strictEqual(brokenResult.ok, false);
   assert.strictEqual(brokenResult.status, 'write-error');
+  assert.strictEqual(brokenResult.written, false);
   assert.match(brokenResult.error.message, /disk full/);
   assert.strictEqual(
     broken.settings.get('backupMeta').automaticFileStatus,
     'write-error'
   );
+}
+
+async function testAutomaticBackupMetadataWarning() {
+  const handle = {
+    async queryPermission() {
+      return 'granted';
+    },
+    async createWritable() {
+      return {
+        async write() {},
+        async close() {}
+      };
+    }
+  };
+  const harness = createHarness({
+    async setSettings() {
+      throw new Error('metadata unavailable');
+    }
+  });
+  harness.setStoredHandle(handle);
+
+  const result = await harness.service.writeAutomaticBackup();
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.status, 'ready');
+  assert.strictEqual(result.written, true);
+  assert.match(result.metadataWarning.message, /metadata unavailable/);
 }
 
 async function testDebounce() {
@@ -297,7 +366,8 @@ async function testDebounce() {
     clearTimeout(id) {
       cleared.push(id);
       timers.delete(id);
-    }
+    },
+    onAutomaticBackupResult() {}
   });
   harness.service.writeAutomaticBackup = async () => {
     writes += 1;
@@ -312,6 +382,126 @@ async function testDebounce() {
   assert.strictEqual(delay, 1500);
   await callback();
   assert.strictEqual(writes, 1);
+}
+
+async function testAutomaticBackupCoalescesWhileWriting() {
+  const timers = new Map();
+  let nextTimerId = 1;
+  const first = createDeferred();
+  const second = createDeferred();
+  const deferredWrites = [first, second];
+  let calls = 0;
+  let active = 0;
+  let maxActive = 0;
+  const completions = [];
+  const harness = createHarness({
+    setTimeout(callback, delay) {
+      const id = nextTimerId++;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+    onAutomaticBackupResult() {}
+  });
+  harness.service.writeAutomaticBackup = async () => {
+    const call = calls++;
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await deferredWrites[call].promise;
+    active -= 1;
+    completions.push(call + 1);
+    return { ok: true, written: true, status: 'ready', call: call + 1 };
+  };
+
+  harness.service.scheduleAutomaticBackup();
+  const [{ callback }] = timers.values();
+  const scheduledRun = callback();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(calls, 1);
+
+  harness.service.scheduleAutomaticBackup();
+  assert.strictEqual(timers.size, 1);
+  assert.strictEqual(calls, 1);
+
+  first.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(calls, 2);
+  assert.strictEqual(maxActive, 1);
+  assert.deepStrictEqual(completions, [1]);
+
+  second.resolve();
+  await scheduledRun;
+  assert.strictEqual(maxActive, 1);
+  assert.strictEqual(calls, 2);
+  assert.deepStrictEqual(completions, [1, 2]);
+}
+
+async function testAutomaticBackupResultsAreObservable() {
+  const timers = [];
+  const observed = [];
+  const harness = createHarness({
+    setTimeout(callback) {
+      timers.push(callback);
+      return timers.length;
+    },
+    clearTimeout() {},
+    onAutomaticBackupResult(result) {
+      observed.push(result);
+    }
+  });
+
+  harness.service.writeAutomaticBackup = async () => ({
+    ok: false,
+    written: false,
+    status: 'permission-denied'
+  });
+  harness.service.scheduleAutomaticBackup();
+  await timers.shift()();
+  assert.deepStrictEqual(observed.shift(), {
+    ok: false,
+    written: false,
+    status: 'permission-denied'
+  });
+
+  harness.service.writeAutomaticBackup = async () => {
+    throw new Error('unexpected automatic failure');
+  };
+  harness.service.scheduleAutomaticBackup();
+  await timers.shift()();
+  assert.strictEqual(observed[0].ok, false);
+  assert.strictEqual(observed[0].written, false);
+  assert.strictEqual(observed[0].status, 'unexpected-error');
+  assert.match(observed[0].error.message, /unexpected automatic failure/);
+}
+
+async function testAutomaticBackupDefaultsToWarning() {
+  const timers = [];
+  const warnings = [];
+  const harness = createHarness({
+    setTimeout(callback) {
+      timers.push(callback);
+      return timers.length;
+    },
+    clearTimeout() {},
+    console: {
+      warn(...args) {
+        warnings.push(args);
+      }
+    }
+  });
+  harness.service.writeAutomaticBackup = async () => ({
+    ok: true,
+    written: false,
+    status: 'not-configured'
+  });
+
+  harness.service.scheduleAutomaticBackup();
+  await timers.shift()();
+  assert.strictEqual(warnings.length, 1);
+  assert.match(warnings[0][0], /Automatic backup/);
+  assert.strictEqual(warnings[0][1].status, 'not-configured');
 }
 
 async function testPersistentStorage() {
@@ -349,6 +539,27 @@ async function testPersistentStorage() {
     await unsupported.service.requestPersistentStorage(),
     { ok: false, status: 'unsupported' }
   );
+
+  const metadataFailure = createHarness({
+    navigator: {
+      storage: {
+        async persist() {
+          return true;
+        }
+      }
+    },
+    async setSettings() {
+      throw new Error('persistent metadata unavailable');
+    }
+  });
+  const metadataFailureResult = await metadataFailure.service
+    .requestPersistentStorage();
+  assert.strictEqual(metadataFailureResult.ok, true);
+  assert.strictEqual(metadataFailureResult.status, 'granted');
+  assert.match(
+    metadataFailureResult.metadataWarning.message,
+    /persistent metadata unavailable/
+  );
 }
 
 (async () => {
@@ -356,7 +567,11 @@ async function testPersistentStorage() {
   await testDownloadText();
   await testAutomaticBackupSuccess();
   await testAutomaticBackupFallbacks();
+  await testAutomaticBackupMetadataWarning();
   await testDebounce();
+  await testAutomaticBackupCoalescesWhileWriting();
+  await testAutomaticBackupResultsAreObservable();
+  await testAutomaticBackupDefaultsToWarning();
   await testPersistentStorage();
   console.log('backup-service tests passed');
 })().finally(() => {

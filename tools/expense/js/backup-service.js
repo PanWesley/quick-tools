@@ -19,6 +19,7 @@
       URL: root.URL,
       setTimeout: root.setTimeout && root.setTimeout.bind(root),
       clearTimeout: root.clearTimeout && root.clearTimeout.bind(root),
+      console: root.console,
       databaseVersion: 2
     });
   }
@@ -46,8 +47,30 @@
     const clearTimer = deps.clearTimeout || (
       typeof clearTimeout === 'function' ? clearTimeout : null
     );
+    const scheduleCleanup = deps.scheduleCleanup || setTimer;
     let automaticBackupTimer = null;
+    let automaticBackupRunning = false;
+    let automaticBackupDirty = false;
     let service;
+
+    function reportAutomaticBackupResult(result) {
+      try {
+        if (typeof deps.onAutomaticBackupResult === 'function') {
+          deps.onAutomaticBackupResult(result);
+          return;
+        }
+        const logger = deps.console || (
+          typeof console !== 'undefined' ? console : null
+        );
+        if ((!result || result.written === false || result.ok === false)
+          && logger
+          && typeof logger.warn === 'function') {
+          logger.warn('Automatic backup did not complete successfully', result);
+        }
+      } catch (error) {
+        // Observability must not interrupt expense recording.
+      }
+    }
 
     async function getBackupMeta() {
       const stored = typeof deps.getSettings === 'function'
@@ -117,8 +140,14 @@
       const link = deps.document.createElement('a');
       link.href = url;
       link.download = filename;
+      deps.document.body.appendChild(link);
       link.click();
-      deps.URL.revokeObjectURL(url);
+      link.remove();
+      if (scheduleCleanup) {
+        scheduleCleanup(() => deps.URL.revokeObjectURL(url), 0);
+      } else {
+        deps.URL.revokeObjectURL(url);
+      }
     }
 
     async function markBackupSuccessful(backupOrExpenseCount) {
@@ -196,6 +225,7 @@
     }
 
     async function writeAutomaticBackup(options = {}) {
+      let backup;
       try {
         const handle = options.handle || (
           deps.fileHandles && typeof deps.fileHandles.get === 'function'
@@ -204,7 +234,7 @@
         );
         if (!handle) {
           await updateAutomaticStatus('not-configured');
-          return { ok: false, status: 'not-configured' };
+          return { ok: false, status: 'not-configured', written: false };
         }
 
         const permission = await ensureWritePermission(handle, {
@@ -215,20 +245,45 @@
             ? 'permission-denied'
             : 'permission-required';
           await updateAutomaticStatus(status);
-          return { ok: false, status };
+          return { ok: false, status, written: false };
         }
 
-        const backup = await buildCurrentBackup();
+        backup = await buildCurrentBackup();
         const writable = await handle.createWritable();
         await writable.write(JSON.stringify(backup, null, 2));
         await writable.close();
-        await markBackupSuccessful(backup);
-        await updateAutomaticStatus('ready');
-        return { ok: true, status: 'ready' };
       } catch (error) {
         const normalizedError = asError(error);
         await updateAutomaticStatus('write-error');
-        return { ok: false, status: 'write-error', error: normalizedError };
+        return {
+          ok: false,
+          status: 'write-error',
+          written: false,
+          error: normalizedError
+        };
+      }
+
+      let metadataWarning = null;
+      try {
+        await markBackupSuccessful(backup);
+        await setBackupMeta({ automaticFileStatus: 'ready' });
+      } catch (error) {
+        metadataWarning = asError(error);
+      }
+      return {
+        ok: true,
+        status: 'ready',
+        written: true,
+        ...(metadataWarning ? { metadataWarning } : {})
+      };
+    }
+
+    async function recordPersistentStorageStatus(status) {
+      try {
+        await setBackupMeta({ persistentStorage: status });
+        return null;
+      } catch (error) {
+        return asError(error);
       }
     }
 
@@ -270,17 +325,54 @@
       }
     }
 
+    async function runScheduledAutomaticBackups() {
+      if (automaticBackupRunning) {
+        automaticBackupDirty = true;
+        return;
+      }
+      automaticBackupRunning = true;
+      try {
+        do {
+          automaticBackupDirty = false;
+          let result;
+          try {
+            result = await service.writeAutomaticBackup();
+          } catch (error) {
+            result = {
+              ok: false,
+              written: false,
+              status: 'unexpected-error',
+              error: asError(error)
+            };
+          }
+          reportAutomaticBackupResult(result);
+        } while (automaticBackupDirty);
+      } finally {
+        automaticBackupRunning = false;
+      }
+    }
+
     function scheduleAutomaticBackup() {
+      if (automaticBackupRunning) {
+        automaticBackupDirty = true;
+        return automaticBackupTimer;
+      }
       if (!setTimer) return null;
       if (automaticBackupTimer !== null && clearTimer) {
         clearTimer(automaticBackupTimer);
       }
-      automaticBackupTimer = setTimer(async () => {
+      automaticBackupTimer = setTimer(() => {
         automaticBackupTimer = null;
         try {
-          await service.writeAutomaticBackup();
+          return runScheduledAutomaticBackups();
         } catch (error) {
-          // Automatic backup must never interrupt expense recording.
+          reportAutomaticBackupResult({
+            ok: false,
+            written: false,
+            status: 'unexpected-error',
+            error: asError(error)
+          });
+          return undefined;
         }
       }, AUTOMATIC_BACKUP_DELAY);
       return automaticBackupTimer;
@@ -289,28 +381,34 @@
     async function requestPersistentStorage() {
       const storage = deps.navigator && deps.navigator.storage;
       if (!storage || typeof storage.persist !== 'function') {
-        try {
-          await setBackupMeta({ persistentStorage: 'unsupported' });
-        } catch (error) {
-          // Status persistence is best effort.
-        }
-        return { ok: false, status: 'unsupported' };
+        const metadataWarning = await recordPersistentStorageStatus('unsupported');
+        return {
+          ok: false,
+          status: 'unsupported',
+          ...(metadataWarning ? { metadataWarning } : {})
+        };
       }
 
+      let granted;
       try {
-        const granted = await storage.persist();
-        const status = granted ? 'granted' : 'denied';
-        await setBackupMeta({ persistentStorage: status });
-        return { ok: granted, status };
+        granted = await storage.persist();
       } catch (error) {
         const normalizedError = asError(error);
-        try {
-          await setBackupMeta({ persistentStorage: 'denied' });
-        } catch (statusError) {
-          // Status persistence is best effort.
-        }
-        return { ok: false, status: 'denied', error: normalizedError };
+        const metadataWarning = await recordPersistentStorageStatus('denied');
+        return {
+          ok: false,
+          status: 'denied',
+          error: normalizedError,
+          ...(metadataWarning ? { metadataWarning } : {})
+        };
       }
+      const status = granted ? 'granted' : 'denied';
+      const metadataWarning = await recordPersistentStorageStatus(status);
+      return {
+        ok: granted,
+        status,
+        ...(metadataWarning ? { metadataWarning } : {})
+      };
     }
 
     service = {
