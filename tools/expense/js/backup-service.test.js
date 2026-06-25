@@ -407,6 +407,33 @@ async function testRestoreBackup() {
   assert.deepStrictEqual(mergeContentFailure.getState(), current);
   assert.strictEqual(mergeContentFailure.replaceCalls.length, 1);
 
+  const noConflictIncoming = createValidBackup({
+    expenses: [{ id: 'new-only', date: '2026-06-25', amount: 40 }],
+    tags: [],
+    tagGroups: [],
+    settings: []
+  });
+  const originalContentFailure = createRestoreHarness({
+    current,
+    async onMerge({ plan, state, setState }) {
+      setState({
+        ...state,
+        expenses: [
+          { ...state.expenses[0], amount: 777 },
+          ...plan.expensesToAdd
+        ],
+        tags: [...state.tags, ...plan.tagsToAdd],
+        tagGroups: [...state.tagGroups, ...plan.tagGroupsToAdd]
+      });
+    }
+  });
+  await assert.rejects(
+    originalContentFailure.service.restoreBackup(noConflictIncoming, 'merge'),
+    /expenses.*content/i
+  );
+  assert.deepStrictEqual(originalContentFailure.getState(), current);
+  assert.strictEqual(originalContentFailure.replaceCalls.length, 1);
+
   const writeFailure = createRestoreHarness({
     current,
     async onReplace({ call, snapshot, setState }) {

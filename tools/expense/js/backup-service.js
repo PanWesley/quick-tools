@@ -432,11 +432,26 @@
               settings: safetySnapshot.settings.length
             },
             expectedCollections: {
-              expenses: mergePlan.expensesToAdd,
-              tags: mergePlan.tagsToAdd,
-              tagGroups: mergePlan.tagGroupsToAdd
+              expenses: [
+                ...safetySnapshot.expenses,
+                ...mergePlan.expensesToAdd
+              ],
+              tags: [
+                ...safetySnapshot.tags,
+                ...mergePlan.tagsToAdd
+              ],
+              tagGroups: [
+                ...safetySnapshot.tagGroups,
+                ...mergePlan.tagGroupsToAdd
+              ],
+              settings: safetySnapshot.settings
             },
-            allowExtraCollections: ['expenses', 'tags', 'tagGroups'],
+            allowExtraCollections: [
+              'expenses',
+              'tags',
+              'tagGroups',
+              'settings'
+            ],
             conflicts: mergePlan.conflicts
           });
       } catch (error) {
