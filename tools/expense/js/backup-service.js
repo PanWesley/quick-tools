@@ -40,6 +40,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
   const BACKUP_META_KEY = 'backupMeta';
   const AUTOMATIC_BACKUP_DELAY = 1500;
+  const DAY_MS = 24 * 60 * 60 * 1000;
   const DEFAULT_BACKUP_META = Object.freeze({
     lastBackupAt: null,
     lastBackupExpenseCount: 0,
@@ -188,6 +189,40 @@
         await deps.setSettings(BACKUP_META_KEY, meta);
       }
       return meta;
+    }
+
+    async function recordExpensesCreated(count = 1) {
+      const parsedCount = Number(count);
+      const increment = Number.isFinite(parsedCount)
+        ? Math.max(0, parsedCount)
+        : 0;
+      const meta = await getBackupMeta();
+      const result = await setBackupMeta({
+        newExpenseCount: Number(meta.newExpenseCount || 0) + increment
+      });
+      scheduleAutomaticBackup();
+      return result;
+    }
+
+    async function snoozeBackupReminder() {
+      return setBackupMeta({
+        snoozedUntil: new Date(now().getTime() + DAY_MS).toISOString()
+      });
+    }
+
+    async function getBackupStatus() {
+      if (!deps.backupUtils
+        || typeof deps.backupUtils.shouldRemindBackup !== 'function') {
+        throw new Error('ExpenseBackupUtils.shouldRemindBackup is not available');
+      }
+      const meta = await getBackupMeta();
+      const decision = deps.backupUtils.shouldRemindBackup({
+        now: now().toISOString(),
+        lastBackupAt: meta.lastBackupAt,
+        newExpenseCount: meta.newExpenseCount,
+        snoozedUntil: meta.snoozedUntil
+      });
+      return { meta, decision };
     }
 
     function getAppVersion() {
@@ -773,6 +808,10 @@
     service = {
       getBackupMeta,
       setBackupMeta,
+      recordExpensesCreated,
+      recordExpenseCreated: recordExpensesCreated,
+      snoozeBackupReminder,
+      getBackupStatus,
       buildCurrentBackup,
       downloadText,
       downloadPlainBackup,

@@ -822,6 +822,56 @@ async function testMetadataAndDownloads() {
   assert.strictEqual(settings.get('backupMeta').lastBackupExpenseCount, 7);
 }
 
+async function testExpenseCreationMetadata() {
+  const scheduled = [];
+  const reminderCalls = [];
+  const harness = createHarness({
+    backupUtils: {
+      buildBackupEnvelope(input) {
+        return { formatVersion: 1, ...input };
+      },
+      shouldRemindBackup(input) {
+        reminderCalls.push(input);
+        return { remind: true, reason: 'count' };
+      }
+    },
+    setTimeout(callback, delay) {
+      scheduled.push({ callback, delay });
+      return scheduled.length;
+    },
+    clearTimeout() {}
+  });
+  const { service, settings } = harness;
+
+  await service.recordExpensesCreated(3);
+  assert.strictEqual(settings.get('backupMeta').newExpenseCount, 3);
+  assert.strictEqual(scheduled.length, 1);
+  assert.strictEqual(scheduled[0].delay, 1500);
+
+  await service.recordExpensesCreated(-4);
+  assert.strictEqual(settings.get('backupMeta').newExpenseCount, 3);
+  assert.strictEqual(scheduled.length, 2);
+
+  await service.recordExpenseCreated();
+  assert.strictEqual(settings.get('backupMeta').newExpenseCount, 4);
+  assert.strictEqual(scheduled.length, 3);
+
+  const snoozed = await service.snoozeBackupReminder();
+  assert.strictEqual(snoozed.snoozedUntil, '2026-06-26T08:00:00.000Z');
+
+  const status = await service.getBackupStatus();
+  assert.deepStrictEqual(reminderCalls, [{
+    now: '2026-06-25T08:00:00.000Z',
+    lastBackupAt: null,
+    newExpenseCount: 4,
+    snoozedUntil: '2026-06-26T08:00:00.000Z'
+  }]);
+  assert.deepStrictEqual(status, {
+    meta: settings.get('backupMeta'),
+    decision: { remind: true, reason: 'count' }
+  });
+}
+
 async function testDownloadText() {
   const events = [];
   const cleanups = [];
@@ -1319,6 +1369,7 @@ async function testPersistentStorage() {
   await testInspectBackupFile();
   await testRestoreBackup();
   await testMetadataAndDownloads();
+  await testExpenseCreationMetadata();
   await testDownloadText();
   await testAutomaticBackupSuccess();
   await testAutomaticBackupFallbacks();
