@@ -1084,38 +1084,88 @@ function downloadResult() {
   URL.revokeObjectURL(url);
 }
 
-// Diff Algorithm
-function lcsTable(a, b) {
-  const n = a.length, m = b.length;
-  const dp = new Array((n + 1) * (m + 1)).fill(0);
-  for (let i = 1; i <= n; i++) {
-    const row = i * (m + 1);
-    for (let j = 1; j <= m; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[row + j] = dp[(i - 1) * (m + 1) + (j - 1)] + 1;
+// Diff Algorithm - Myers Diff O((N+M)D)
+function myersDiff(a, b) {
+  const n = a.length;
+  const m = b.length;
+
+  if (n === 0) {
+    return b.map(token => ({ type: 'added', newVal: token }));
+  }
+  if (m === 0) {
+    return a.map(token => ({ type: 'removed', oldVal: token }));
+  }
+
+  const max = n + m;
+  const v = new Array(2 * max + 1).fill(0);
+  const trace = [];
+
+  v[max + 1] = 0;
+
+  for (let d = 0; d <= max; d++) {
+    trace.push(v.slice());
+
+    for (let k = -d; k <= d; k += 2) {
+      let x;
+      if (k === -d || (k !== d && v[max + k - 1] < v[max + k + 1])) {
+        x = v[max + k + 1];
       } else {
-        dp[row + j] = Math.max(dp[(i - 1) * (m + 1) + j], dp[row + (j - 1)]);
+        x = v[max + k - 1] + 1;
+      }
+      let y = x - k;
+
+      while (x < n && y < m && a[x] === b[y]) {
+        x++;
+        y++;
+      }
+
+      v[max + k] = x;
+
+      if (x >= n && y >= m) {
+        return buildDiff(trace, a, b, n, m);
       }
     }
   }
-  return dp;
+  return buildDiff(trace, a, b, n, m);
 }
 
-function backtrackLCS(dp, a, b, n, m) {
+function buildDiff(trace, a, b, n, m) {
   const diffs = [];
-  let i = n, j = m;
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
-      diffs.unshift({ type: 'unchanged', oldVal: a[i - 1], newVal: b[j - 1] });
-      i--; j--;
-    } else if (j > 0 && (i === 0 || dp[i * (m + 1) + (j - 1)] >= dp[(i - 1) * (m + 1) + j])) {
-      diffs.unshift({ type: 'added', newVal: b[j - 1] });
-      j--;
+  let x = n;
+  let y = m;
+
+  for (let d = trace.length - 1; d >= 0; d--) {
+    const v = trace[d];
+    const max = n + m;
+    const k = x - y;
+
+    let prevK;
+    if (k === -d || (k !== d && v[max + k - 1] < v[max + k + 1])) {
+      prevK = k + 1;
     } else {
-      diffs.unshift({ type: 'removed', oldVal: a[i - 1] });
-      i--;
+      prevK = k - 1;
+    }
+
+    const prevX = v[max + prevK];
+    const prevY = prevX - prevK;
+
+    while (x > prevX && y > prevY) {
+      diffs.unshift({ type: 'unchanged', oldVal: a[x - 1], newVal: b[y - 1] });
+      x--;
+      y--;
+    }
+
+    if (d > 0 || prevX > 0 || prevY > 0) {
+      if (x === prevX) {
+        diffs.unshift({ type: 'added', newVal: b[y - 1] });
+        y--;
+      } else {
+        diffs.unshift({ type: 'removed', oldVal: a[x - 1] });
+        x--;
+      }
     }
   }
+
   return diffs;
 }
 
@@ -1132,22 +1182,17 @@ function computeDiff(oldText, newText, mode) {
     newTokens = newText.split('');
   }
 
-  const n = oldTokens.length;
-  const m = newTokens.length;
-
-  if (n * m > 250000) {
-    return simpleDiff(oldTokens, newTokens);
+  if (oldTokens.length === 0 && newTokens.length === 0) {
+    return [];
+  }
+  if (oldTokens.length === 0) {
+    return newTokens.map(t => ({ type: 'added', newVal: t }));
+  }
+  if (newTokens.length === 0) {
+    return oldTokens.map(t => ({ type: 'removed', oldVal: t }));
   }
 
-  const dp = lcsTable(oldTokens, newTokens);
-  return backtrackLCS(dp, oldTokens, newTokens, n, m);
-}
-
-function simpleDiff(a, b) {
-  const diffs = [];
-  for (const item of a) diffs.push({ type: 'removed', oldVal: item });
-  for (const item of b) diffs.push({ type: 'added', newVal: item });
-  return diffs;
+  return myersDiff(oldTokens, newTokens);
 }
 
 function computeLineDiff(oldText, newText) {
@@ -1197,12 +1242,6 @@ function computeLineDiff(oldText, newText) {
 }
 
 function computeCharDiff(oldStr, newStr) {
-  if (oldStr.length * newStr.length > 10000) {
-    return [
-      { type: 'removed', value: oldStr },
-      { type: 'added', value: newStr }
-    ];
-  }
   const diffs = computeDiff(oldStr, newStr, 'chars');
   const result = [];
   for (const d of diffs) {
