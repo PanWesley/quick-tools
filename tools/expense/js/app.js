@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Override switchView to trigger view-specific rendering
   // Must be done here (after index.html's inline script defines switchView)
   _originalSwitchView = window.switchView;
+  let _appReady = false;
   window.switchView = function(viewName, skipHistory) {
     if (_originalSwitchView) _originalSwitchView(viewName, skipHistory);
     if (viewName === 'dashboard') {
@@ -151,10 +152,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderExpenseList();
     } else if (viewName === 'tags') {
       loadTags();
+    } else if (viewName === 'add' && _appReady) {
+      setTimeout(() => {
+        const amountInput = document.getElementById('exp-amount');
+        if (amountInput) amountInput.focus();
+      }, 100);
     } else if (viewName === 'settings' && window.ExpenseBackupUI) {
       window.ExpenseBackupUI.refresh().catch(() => {});
     }
   };
+
+  // Handle initial hash route
+  const initialHash = window.location.hash;
+  const hashMatch = initialHash.match(/#view=(\w+)/);
+  if (hashMatch) {
+    window.switchView(hashMatch[1], true);
+  }
+
+  _appReady = true;
 
   // Scroll shrink header (v1.5.0 mobile optimization)
   let lastScrollY = 0;

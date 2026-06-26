@@ -30,12 +30,12 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- SheetJS for Excel import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=43">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=44">
 </head>
 <body>
 
-<header>
-  <a class="logo" href="." onclick="switchView('dashboard'); return false;">
+<header id="app-header" data-active-view="add">
+  <a class="logo" href="." onclick="switchView('add'); return false;">
     <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <rect width="28" height="28" rx="6" fill="#3D7B6E"/>
       <path d="M8 10h12M8 14h8M8 18h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
@@ -51,7 +51,7 @@
 
 <main id="app">
   <!-- Dashboard View -->
-  <section class="view-section active" id="view-dashboard">
+  <section class="view-section" id="view-dashboard">
     <div class="dashboard-header">
       <h2>📊 概览</h2>
       <p class="subtitle">支出情况一览</p>
@@ -156,8 +156,8 @@
     </div>
   </section>
 
-  <!-- Add Expense View -->
-  <section class="view-section" id="view-add">
+  <!-- Add Expense View (Default) -->
+  <section class="view-section active" id="view-add">
     <div class="page-header">
       <h2>➕ 记一笔</h2>
       <p class="subtitle">快速记录新的支出</p>
@@ -633,17 +633,17 @@
 
 <!-- Bottom Navigation -->
 <nav class="bottom-nav">
-    <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" aria-label="概览">
+    <button class="nav-item add-fab active" data-view="add" onclick="switchView('add')" aria-label="记一笔">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      <span>记账</span>
+    </button>
+    <button class="nav-item" data-view="dashboard" onclick="switchView('dashboard')" aria-label="概览">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
       <span>概览</span>
     </button>
     <button class="nav-item" data-view="list" onclick="switchView('list')" aria-label="账单明细">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
       <span>明细</span>
-    </button>
-    <button class="nav-item add-fab" data-view="add" onclick="switchView('add')" aria-label="记一笔">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-      <span>记账</span>
     </button>
     <button class="nav-item" data-view="tags" onclick="switchView('tags')" aria-label="标签管理">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
@@ -754,6 +754,8 @@ function switchView(viewName, skipHistory) {
   if (target) target.classList.add('active');
   const navBtn = document.querySelector('.nav-item[data-view="' + viewName + '"]');
   if (navBtn) navBtn.classList.add('active');
+  const header = document.getElementById('app-header');
+  if (header) header.setAttribute('data-active-view', viewName);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   // Push state for browser back button support
@@ -764,7 +766,7 @@ function switchView(viewName, skipHistory) {
 
 // Handle browser back/forward buttons
 window.addEventListener('popstate', function(e) {
-  const viewName = e.state || 'dashboard';
+  const viewName = e.state || 'add';
   switchView(viewName, true);
   // Trigger rendering after view switch
   if (typeof window.refreshDashboard === 'function' && viewName === 'dashboard') {

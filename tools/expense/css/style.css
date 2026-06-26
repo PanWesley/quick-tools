@@ -84,7 +84,7 @@ body {
 /* Header */
 header {
   background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
   padding: 14px 32px;
   display: flex;
   align-items: center;
@@ -94,6 +94,11 @@ header {
   position: sticky;
   top: 0;
   z-index: 50;
+}
+
+header[data-active-view="add"] {
+  border-bottom-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(61, 123, 110, 0.1);
 }
 
 .logo {
@@ -1723,6 +1728,7 @@ h1, h2 {
   align-items: center;
   height: calc(56px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-top: 6px;
   background: var(--card-bg);
   border-top: 1px solid var(--border);
   box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.04);
@@ -1736,16 +1742,18 @@ h1, h2 {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-width: 48px;
-  min-height: 48px;
-  padding: 4px 12px;
+  min-width: 56px;
+  min-height: 44px;
+  padding: 4px 16px;
   border: none;
   background: none;
   color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.2s, transform 0.2s;
+  border-radius: 22px;
+  transition: color 0.2s, transform 0.2s, background-color 0.2s;
   touch-action: manipulation;
+  position: relative;
 }
 
 .nav-item svg {
@@ -1756,6 +1764,8 @@ h1, h2 {
 
 .nav-item.active {
   color: var(--primary);
+  background: var(--primary-light);
+  font-weight: 500;
 }
 
 .nav-item:active {
@@ -1766,6 +1776,23 @@ h1, h2 {
 .nav-item.add-fab {
   color: var(--primary);
   font-weight: 600;
+}
+
+.nav-item.add-fab::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 3px;
+  background: var(--primary);
+  border-radius: 0 0 3px 3px;
+  transition: width 0.25s ease;
+}
+
+.nav-item.add-fab.active::before {
+  width: 28px;
 }
 
 .nav-item.add-fab:active {
@@ -1782,6 +1809,12 @@ h1, h2 {
   color: #fff;
   box-sizing: content-box;
   box-shadow: 0 2px 8px rgba(61, 123, 110, 0.22);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.nav-item.add-fab.active svg {
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(61, 123, 110, 0.35);
 }
 
 /* Scrollbar */
