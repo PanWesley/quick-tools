@@ -94,6 +94,8 @@
       <input type="text" id="dash-search" placeholder="搜索备注或分类…" title="搜索" aria-label="搜索备注或分类">
     </div>
 
+    <div class="dashboard-attention" id="dashboard-attention" hidden></div>
+
     <!-- Dashboard Hero -->
         <div class="dashboard-hero" id="dashboard-hero">
           <div class="hero-label">本月支出</div>
@@ -429,28 +431,35 @@
       </div>
     </div>
     <div class="settings-group">
-      <h3>数据导出</h3>
-      <div class="setting-item">
-        <div class="setting-info">
-          <span class="setting-title">导出 CSV</span>
-          <span class="setting-desc">将支出记录导出为 CSV 表格</span>
+      <h3>数据安全</h3>
+      <div class="safety-card" id="backup-safety-card">
+        <div class="safety-card-main">
+          <div class="setting-info">
+            <span class="setting-title" id="backup-status-title">数据安全</span>
+            <span class="setting-desc" id="backup-status-desc">正在检查备份状态…</span>
+          </div>
+          <button class="btn-primary" type="button" onclick="ExpenseBackupUI.downloadBackup()">立即备份</button>
         </div>
-        <button class="btn-secondary" onclick="exportCSV()">📄 CSV</button>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <span class="setting-title">导出 JSON</span>
-          <span class="setting-desc">将所有数据（支出 + 标签）导出为 JSON 备份</span>
+        <div class="safety-card-actions">
+          <button class="btn-secondary" type="button" onclick="ExpenseBackupUI.chooseRestoreFile()">恢复备份</button>
+          <button class="btn-text" type="button" aria-expanded="false"
+            aria-controls="backup-more-options" onclick="ExpenseBackupUI.toggleMore(this)">更多选项</button>
         </div>
-        <button class="btn-secondary" onclick="exportJSON()">📤 JSON</button>
+        <div class="safety-more" id="backup-more-options" hidden>
+          <button class="btn-secondary" type="button" onclick="ExpenseBackupUI.chooseAutomaticFile()">自动保存文件</button>
+          <button class="btn-secondary" type="button" onclick="ExpenseBackupUI.openEncryptedBackup()">加密备份</button>
+          <button class="btn-secondary" type="button" onclick="exportCSV()">导出 CSV</button>
+          <span class="setting-desc safety-storage-status" id="persistent-storage-status">尚未检查存储保护</span>
+        </div>
       </div>
+      <input type="file" id="backup-restore-input" accept=".json,application/json" hidden>
     </div>
     <div class="settings-group">
-      <h3>数据导入</h3>
+      <h3>表格导入</h3>
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-title">导入文件</span>
-          <span class="setting-desc">支持 CSV / Excel (.xlsx) 格式，自动识别字段</span>
+          <span class="setting-desc">支持 CSV / Excel (.xlsx) 表格；完整备份请使用上方“恢复备份”</span>
         </div>
         <button class="btn-secondary" onclick="document.getElementById('import-file-input').click()">📥 选择文件</button>
         <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="handleImportFile(this)">
@@ -508,7 +517,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.5.7</span>
+        <span class="setting-version">v1.6.0</span>
       </div>
     </div>
   </section>
@@ -567,6 +576,61 @@
   </div>
 </div>
 
+<!-- Backup Restore Modal -->
+<div class="modal-overlay" id="backup-restore-modal" style="display:none;" role="dialog"
+  aria-modal="true" aria-labelledby="backup-restore-title">
+  <div class="modal-card modal-small" id="backup-restore-dialog" tabindex="-1">
+    <div class="modal-header">
+      <h3 id="backup-restore-title">恢复备份</h3>
+      <button class="btn-close" id="backup-restore-close" type="button"
+        onclick="ExpenseBackupUI.closeRestore()" aria-label="关闭恢复备份">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="backup-password-area" id="backup-password-area" hidden>
+        <label for="backup-restore-password">备份密码</label>
+        <input type="password" id="backup-restore-password" autocomplete="current-password">
+        <button class="btn-secondary" type="button" onclick="ExpenseBackupUI.unlockRestore()">解密并检查</button>
+      </div>
+      <div id="backup-restore-summary" aria-live="polite"></div>
+    </div>
+    <div class="modal-footer" id="backup-restore-actions" hidden>
+      <button class="btn-secondary" id="backup-restore-merge" type="button"
+        onclick="ExpenseBackupUI.restore('merge')">合并去重</button>
+      <button class="btn-danger" id="backup-restore-replace" type="button"
+        onclick="ExpenseBackupUI.restore('replace')">覆盖恢复</button>
+    </div>
+  </div>
+</div>
+
+<!-- Encrypted Backup Modal -->
+<div class="modal-overlay" id="backup-encrypted-modal" style="display:none;" role="dialog"
+  aria-modal="true" aria-labelledby="backup-encrypted-title">
+  <div class="modal-card modal-small" tabindex="-1">
+    <div class="modal-header">
+      <h3 id="backup-encrypted-title">创建加密备份</h3>
+      <button class="btn-close" id="backup-encrypted-close" type="button"
+        onclick="ExpenseBackupUI.closeEncryptedBackup()" aria-label="关闭加密备份">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="safety-warning">密码无法找回。忘记密码后，此备份将无法恢复。</p>
+      <div class="form-group">
+        <label for="backup-encrypted-password">备份密码</label>
+        <input type="password" id="backup-encrypted-password" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label for="backup-encrypted-confirm">确认密码</label>
+        <input type="password" id="backup-encrypted-confirm" autocomplete="new-password">
+      </div>
+      <p class="backup-modal-error" id="backup-encrypted-error" role="alert"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" type="button" onclick="ExpenseBackupUI.closeEncryptedBackup()">取消</button>
+      <button class="btn-primary" id="backup-encrypted-submit" type="button"
+        onclick="ExpenseBackupUI.createEncryptedBackup()">下载加密备份</button>
+    </div>
+  </div>
+</div>
+
 <!-- Bottom Navigation -->
 <nav class="bottom-nav">
     <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" aria-label="概览">
@@ -588,12 +652,18 @@
   </nav>
 
 <script src="/tools/expense/js/tag-management-utils.js?v=2"></script>
-<script src="/tools/expense/js/db.js?v=39"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=160"></script>
+<script src="/tools/expense/js/db.js?v=160"></script>
+<script src="/tools/expense/js/backup-utils.js?v=160"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=160"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=160"></script>
+<script src="/tools/expense/js/backup-service.js?v=160"></script>
+<script src="/tools/expense/js/backup-ui.js?v=160"></script>
 <script src="/tools/expense/js/chart.js?v=37"></script>
 <script src="/tools/expense/js/import-export.js?v=37"></script>
 <script src="/tools/expense/js/guide.js?v=37"></script>
 <script src="/tools/expense/js/expense-list-utils.js?v=5"></script>
-<script src="/tools/expense/js/app.js?v=46"></script>
+<script src="/tools/expense/js/app.js?v=160"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->

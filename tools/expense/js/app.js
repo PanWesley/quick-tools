@@ -15,6 +15,39 @@ let allTagGroups = [];
 let selectedTagIds = [];
 let filterDebounceTimer = null;
 let _originalSwitchView = null;
+let persistentStorageRequested = false;
+
+async function afterExpenseCreated(count = 1) {
+  const backupService = window.ExpenseBackupService;
+  if (!backupService) return;
+
+  try {
+    if (typeof backupService.recordExpensesCreated === 'function') {
+      await backupService.recordExpensesCreated(count);
+    } else if (typeof backupService.recordExpenseCreated === 'function') {
+      await backupService.recordExpenseCreated(count);
+    }
+  } catch (error) {
+    // Backup metadata must never turn a successful expense save into a failure.
+  }
+
+  if (!persistentStorageRequested) {
+    persistentStorageRequested = true;
+    try {
+      Promise.resolve(backupService.requestPersistentStorage()).catch(() => {});
+    } catch (error) {
+      // Persistent storage is best-effort and must remain non-blocking.
+    }
+  }
+}
+
+window.afterExpenseCreated = afterExpenseCreated;
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && window.ExpenseBackupUI) {
+    window.ExpenseBackupUI.refresh().catch(() => {});
+  }
+});
 
 // Expose dashboard filters globally for chart.js theme refresh
 window._dashboardFilters = {};
@@ -87,6 +120,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Re-render after potential demo mode init
   await renderExpenseList();
   await refreshDashboard();
+  if (window.ExpenseBackupUI) {
+    window.ExpenseBackupUI.refresh().catch(error => {
+      console.warn('Backup status unavailable', error);
+    });
+  }
 
   // Initialize guide on first visit
   try {
@@ -108,10 +146,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (_originalSwitchView) _originalSwitchView(viewName, skipHistory);
     if (viewName === 'dashboard') {
       refreshDashboard();
+      if (window.ExpenseBackupUI) window.ExpenseBackupUI.refresh().catch(() => {});
     } else if (viewName === 'list') {
       renderExpenseList();
     } else if (viewName === 'tags') {
       loadTags();
+    } else if (viewName === 'settings' && window.ExpenseBackupUI) {
+      window.ExpenseBackupUI.refresh().catch(() => {});
     }
   };
 
@@ -354,6 +395,8 @@ async function refreshDashboard() {
   // Render hero dashboard (v1.5.0)
   renderDashboardHero();
 }
+
+window.refreshDashboard = refreshDashboard;
 
 // ============================================
 // Tag Popup / Cloud
@@ -604,6 +647,7 @@ window.saveExpense = async function() {
   const tags = Array.from(selectedChips).map(chip => chip.dataset.id);
 
   await addExpense({ amount, date, category, note, tags });
+  await afterExpenseCreated();
   resetExpenseForm();
   showToast('保存成功！');
   switchView('dashboard');
@@ -947,6 +991,7 @@ window.saveQuickExpense = async function() {
     note: itemName,
     tags: quickFormSelectedTags.slice()
   });
+  await afterExpenseCreated();
 
   await saveRecentTemplate(quickFormSelectedTags);
   showToast('保存成功！');
@@ -1183,6 +1228,7 @@ window.saveNLExpense = async function() {
     note: itemName || '',
     tags: tagIds
   });
+  await afterExpenseCreated();
 
   await saveRecentTemplate(tagIds);
   showToast('保存成功！');
@@ -2614,6 +2660,7 @@ window.confirmImport = async function() {
   try {
     showToast('正在导入...');
     const result = await executeImport(pendingImportRecords);
+    await afterExpenseCreated(result.imported);
     pendingImportRecords = null;
     document.getElementById('import-preview-area').style.display = 'none';
     document.getElementById('import-actions').style.display = 'none';

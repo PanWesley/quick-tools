@@ -1,4 +1,16 @@
 (function(root) {
+  const DEFAULT_TAG_GROUPS = Object.freeze([
+    { id: 'group-payment', name: '支付方式', color: '#3498db', order: 0 },
+    { id: 'group-person', name: '人员', color: '#e91e63', order: 1 },
+    { id: 'group-category', name: '消费类型', color: '#f39c12', order: 2 },
+    { id: 'group-channel', name: '渠道', color: '#9b59b6', order: 3 },
+    { id: 'group-uncategorized', name: '未分类', color: '#95a5a6', order: 99 }
+  ]);
+  const DEFAULT_REPAIR_OPTIONS = Object.freeze({
+    defaultTagParentId: 'group-category',
+    fallbackGroupId: 'group-uncategorized'
+  });
+
   function planTagGroupRepair(tags, groups, defaultGroups, options = {}) {
     const defaultTagParentId = options.defaultTagParentId || 'group-category';
     const fallbackGroupId = options.fallbackGroupId || 'group-uncategorized';
@@ -27,7 +39,11 @@
     return { groupsToAdd, tagsToUpdate };
   }
 
-  const api = { planTagGroupRepair };
+  const api = {
+    DEFAULT_TAG_GROUPS,
+    DEFAULT_REPAIR_OPTIONS,
+    planTagGroupRepair
+  };
   root.TagManagementUtils = api;
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
