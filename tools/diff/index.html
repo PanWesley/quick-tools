@@ -515,9 +515,9 @@
   .view-btn:hover:not(.active) { background: var(--bg); }
 
   .diff-container {
-    overflow-x: auto;
     max-height: 600px;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .diff-table {
@@ -531,7 +531,9 @@
   .diff-table td {
     padding: 2px 12px;
     vertical-align: top;
-    white-space: pre;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-wrap: break-word;
   }
 
   .diff-line-num {
@@ -543,6 +545,7 @@
     border-right: 1px solid var(--border);
     padding-right: 10px;
     font-size: 12px;
+    white-space: nowrap;
   }
 
   .diff-line-content {
@@ -618,9 +621,13 @@
 
   tr.diff-unchanged { background: var(--card-bg); }
 
+  tr.diff-unchanged td { background: inherit; }
+  tr.diff-added td { background: inherit; }
+  tr.diff-removed td { background: inherit; }
+
   .hide-unchanged tr.diff-unchanged { display: none; }
 
-  .unified-view .diff-table { table-layout: auto; }
+  .unified-view .diff-table { table-layout: auto; width: 100%; }
 
   .side-by-side-view {
     display: grid;
@@ -630,19 +637,23 @@
   }
 
   .side-by-side-view .diff-pane {
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     max-height: 600px;
     border-right: 1px solid var(--border);
   }
 
   .side-by-side-view .diff-pane:last-child { border-right: none; }
-  .side-by-side-view .diff-table { table-layout: fixed; }
+  .side-by-side-view .diff-table { table-layout: auto; width: 100%; }
 
   .diff-line-content code {
     background: transparent !important;
     padding: 0 !important;
     font-family: inherit !important;
     font-size: inherit !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    overflow-wrap: break-word !important;
   }
 
   .empty-state {
