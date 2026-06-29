@@ -39,9 +39,21 @@
     return { groupsToAdd, tagsToUpdate };
   }
 
+  function hasDuplicateTagNameInGroup(tags, name, groupId, excludeTagId) {
+    const normalizedName = String(name || '').trim();
+    if (!normalizedName || !groupId) return false;
+
+    return (tags || []).some(tag => {
+      if (!tag || tag.id === excludeTagId) return false;
+      const tagGroupId = tag.parentId || 'group-uncategorized';
+      return tagGroupId === groupId && String(tag.name || '').trim() === normalizedName;
+    });
+  }
+
   const api = {
     DEFAULT_TAG_GROUPS,
     DEFAULT_REPAIR_OPTIONS,
+    hasDuplicateTagNameInGroup,
     planTagGroupRepair
   };
   root.TagManagementUtils = api;

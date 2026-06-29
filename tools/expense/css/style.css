@@ -1,6 +1,6 @@
 /* ============================================
    Expense Tracker - Stylesheet
-   Theme: Forest Canopy (温润的日式账本) v1.6.0
+   Theme: Forest Canopy (温润的日式账本) v1.6.1
    ============================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap');
@@ -2019,6 +2019,259 @@ h1, h2 {
   background: rgba(0, 0, 0, 0.25);
 }
 
+.tag-picker-trigger {
+  cursor: pointer;
+  caret-color: transparent;
+  background-image: linear-gradient(90deg, transparent, transparent);
+}
+
+.tag-picker-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.tag-picker-modal.open {
+  display: flex;
+}
+
+.tag-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(31, 38, 35, 0.32);
+  backdrop-filter: blur(2px);
+}
+
+.tag-picker-sheet {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: min(72vh, 680px);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -16px 44px rgba(31, 38, 35, 0.22);
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+}
+
+.tag-picker-handle {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 0 auto 10px;
+}
+
+.tag-picker-sheet-header,
+.tag-picker-actions,
+.tag-picker-group-header,
+.tag-picker-add-row,
+.tag-picker-add-form {
+  display: flex;
+  align-items: center;
+}
+
+.tag-picker-sheet-header {
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-picker-sheet-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.tag-picker-sheet-header p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tag-picker-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tag-picker-selected-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 0;
+  min-height: 48px;
+}
+
+.tag-picker-selected-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  align-self: center;
+}
+
+.tag-picker-selected-chip,
+.tag-picker-chip {
+  border: 1px solid color-mix(in srgb, var(--chip-color, var(--primary)) 42%, transparent);
+  background: var(--card-bg);
+  background: color-mix(in srgb, var(--chip-color, var(--primary)) 13%, var(--card-bg));
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tag-picker-selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.tag-picker-selected-chip small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.tag-picker-groups {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 0 8px;
+}
+
+.tag-picker-group-card {
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-picker-group-header {
+  width: 100%;
+  gap: 8px;
+  min-height: 46px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  padding: 7px 2px;
+  text-align: left;
+}
+
+.tag-picker-group-name {
+  flex: 1;
+  font-weight: 700;
+}
+
+.tag-picker-group-count {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.tag-picker-chevron {
+  color: var(--text-secondary);
+  transition: transform 0.18s ease;
+}
+
+.tag-picker-group-card.collapsed .tag-picker-chevron {
+  transform: rotate(-90deg);
+}
+
+.tag-picker-group-body {
+  padding: 2px 0 12px 20px;
+}
+
+.tag-picker-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.tag-picker-chip.selected {
+  background: color-mix(in srgb, var(--chip-color, var(--primary)) 22%, var(--card-bg));
+  border-color: var(--chip-color, var(--primary));
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.tag-picker-chip-check {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.tag-picker-empty-inline {
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.tag-picker-add-row {
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.tag-picker-add-form {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tag-picker-add-form input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 16px;
+}
+
+.tag-picker-add-form button {
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.tag-picker-actions {
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.tag-picker-actions button {
+  flex: 1;
+}
+
 /* Trend chart time range selector */
 .trend-range-select {
   font-size: 12px;
@@ -3331,4 +3584,43 @@ h1, h2 {
 
 .view-section {
   animation: fadeSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (max-width: 768px) {
+  input:not([type="color"]),
+  select,
+  textarea,
+  .import-edit-input,
+  .nl-edit-field {
+    font-size: 16px !important;
+  }
+
+  body.tag-picker-open {
+    overflow: hidden;
+  }
+
+  body.tag-picker-open .bottom-nav {
+    transform: translateY(110%);
+    pointer-events: none;
+  }
+
+  .tag-picker-sheet {
+    width: 100%;
+    max-height: calc(100dvh - 18px - env(safe-area-inset-top, 0px));
+    border-radius: 18px 18px 0 0;
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+  }
+
+  .tag-picker-groups {
+    padding-bottom: 8px;
+  }
+
+  .tag-picker-actions {
+    padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .tag-picker-chip {
+    min-height: 40px;
+  }
 }

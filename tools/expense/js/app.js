@@ -58,6 +58,9 @@ let recentTemplates = []; // array of { tagIds: [...], tagNames: [...] }
 let nlParseResult = null; // cached natural language parse result
 let suggestionHighlightIndex = -1;
 let tagSuggestionMatches = [];
+let activeTagPickerMode = null;
+let tagPickerCollapsedGroups = new Set();
+let tagPickerNewInputGroups = new Set();
 
 // List view state
 let listViewPageSize = 20;
@@ -689,13 +692,7 @@ function initQuickExpenseForm() {
   // Tag input smart suggestions
   const tagInput = document.getElementById('exp-tags-input');
   if (tagInput) {
-    tagInput.addEventListener('input', onTagInput);
-    tagInput.addEventListener('keydown', onTagInputKeydown);
-    tagInput.addEventListener('blur', () => {
-      // Delay hiding so clicks on suggestions register
-      setTimeout(() => hideTagSuggestions(), 200);
-    });
-    tagInput.addEventListener('focus', onTagInput);
+    prepareTagPickerTrigger(tagInput, 'quick');
   }
 
   loadRecentTemplates();
@@ -723,6 +720,293 @@ function getVisibleTagOptions(query, selectedIds) {
       return a.name.localeCompare(b.name, 'zh-CN');
     });
 }
+
+function prepareTagPickerTrigger(input, mode) {
+  if (!input || input.dataset.tagPickerReady === '1') return;
+  input.dataset.tagPickerReady = '1';
+  input.readOnly = true;
+  input.classList.add('tag-picker-trigger');
+  input.setAttribute('role', 'button');
+  input.setAttribute('aria-haspopup', 'dialog');
+  input.setAttribute('aria-expanded', 'false');
+  input.setAttribute('placeholder', '点击选择标签...');
+
+  input.addEventListener('click', function(e) {
+    e.preventDefault();
+    input.blur();
+    openTagPicker(mode);
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      openTagPicker(mode);
+    }
+  });
+
+  updateTagPickerTrigger(mode);
+}
+
+function getTagPickerState(mode = activeTagPickerMode) {
+  if (mode === 'edit') {
+    return {
+      inputId: 'edit-tags-input',
+      selectedIds: editFormSelectedTags,
+      setSelectedIds(ids) { editFormSelectedTags = ids; },
+      renderSelected: renderEditSelectedTags
+    };
+  }
+
+  return {
+    inputId: 'exp-tags-input',
+    selectedIds: quickFormSelectedTags,
+    setSelectedIds(ids) { quickFormSelectedTags = ids; },
+    renderSelected: renderSelectedTags
+  };
+}
+
+function updateTagPickerTrigger(mode) {
+  const state = getTagPickerState(mode);
+  const input = document.getElementById(state.inputId);
+  if (!input) return;
+  const count = state.selectedIds.length;
+  input.value = count ? `已选择 ${count} 个标签` : '';
+  input.setAttribute('aria-label', count ? `已选择 ${count} 个标签，点击修改` : '点击选择标签');
+}
+
+function hasDuplicateTagNameInGroupLocal(tags, name, groupId, excludeTagId) {
+  const helper = window.TagManagementUtils && window.TagManagementUtils.hasDuplicateTagNameInGroup;
+  if (typeof helper === 'function') {
+    return helper(tags, name, groupId, excludeTagId);
+  }
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName || !groupId) return false;
+  return (tags || []).some(tag => {
+    if (!tag || tag.id === excludeTagId) return false;
+    return (tag.parentId || 'group-uncategorized') === groupId && String(tag.name || '').trim() === normalizedName;
+  });
+}
+
+function ensureTagPickerModal() {
+  let modal = document.getElementById('tag-picker-modal');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = 'tag-picker-modal';
+  modal.className = 'tag-picker-modal';
+  modal.setAttribute('aria-hidden', 'true');
+  modal.innerHTML = `
+    <div class="tag-picker-backdrop" data-tag-picker-close></div>
+    <section class="tag-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="tag-picker-title">
+      <div class="tag-picker-handle" aria-hidden="true"></div>
+      <div class="tag-picker-sheet-header">
+        <div>
+          <h3 id="tag-picker-title">选择标签</h3>
+          <p id="tag-picker-subtitle">可连续选择多个标签</p>
+        </div>
+        <button type="button" class="tag-picker-close" onclick="closeTagPicker()" aria-label="关闭">×</button>
+      </div>
+      <div class="tag-picker-selected-strip" id="tag-picker-selected-strip"></div>
+      <div class="tag-picker-groups" id="tag-picker-groups"></div>
+      <div class="tag-picker-actions">
+        <button type="button" class="btn-secondary" onclick="clearActiveTagPickerSelection()">清空</button>
+        <button type="button" class="btn-primary" onclick="closeTagPicker()">完成</button>
+      </div>
+    </section>
+  `;
+  modal.addEventListener('click', function(e) {
+    if (e.target && e.target.matches('[data-tag-picker-close]')) {
+      closeTagPicker();
+    }
+  });
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function openTagPicker(mode) {
+  activeTagPickerMode = mode || 'quick';
+  const modal = ensureTagPickerModal();
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('tag-picker-open');
+  const state = getTagPickerState(activeTagPickerMode);
+  const input = document.getElementById(state.inputId);
+  if (input) input.setAttribute('aria-expanded', 'true');
+  renderTagPicker();
+}
+
+window.closeTagPicker = function() {
+  const modal = document.getElementById('tag-picker-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  if (activeTagPickerMode) {
+    const state = getTagPickerState(activeTagPickerMode);
+    const input = document.getElementById(state.inputId);
+    if (input) input.setAttribute('aria-expanded', 'false');
+  }
+  tagPickerNewInputGroups.clear();
+  activeTagPickerMode = null;
+  document.body.classList.remove('tag-picker-open');
+};
+
+function renderTagPicker() {
+  if (!activeTagPickerMode) return;
+  const state = getTagPickerState(activeTagPickerMode);
+  const selectedIds = state.selectedIds;
+  const selectedStrip = document.getElementById('tag-picker-selected-strip');
+  const groupsContainer = document.getElementById('tag-picker-groups');
+  if (!selectedStrip || !groupsContainer) return;
+
+  if (selectedIds.length === 0) {
+    selectedStrip.innerHTML = '<span class="tag-picker-selected-empty">尚未选择标签</span>';
+  } else {
+    selectedStrip.innerHTML = selectedIds.map(id => {
+      const tag = allTags.find(item => item.id === id);
+      if (!tag) return '';
+      const group = allTagGroups.find(item => item.id === (tag.parentId || 'group-uncategorized'));
+      return `
+        <button type="button" class="tag-picker-selected-chip" onclick="toggleTagPickerTag('${escapeJSAttr(tag.id)}')" style="--chip-color:${escapeAttr(tag.color)}">
+          <span>${escapeHTML(tag.name)}</span>
+          <small>${escapeHTML(group ? group.name : '未分类')}</small>
+          <span aria-hidden="true">×</span>
+        </button>
+      `;
+    }).join('');
+  }
+
+  groupsContainer.innerHTML = allTagGroups.map(group => {
+    const tags = allTags
+      .filter(tag => (tag.parentId || 'group-uncategorized') === group.id)
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    const isCollapsed = tagPickerCollapsedGroups.has(group.id);
+    const selectedCount = tags.filter(tag => selectedIds.includes(tag.id)).length;
+    return `
+      <section class="tag-picker-group-card ${isCollapsed ? 'collapsed' : ''}">
+        <button type="button" class="tag-picker-group-header" onclick="toggleTagPickerGroup('${escapeJSAttr(group.id)}')" aria-expanded="${!isCollapsed}">
+          <span class="tag-group-dot" style="background:${escapeAttr(group.color)}"></span>
+          <span class="tag-picker-group-name">${escapeHTML(group.name)}</span>
+          <span class="tag-picker-group-count">${selectedCount}/${tags.length}</span>
+          <span class="tag-picker-chevron" aria-hidden="true">⌄</span>
+        </button>
+        ${isCollapsed ? '' : `
+          <div class="tag-picker-group-body">
+            <div class="tag-picker-chip-grid">
+              ${tags.length ? tags.map(tag => {
+                const isSelected = selectedIds.includes(tag.id);
+                return `
+                  <button type="button" class="tag-picker-chip ${isSelected ? 'selected' : ''}" onclick="toggleTagPickerTag('${escapeJSAttr(tag.id)}')" style="--chip-color:${escapeAttr(tag.color)}">
+                    <span class="tag-suggestion-dot" style="background:${escapeAttr(tag.color)}"></span>
+                    <span>${escapeHTML(tag.name)}</span>
+                    ${isSelected ? '<span class="tag-picker-chip-check">✓</span>' : ''}
+                  </button>
+                `;
+              }).join('') : '<span class="tag-picker-empty-inline">此分组暂无标签</span>'}
+            </div>
+            ${renderTagPickerAddRow(group)}
+          </div>
+        `}
+      </section>
+    `;
+  }).join('');
+}
+
+function renderTagPickerAddRow(group) {
+  const groupId = group.id;
+  if (!tagPickerNewInputGroups.has(groupId)) {
+    return `
+      <button type="button" class="tag-picker-add-row" onclick="showTagPickerNewInput('${escapeJSAttr(groupId)}')">
+        <span aria-hidden="true">+</span>
+        <span>新增到此分组</span>
+      </button>
+    `;
+  }
+
+  return `
+    <form class="tag-picker-add-form" onsubmit="event.preventDefault(); createTagFromPicker('${escapeJSAttr(groupId)}')">
+      <input type="text" id="tag-picker-new-${escapeAttr(groupId)}" placeholder="输入新标签名称" autocomplete="off">
+      <button type="submit" class="btn-primary">添加</button>
+    </form>
+  `;
+}
+
+window.toggleTagPickerGroup = function(groupId) {
+  if (tagPickerCollapsedGroups.has(groupId)) {
+    tagPickerCollapsedGroups.delete(groupId);
+  } else {
+    tagPickerCollapsedGroups.add(groupId);
+  }
+  renderTagPicker();
+};
+
+window.showTagPickerNewInput = function(groupId) {
+  tagPickerNewInputGroups.add(groupId);
+  renderTagPicker();
+  setTimeout(() => {
+    const input = document.getElementById(`tag-picker-new-${groupId}`);
+    if (input) {
+      input.focus();
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 30);
+};
+
+window.toggleTagPickerTag = function(tagId) {
+  if (!activeTagPickerMode) return;
+  const state = getTagPickerState(activeTagPickerMode);
+  const nextIds = state.selectedIds.includes(tagId)
+    ? state.selectedIds.filter(id => id !== tagId)
+    : state.selectedIds.concat(tagId);
+  state.setSelectedIds(nextIds);
+  state.renderSelected();
+  updateTagPickerTrigger(activeTagPickerMode);
+  renderTagPicker();
+};
+
+window.clearActiveTagPickerSelection = function() {
+  if (!activeTagPickerMode) return;
+  const state = getTagPickerState(activeTagPickerMode);
+  state.setSelectedIds([]);
+  state.renderSelected();
+  updateTagPickerTrigger(activeTagPickerMode);
+  renderTagPicker();
+};
+
+window.createTagFromPicker = async function(groupId) {
+  if (!activeTagPickerMode) return;
+  const input = document.getElementById(`tag-picker-new-${groupId}`);
+  const name = input ? input.value.trim() : '';
+  if (!name) {
+    showToast('请输入标签名称');
+    if (input) input.focus();
+    return;
+  }
+
+  if (hasDuplicateTagNameInGroupLocal(allTags, name, groupId)) {
+    showToast('同一分组中已存在这个标签');
+    if (input) input.focus();
+    return;
+  }
+
+  const group = allTagGroups.find(item => item.id === groupId);
+  const newTag = await addTag({
+    name,
+    color: group ? group.color : '#2DBAA3',
+    parentId: groupId
+  });
+  await loadTags();
+
+  const state = getTagPickerState(activeTagPickerMode);
+  if (!state.selectedIds.includes(newTag.id)) {
+    state.setSelectedIds(state.selectedIds.concat(newTag.id));
+  }
+  tagPickerNewInputGroups.delete(groupId);
+  state.renderSelected();
+  updateTagPickerTrigger(activeTagPickerMode);
+  renderTagPicker();
+  renderExpenseList();
+  refreshDashboard();
+};
 
 function renderGroupedTagDropdown(containerId, query, selectedIds, selectFnName, createFnName) {
   const container = document.getElementById(containerId);
@@ -844,8 +1128,9 @@ window.selectSuggestionTag = function(tagId) {
 };
 
 window.createNewTagFromSuggestion = async function(name) {
-  if (!name || allTags.some(t => t.name === name)) return;
-  const newTag = await addTag({ name, color: '#2DBAA3' });
+  const parentId = 'group-uncategorized';
+  if (!name || hasDuplicateTagNameInGroupLocal(allTags, name, parentId)) return;
+  const newTag = await addTag({ name, color: '#2DBAA3', parentId });
   await loadTags();
   quickFormSelectedTags.push(newTag.id);
   renderSelectedTags();
@@ -882,6 +1167,7 @@ function tryAddTagFromInput() {
 function renderSelectedTags() {
   const container = document.getElementById('selected-tags');
   if (!container) return;
+  updateTagPickerTrigger('quick');
 
   if (quickFormSelectedTags.length === 0) {
     container.innerHTML = '';
@@ -891,14 +1177,17 @@ function renderSelectedTags() {
   container.innerHTML = quickFormSelectedTags.map(id => {
     const tag = allTags.find(t => t.id === id);
     if (!tag) return '';
+    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
+    const label = group ? `${escapeHTML(group.name)} · ${escapeHTML(tag.name)}` : escapeHTML(tag.name);
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeQuickTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
+    return `<span class="selected-tag-chip" style="${style}">${label}<button class="remove" onclick="removeQuickTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
   }).join('');
 }
 
 window.removeQuickTag = function(tagId) {
   quickFormSelectedTags = quickFormSelectedTags.filter(id => id !== tagId);
   renderSelectedTags();
+  if (activeTagPickerMode === 'quick') renderTagPicker();
 };
 
 // Recent Templates
@@ -1019,7 +1308,6 @@ window.resetQuickForm = function(keepDate = false) {
     document.getElementById('exp-date').value = new Date().toISOString().slice(0, 10);
   }
   document.getElementById('exp-item-name').value = '';
-  document.getElementById('exp-tags-input').value = '';
   quickFormSelectedTags = [];
   renderSelectedTags();
   hideTagSuggestions();
@@ -1870,12 +2158,7 @@ window.closeExpenseDetail = function() {
 function initEditModal() {
   const tagInput = document.getElementById('edit-tags-input');
   if (tagInput) {
-    tagInput.addEventListener('input', onEditTagInput);
-    tagInput.addEventListener('keydown', onEditTagInputKeydown);
-    tagInput.addEventListener('blur', () => {
-      setTimeout(() => hideEditTagSuggestions(), 200);
-    });
-    tagInput.addEventListener('focus', onEditTagInput);
+    prepareTagPickerTrigger(tagInput, 'edit');
   }
 }
 
@@ -1891,6 +2174,7 @@ window.openEditModal = async function(id) {
   document.getElementById('edit-date').value = exp.date;
   document.getElementById('edit-item-name').value = exp.note || '';
   renderEditSelectedTags();
+  updateTagPickerTrigger('edit');
 
   const modal = document.getElementById('edit-modal');
   modal.style.display = 'flex';
@@ -1901,7 +2185,7 @@ window.closeEditModal = function() {
   if (modal) modal.style.display = 'none';
   editingExpenseId = null;
   editFormSelectedTags = [];
-  document.getElementById('edit-tags-input').value = '';
+  updateTagPickerTrigger('edit');
   hideEditTagSuggestions();
 };
 
@@ -2012,8 +2296,9 @@ window.selectEditSuggestionTag = function(tagId) {
 };
 
 window.createNewEditTagFromSuggestion = async function(name) {
-  if (!name || allTags.some(t => t.name === name)) return;
-  const newTag = await addTag({ name, color: '#2DBAA3' });
+  const parentId = 'group-uncategorized';
+  if (!name || hasDuplicateTagNameInGroupLocal(allTags, name, parentId)) return;
+  const newTag = await addTag({ name, color: '#2DBAA3', parentId });
   await loadTags();
   editFormSelectedTags.push(newTag.id);
   renderEditSelectedTags();
@@ -2050,6 +2335,7 @@ function tryAddEditTagFromInput() {
 function renderEditSelectedTags() {
   const container = document.getElementById('edit-selected-tags');
   if (!container) return;
+  updateTagPickerTrigger('edit');
 
   if (editFormSelectedTags.length === 0) {
     container.innerHTML = '';
@@ -2059,14 +2345,17 @@ function renderEditSelectedTags() {
   container.innerHTML = editFormSelectedTags.map(id => {
     const tag = allTags.find(t => t.id === id);
     if (!tag) return '';
+    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
+    const label = group ? `${escapeHTML(group.name)} · ${escapeHTML(tag.name)}` : escapeHTML(tag.name);
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${tag.name}<button class="remove" onclick="removeEditTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
+    return `<span class="selected-tag-chip" style="${style}">${label}<button class="remove" onclick="removeEditTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
   }).join('');
 }
 
 window.removeEditTag = function(tagId) {
   editFormSelectedTags = editFormSelectedTags.filter(id => id !== tagId);
   renderEditSelectedTags();
+  if (activeTagPickerMode === 'edit') renderTagPicker();
 };
 
 // ============================================
@@ -2135,7 +2424,7 @@ window.addNewTag = async function() {
   }
 
   // Check duplicate
-  if (allTags.some(t => t.name === name)) {
+  if (hasDuplicateTagNameInGroupLocal(allTags, name, groupId)) {
     showToast('标签名称已存在');
     return;
   }
@@ -2327,6 +2616,19 @@ window.moveSelectedTags = async function() {
     return;
   }
 
+  const movingTags = selectedManagedTagIds
+    .map(tagId => allTags.find(tag => tag.id === tagId))
+    .filter(Boolean);
+  const movingNames = new Set();
+  for (const tag of movingTags) {
+    const name = String(tag.name || '').trim();
+    if (movingNames.has(name) || hasDuplicateTagNameInGroupLocal(allTags, name, targetGroupId, tag.id)) {
+      showToast('目标分组中已存在同名标签');
+      return;
+    }
+    movingNames.add(name);
+  }
+
   for (const tagId of selectedManagedTagIds) {
     await moveTagToGroup(tagId, targetGroupId);
   }
@@ -2454,6 +2756,11 @@ window.moveTagPrompt = function(tagId, tagName) {
 };
 
 window.moveTagToGroupAction = async function(tagId, groupId) {
+  const tag = allTags.find(t => t.id === tagId);
+  if (tag && hasDuplicateTagNameInGroupLocal(allTags, tag.name, groupId, tagId)) {
+    showToast('目标分组中已存在同名标签');
+    return;
+  }
   await moveTagToGroup(tagId, groupId);
   await loadTags();
   renderExpenseList();
@@ -2475,7 +2782,8 @@ window.renameTag = async function(id) {
 
   openRenameModal(tag.name, '重命名标签', '新标签名称', async function(newName) {
     if (newName !== tag.name) {
-      if (allTags.some(t => t.id !== id && t.name === newName)) {
+      const currentGroupId = tag.parentId || 'group-uncategorized';
+      if (hasDuplicateTagNameInGroupLocal(allTags, newName, currentGroupId, id)) {
         const errorEl = document.getElementById('rename-modal-error');
         if (errorEl) {
           errorEl.textContent = '标签名称已存在';
@@ -2532,9 +2840,10 @@ window.openMergeModal = function(sourceId) {
 
   const select = document.getElementById('merge-target-select');
   select.innerHTML = '<option value="">选择目标标签</option>' +
-    allTags.filter(t => t.id !== sourceId).map(t =>
-      `<option value="${t.id}">${t.name}</option>`
-    ).join('');
+    allTags.filter(t => t.id !== sourceId).map(t => {
+      const group = allTagGroups.find(g => g.id === (t.parentId || 'group-uncategorized'));
+      return `<option value="${t.id}">${group ? group.name + ' · ' : ''}${t.name}</option>`;
+    }).join('');
   select.value = '';
 
   const modal = document.getElementById('merge-modal');
