@@ -61,6 +61,8 @@ let tagSuggestionMatches = [];
 let activeTagPickerMode = null;
 let tagPickerCollapsedGroups = new Set();
 let tagPickerNewInputGroups = new Set();
+let tagPickerUsageStats = {};
+let tagPickerUsageRequestId = 0;
 
 // List view state
 let listViewPageSize = 20;
@@ -786,6 +788,24 @@ function hasDuplicateTagNameInGroupLocal(tags, name, groupId, excludeTagId) {
   });
 }
 
+async function getTagPickerUsageStats() {
+  const helper = window.TagManagementUtils && window.TagManagementUtils.buildTagUsageStats;
+  if (typeof helper !== 'function') {
+    return {};
+  }
+
+  const expenses = await getExpenses();
+  return helper(expenses, new Date(), 90);
+}
+
+function sortTagsForPickerLocal(tags, selectedIds) {
+  const helper = window.TagManagementUtils && window.TagManagementUtils.sortTagsForPicker;
+  if (typeof helper === 'function') {
+    return helper(tags, tagPickerUsageStats, selectedIds, 'zh-CN');
+  }
+  return [...(tags || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'));
+}
+
 function ensureTagPickerModal() {
   let modal = document.getElementById('tag-picker-modal');
   if (modal) return modal;
@@ -832,6 +852,19 @@ function openTagPicker(mode) {
   const input = document.getElementById(state.inputId);
   if (input) input.setAttribute('aria-expanded', 'true');
   renderTagPicker();
+  const requestId = ++tagPickerUsageRequestId;
+  getTagPickerUsageStats().then(stats => {
+    if (requestId === tagPickerUsageRequestId && activeTagPickerMode) {
+      tagPickerUsageStats = stats;
+      renderTagPicker();
+    }
+  }).catch(error => {
+    console.warn('[Tags] Unable to refresh tag usage stats', error);
+    if (requestId === tagPickerUsageRequestId && activeTagPickerMode) {
+      tagPickerUsageStats = {};
+      renderTagPicker();
+    }
+  });
 }
 
 window.closeTagPicker = function() {
@@ -876,9 +909,10 @@ function renderTagPicker() {
   }
 
   groupsContainer.innerHTML = allTagGroups.map(group => {
-    const tags = allTags
-      .filter(tag => (tag.parentId || 'group-uncategorized') === group.id)
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    const tags = sortTagsForPickerLocal(
+      allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id),
+      selectedIds
+    );
     const isCollapsed = tagPickerCollapsedGroups.has(group.id);
     const selectedCount = tags.filter(tag => selectedIds.includes(tag.id)).length;
     return `
@@ -2010,18 +2044,13 @@ window.renderExpenseList = async function() {
   }
 
   const sortValue = sort ? sort.value : 'date-desc';
-  switch (sortValue) {
-    case 'date-asc':
-      expenses.sort((a, b) => a.date.localeCompare(b.date));
-      break;
-    case 'amount-desc':
-      expenses.sort((a, b) => (b.amount || 0) - (a.amount || 0));
-      break;
-    case 'amount-asc':
-      expenses.sort((a, b) => (a.amount || 0) - (b.amount || 0));
-      break;
-    default:
-      expenses.sort((a, b) => b.date.localeCompare(a.date));
+  if (ExpenseListUtils && typeof ExpenseListUtils.sortExpensesForList === 'function') {
+    expenses = ExpenseListUtils.sortExpensesForList(expenses, sortValue);
+  } else {
+    expenses.sort((a, b) => {
+      const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+      return dateCompare || String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
   }
 
   listViewAllExpenses = expenses;

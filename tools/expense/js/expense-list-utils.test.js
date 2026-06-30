@@ -4,6 +4,7 @@ const {
   formatMonthLabel,
   formatExpenseDay,
   groupExpensesByMonth,
+  sortExpensesForList,
   createExpenseDetailView,
   selectPrimaryExpenseTag,
   getExpenseGestureResult,
@@ -23,6 +24,21 @@ const grouped = groupExpensesByMonth([
 assert.strictEqual(grouped['2026-06'].items.length, 2);
 assert.strictEqual(grouped['2026-06'].total, 13.5);
 assert.strictEqual(grouped['2026-05'].items[0].id, 'c');
+
+const sortedByDateDesc = sortExpensesForList(
+  [
+    { id: 'exp_1000_old', date: '2026-06-20', createdAt: '2026-06-20T08:00:00.000Z' },
+    { id: 'exp_2000_new', date: '2026-06-20', createdAt: '2026-06-20T09:00:00.000Z' },
+    { id: 'exp_3000_next_day', date: '2026-06-21', createdAt: '2026-06-21T07:00:00.000Z' }
+  ],
+  'date-desc'
+);
+
+assert.deepStrictEqual(
+  sortedByDateDesc.map(expense => expense.id),
+  ['exp_3000_next_day', 'exp_2000_new', 'exp_1000_old'],
+  'date descending sort should put newer dates first and later-created same-day expenses first'
+);
 
 const detailTags = [
   { id: 'wechat', name: '微信', color: '#2ecc71', parentId: 'group-payment' },

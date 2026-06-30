@@ -32,6 +32,38 @@
     }, {});
   }
 
+  function getExpenseCreatedOrder(expense) {
+    if (!expense) return 0;
+    const createdAt = Date.parse(expense.createdAt || '');
+    if (!Number.isNaN(createdAt)) return createdAt;
+    const idMatch = String(expense.id || '').match(/^exp_(\d+)/);
+    return idMatch ? Number(idMatch[1]) : 0;
+  }
+
+  function compareExpenseCreatedDesc(a, b) {
+    return getExpenseCreatedOrder(b) - getExpenseCreatedOrder(a);
+  }
+
+  function sortExpensesForList(expenses, sortValue = 'date-desc') {
+    const list = [...(expenses || [])];
+    switch (sortValue) {
+      case 'date-asc':
+        return list.sort((a, b) => {
+          const dateCompare = String(a.date || '').localeCompare(String(b.date || ''));
+          return dateCompare || compareExpenseCreatedDesc(a, b);
+        });
+      case 'amount-desc':
+        return list.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
+      case 'amount-asc':
+        return list.sort((a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0));
+      default:
+        return list.sort((a, b) => {
+          const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+          return dateCompare || compareExpenseCreatedDesc(a, b);
+        });
+    }
+  }
+
   function selectPrimaryExpenseTag(tagIds, tags, preferredGroupId = 'group-category') {
     const tagMap = new Map((tags || []).map(tag => [tag.id, tag]));
     const resolvedTags = (tagIds || []).map(id => tagMap.get(id)).filter(Boolean);
@@ -106,6 +138,7 @@
     formatMonthLabel,
     formatExpenseDay,
     groupExpensesByMonth,
+    sortExpensesForList,
     selectPrimaryExpenseTag,
     groupExpenseTags,
     createExpenseDetailView,
