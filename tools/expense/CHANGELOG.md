@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.6.3 (2026-06-30)
+
+### Performance
+- Installed PWA startup now serves same-origin app shell assets from cache first and refreshes them in the background.
+- Chart.js and SheetJS are no longer loaded during the default bookkeeping startup path; charts load when opening Overview, and SheetJS loads only for Excel import.
+- Removed the remote font stylesheet import so first paint does not wait for Google Fonts.
+- Default startup no longer pre-renders Overview charts or the detail list before those views are opened.
+
+### Version
+- v1.6.2 -> v1.6.3
+
 ## v1.6.2 (2026-06-29)
 
 ### UX
