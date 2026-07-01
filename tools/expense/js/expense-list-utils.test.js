@@ -7,6 +7,7 @@ const {
   sortExpensesForList,
   createExpenseDetailView,
   selectPrimaryExpenseTag,
+  expenseMatchesCategoryFilter,
   getExpenseGestureResult,
   shouldSuppressExpenseClick
 } = require('./expense-list-utils');
@@ -54,6 +55,33 @@ const detailGroups = [
 assert.strictEqual(
   selectPrimaryExpenseTag(['wechat', 'food', 'family'], detailTags).id,
   'food'
+);
+
+assert.strictEqual(
+  expenseMatchesCategoryFilter(
+    { category: '餐饮', tags: ['wechat'] },
+    'tag:food',
+    detailTags
+  ),
+  true,
+  'tag filter should match legacy category name when the expense has no matching tag id'
+);
+assert.strictEqual(
+  expenseMatchesCategoryFilter(
+    { category: '餐饮', tags: ['wechat'] },
+    'tag:wechat',
+    detailTags
+  ),
+  true,
+  'tag filter should match the stable tag id on newer expenses'
+);
+assert.strictEqual(
+  expenseMatchesCategoryFilter(
+    { category: '餐饮', tags: ['wechat'] },
+    'tag:family',
+    detailTags
+  ),
+  false
 );
 
 assert.deepStrictEqual(

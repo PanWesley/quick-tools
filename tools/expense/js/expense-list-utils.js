@@ -70,6 +70,22 @@
     return resolvedTags.find(tag => tag.parentId === preferredGroupId) || resolvedTags[0] || null;
   }
 
+  function expenseMatchesCategoryFilter(expense, filterValue, tags) {
+    if (!filterValue) return true;
+    const record = expense || {};
+    const value = String(filterValue);
+    if (value.startsWith('tag:')) {
+      const tagId = value.slice(4);
+      if ((record.tags || []).includes(tagId)) return true;
+      const tag = (tags || []).find(item => item.id === tagId);
+      return Boolean(tag && record.category === tag.name);
+    }
+    return record.category === value || (record.tags || []).some(tid => {
+      const tag = (tags || []).find(item => item.id === tid);
+      return tag && tag.name === value;
+    });
+  }
+
   function groupExpenseTags(tagIds, tags, groups) {
     const tagMap = new Map((tags || []).map(tag => [tag.id, tag]));
     const groupMap = new Map((groups || []).map(group => [group.id, group]));
@@ -140,6 +156,7 @@
     groupExpensesByMonth,
     sortExpensesForList,
     selectPrimaryExpenseTag,
+    expenseMatchesCategoryFilter,
     groupExpenseTags,
     createExpenseDetailView,
     getExpenseGestureResult,

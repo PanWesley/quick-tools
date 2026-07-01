@@ -55,7 +55,12 @@ requiredScripts.forEach((source, index) => {
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.5';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.6';/
+);
+assert.match(
+  html,
+  /\/tools\/expense\/css\/style\.css\?v=166/,
+  'main expense stylesheet must use the current asset version'
 );
 assert.match(
   serviceWorker,

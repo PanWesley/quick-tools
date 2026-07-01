@@ -1,6 +1,6 @@
 /* ============================================
    Expense Tracker - Stylesheet
-   Theme: Forest Canopy (温润的日式账本) v1.6.5
+   Theme: Forest Canopy (温润的日式账本) v1.6.6
    ============================================ */
 
 /* CSS Variables */
@@ -314,59 +314,43 @@ h1, h2 {
   color: var(--success);
 }
 
-.pace-bars {
+.pace-plain {
   display: grid;
-  gap: 12px;
-}
-
-.pace-row {
-  display: grid;
-  gap: 6px;
-}
-
-.pace-label {
-  display: flex;
-  justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
 }
 
-.pace-label strong {
-  font-family: var(--font-mono);
+.pace-plain strong {
   color: var(--text);
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
 }
 
-.pace-track {
-  height: 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--primary) 8%, var(--border));
-  overflow: hidden;
-}
-
-.pace-track span {
-  display: block;
-  height: 100%;
-  width: 0;
-  border-radius: inherit;
-  background: var(--primary);
-  transition: width 0.25s ease;
-}
-
-.pace-track.spending span {
-  background: var(--success);
-}
-
-.pace-track.spending span.ahead {
-  background: var(--danger);
-}
-
-.insight-copy {
-  margin: 12px 0 0;
+.pace-plain p {
+  margin: 0;
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+.pace-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pace-mini-stats span {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
 }
 
 .heatmap-weekdays,
@@ -451,6 +435,70 @@ h1, h2 {
 }
 
 .heatmap-cell:not(.empty):hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, #f6a313 70%, var(--primary));
+}
+
+.calendar-heatmap.month-mode {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.heatmap-month {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, #f6a313 8%, var(--card-bg));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.heatmap-month span {
+  font-size: 12px;
+  color: currentColor;
+}
+
+.heatmap-month strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: currentColor;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap-month.level-0 {
+  background: color-mix(in srgb, #f6a313 8%, var(--card-bg));
+}
+
+.heatmap-month.level-1 {
+  background: color-mix(in srgb, #f6a313 20%, var(--card-bg));
+}
+
+.heatmap-month.level-2 {
+  background: color-mix(in srgb, #f6a313 38%, var(--card-bg));
+}
+
+.heatmap-month.level-3 {
+  background: color-mix(in srgb, #f6a313 58%, var(--card-bg));
+}
+
+.heatmap-month.level-4 {
+  background: #f6a313;
+  color: #2c220d;
+}
+
+.heatmap-month.today {
+  border-color: var(--primary);
+}
+
+.heatmap-month:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, #f6a313 70%, var(--primary));
 }
@@ -3461,6 +3509,19 @@ h1, h2 {
 
   .heatmap-amount {
     font-size: 8px;
+  }
+
+  .calendar-heatmap.month-mode {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .heatmap-month {
+    min-height: 52px;
+    border-radius: 8px;
+  }
+
+  .heatmap-month strong {
+    font-size: 12px;
   }
 
   .stat-cards {

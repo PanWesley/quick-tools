@@ -324,35 +324,21 @@ function renderSpendingPaceInsight(expenses, dateRange, previousExpenses) {
       ? previousExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0)
       : null
   });
+  const plain = buildSpendingPlainSummary(pace);
   const statusEl = document.getElementById('pace-status');
-  const timePercentEl = document.getElementById('pace-time-percent');
-  const spendingPercentEl = document.getElementById('pace-spending-percent');
-  const timeBar = document.getElementById('pace-time-bar');
-  const spendingBar = document.getElementById('pace-spending-bar');
+  const titleEl = document.getElementById('pace-title');
   const copyEl = document.getElementById('pace-copy');
+  const dailyAverageEl = document.getElementById('pace-daily-average');
+  const remainingEl = document.getElementById('pace-remaining');
 
   if (statusEl) {
     statusEl.textContent = pace.hasReference ? pace.label : '参考不足';
     statusEl.className = `pace-status ${pace.status}`;
   }
-  if (timePercentEl) timePercentEl.textContent = `${pace.elapsedPercent}%`;
-  if (spendingPercentEl) spendingPercentEl.textContent = `${pace.spendingPercent}%`;
-  if (timeBar) timeBar.style.width = `${pace.elapsedPercent}%`;
-  if (spendingBar) {
-    spendingBar.style.width = `${pace.spendingPercent}%`;
-    spendingBar.className = pace.status;
-  }
-  if (copyEl) {
-    if (!pace.hasReference) {
-      copyEl.textContent = '上一段暂无可比数据，先积累几天会更准。';
-    } else if (pace.status === 'ahead') {
-      copyEl.textContent = `已花 ${pace.spendingPercent}%，快于时间进度 ${pace.elapsedPercent}%。`;
-    } else if (pace.status === 'behind') {
-      copyEl.textContent = `已花 ${pace.spendingPercent}%，低于时间进度 ${pace.elapsedPercent}%。`;
-    } else {
-      copyEl.textContent = `已花 ${pace.spendingPercent}%，和时间进度基本同步。`;
-    }
-  }
+  if (titleEl) titleEl.textContent = plain.title;
+  if (copyEl) copyEl.textContent = plain.summary;
+  if (dailyAverageEl) dailyAverageEl.textContent = plain.dailyAverage;
+  if (remainingEl) remainingEl.textContent = plain.remaining;
 }
 
 function renderCalendarHeatmapInsight(expenses, dateRange) {
@@ -363,7 +349,28 @@ function renderCalendarHeatmapInsight(expenses, dateRange) {
   });
   const container = document.getElementById('calendar-heatmap');
   const maxEl = document.getElementById('heatmap-max');
+  const titleEl = document.getElementById('heatmap-title');
+  const weekdaysEl = document.querySelector('.heatmap-weekdays');
   if (!container) return;
+
+  container.classList.toggle('month-mode', heatmap.mode === 'month');
+  if (weekdaysEl) weekdaysEl.style.display = heatmap.mode === 'month' ? 'none' : '';
+  if (titleEl) titleEl.textContent = heatmap.mode === 'month' ? '按月支出热力图' : '日历热力图';
+
+  if (heatmap.mode === 'month') {
+    if (maxEl) {
+      maxEl.textContent = heatmap.maxMonthlyTotal > 0 ? `最高月 ¥${heatmap.maxMonthlyTotal.toFixed(0)}` : '暂无支出';
+    }
+    container.innerHTML = heatmap.months.map(month => {
+      const level = month.intensity === 0 ? 0 : Math.max(1, Math.min(4, Math.ceil(month.intensity * 4)));
+      const title = `${month.month} 支出 ¥${month.total.toFixed(2)}`;
+      const amountLabel = typeof formatHeatmapAmountLabel === 'function'
+        ? formatHeatmapAmountLabel(month.total)
+        : (month.total > 0 ? `¥${Math.round(month.total)}` : '');
+      return `<button class="heatmap-month level-${level} ${month.isCurrentMonth ? 'today' : ''}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" onclick="goToListForMonth('${escapeJSAttr(month.month)}')"><span>${escapeHTML(month.label)}</span><strong>${amountLabel ? escapeHTML(amountLabel) : '&nbsp;'}</strong></button>`;
+    }).join('');
+    return;
+  }
 
   if (maxEl) {
     maxEl.textContent = heatmap.maxDailyTotal > 0 ? `峰值 ¥${heatmap.maxDailyTotal.toFixed(0)}` : '暂无支出';
@@ -706,6 +713,16 @@ window.goToListForDate = function(date) {
   renderExpenseList();
 };
 
+window.goToListForMonth = function(month) {
+  _originalSwitchView('list');
+  const listSearch = document.getElementById('list-search');
+  if (listSearch) {
+    listSearch.value = month;
+  }
+  listViewCurrentOffset = 0;
+  renderExpenseList();
+};
+
 function applyListViewFilters() {
   if (!window._listViewFilters) return;
 
@@ -722,7 +739,7 @@ function applyListViewFilters() {
   if (listFilterCategory && filters.tags && filters.tags.length === 1) {
     const tag = allTags.find(t => t.id === filters.tags[0]);
     if (tag) {
-      listFilterCategory.value = tag.name;
+      listFilterCategory.value = `tag:${tag.id}`;
     }
   }
 
@@ -828,9 +845,26 @@ function populateCategorySelects() {
 
   if (listFilter) {
     const current = listFilter.value;
-    listFilter.innerHTML = '<option value="">全部分类</option>' +
-      allTags.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
-    listFilter.value = current;
+    const tagsByGroup = {};
+    for (const group of allTagGroups) {
+      tagsByGroup[group.id] = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
+    }
+    const groupedOptions = allTagGroups.map(group => {
+      const tags = tagsByGroup[group.id] || [];
+      if (tags.length === 0) return '';
+      return `<optgroup label="${escapeAttr(group.name)}">` +
+        tags.map(tag => `<option value="tag:${escapeAttr(tag.id)}">${escapeHTML(tag.name)}</option>`).join('') +
+        '</optgroup>';
+    }).join('');
+    listFilter.innerHTML = '<option value="">全部分类</option>' + groupedOptions;
+    if (current && current.startsWith('tag:')) {
+      listFilter.value = current;
+    } else if (current) {
+      const legacyTag = allTags.find(tag => tag.name === current);
+      listFilter.value = legacyTag ? `tag:${legacyTag.id}` : '';
+    } else {
+      listFilter.value = '';
+    }
   }
 }
 
@@ -2223,18 +2257,7 @@ window.renderExpenseList = async function() {
 
   if (catFilter && catFilter.value) {
     const catFilterValue = catFilter.value;
-    expenses = expenses.filter(e => {
-      // Match by category field
-      if (e.category === catFilterValue) return true;
-      // Also match if any tag on this expense has the name
-      if (e.tags && e.tags.length > 0) {
-        for (const tid of e.tags) {
-          const tag = allTags.find(t => t.id === tid);
-          if (tag && tag.name === catFilterValue) return true;
-        }
-      }
-      return false;
-    });
+    expenses = expenses.filter(e => ExpenseListUtils.expenseMatchesCategoryFilter(e, catFilterValue, allTags));
   }
 
   const sortValue = sort ? sort.value : 'date-desc';
@@ -3043,7 +3066,7 @@ window.filterByTagFromList = function(tagId) {
   // Set the category filter in list view
   const listFilterCategory = document.getElementById('list-filter-category');
   if (listFilterCategory) {
-    listFilterCategory.value = tag.name;
+    listFilterCategory.value = `tag:${tag.id}`;
   }
 
   switchView('list');

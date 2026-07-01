@@ -431,6 +431,12 @@ function formatHeatmapAmountLabel(value) {
   return `¥${Math.round(amount)}`;
 }
 
+function formatSignedCurrencyDelta(value) {
+  const amount = Number(value || 0);
+  const abs = formatCurrencyValue(Math.abs(amount));
+  return amount >= 0 ? `多 ${abs}` : `少 ${abs}`;
+}
+
 function buildSpendingPace(expenses, options = {}) {
   const { startDate, endDate, now = formatDateKey(new Date()), referenceTotal = null } = options;
   const total = Number(sumExpenseAmount(expenses).toFixed(2));
@@ -443,11 +449,19 @@ function buildSpendingPace(expenses, options = {}) {
   const spendingRatio = hasReference && baseline > 0 ? clampRatio(total / baseline) : elapsedRatio;
   const delta = spendingRatio - elapsedRatio;
   const status = hasReference && delta > 0.1 ? 'ahead' : (hasReference && delta < -0.1 ? 'behind' : 'steady');
+  const expectedTotal = hasReference ? Number((baseline * elapsedRatio).toFixed(2)) : null;
+  const amountDelta = hasReference ? Number((total - expectedTotal).toFixed(2)) : null;
 
   return {
     total,
     referenceTotal: Number((baseline || 0).toFixed(2)),
     hasReference,
+    rangeDays,
+    elapsedDays,
+    remainingDays: Math.max(0, rangeDays - elapsedDays),
+    expectedTotal,
+    amountDelta,
+    dailyAverage: Number((total / Math.max(1, elapsedDays)).toFixed(2)),
     elapsedRatio,
     spendingRatio,
     elapsedPercent: Math.round(elapsedRatio * 100),
@@ -457,15 +471,36 @@ function buildSpendingPace(expenses, options = {}) {
   };
 }
 
+function buildSpendingPlainSummary(pace = {}) {
+  const total = Number(pace.total || 0);
+  const titleMap = {
+    ahead: '花得有点快',
+    behind: '花得比较省',
+    steady: '和往常差不多'
+  };
+  const title = pace.hasReference ? (titleMap[pace.status] || '和往常差不多') : '先记几天再判断';
+  const summary = pace.hasReference
+    ? `本期已花 ${formatCurrencyValue(total)}，比参考进度${formatSignedCurrencyDelta(pace.amountDelta || 0)}`
+    : `本期已花 ${formatCurrencyValue(total)}，暂无上期数据可比较`;
+
+  return {
+    title,
+    summary,
+    dailyAverage: `日均 ${formatCurrencyValue(pace.dailyAverage || 0)}`,
+    remaining: `还剩 ${Number(pace.remainingDays || 0)} 天`
+  };
+}
+
 function buildCalendarHeatmap(expenses, options = {}) {
-  const { startDate, endDate, now = formatDateKey(new Date()) } = options;
+  const { startDate, endDate, now = formatDateKey(new Date()), monthModeThreshold = 62 } = options;
   if (!startDate || !endDate) {
-    return { days: [], maxDailyTotal: 0 };
+    return { mode: 'day', days: [], months: [], maxDailyTotal: 0, maxMonthlyTotal: 0 };
   }
 
   const dailyTotals = {};
   const start = parseDateOnly(startDate);
   const end = parseDateOnly(endDate);
+  const rangeDays = Math.max(1, getInclusiveDayCount(startDate, endDate));
 
   for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
     dailyTotals[formatDateKey(cursor)] = 0;
@@ -475,6 +510,37 @@ function buildCalendarHeatmap(expenses, options = {}) {
     if (expense.date && Object.prototype.hasOwnProperty.call(dailyTotals, expense.date)) {
       dailyTotals[expense.date] += expense.amount || 0;
     }
+  }
+
+  if (rangeDays > monthModeThreshold) {
+    const monthlyTotals = {};
+    for (let cursor = new Date(start.getFullYear(), start.getMonth(), 1); cursor <= end; cursor.setMonth(cursor.getMonth() + 1)) {
+      monthlyTotals[formatDateKey(cursor).slice(0, 7)] = 0;
+    }
+    for (const [date, total] of Object.entries(dailyTotals)) {
+      const month = date.slice(0, 7);
+      monthlyTotals[month] = (monthlyTotals[month] || 0) + total;
+    }
+    const maxMonthlyTotal = Math.max(0, ...Object.values(monthlyTotals));
+    const nowMonth = now.slice(0, 7);
+    const months = Object.keys(monthlyTotals).sort().map(month => {
+      const total = Number(monthlyTotals[month].toFixed(2));
+      return {
+        month,
+        label: `${Number(month.slice(5, 7))}月`,
+        total,
+        intensity: maxMonthlyTotal > 0 ? Number((total / maxMonthlyTotal).toFixed(2)) : 0,
+        isCurrentMonth: month === nowMonth
+      };
+    });
+
+    return {
+      mode: 'month',
+      days: [],
+      months,
+      maxDailyTotal: 0,
+      maxMonthlyTotal: Number(maxMonthlyTotal.toFixed(2))
+    };
   }
 
   const maxDailyTotal = Math.max(0, ...Object.values(dailyTotals));
@@ -491,7 +557,10 @@ function buildCalendarHeatmap(expenses, options = {}) {
   });
 
   return {
+    mode: 'day',
     days,
+    months: [],
+    maxMonthlyTotal: 0,
     maxDailyTotal: Number(maxDailyTotal.toFixed(2))
   };
 }
@@ -986,6 +1055,7 @@ if (typeof window !== 'undefined') {
   window.aggregateDashboardBreakdown = aggregateDashboardBreakdown;
   window.aggregateDashboardTrend = aggregateDashboardTrend;
   window.buildSpendingPace = buildSpendingPace;
+  window.buildSpendingPlainSummary = buildSpendingPlainSummary;
   window.buildCalendarHeatmap = buildCalendarHeatmap;
   window.formatHeatmapAmountLabel = formatHeatmapAmountLabel;
   window.buildDashboardInsightCards = buildDashboardInsightCards;
@@ -1009,6 +1079,7 @@ if (typeof module !== 'undefined' && module.exports) {
     aggregateDashboardBreakdown,
     aggregateDashboardTrend,
     buildSpendingPace,
+    buildSpendingPlainSummary,
     buildCalendarHeatmap,
     formatHeatmapAmountLabel,
     buildDashboardInsightCards,

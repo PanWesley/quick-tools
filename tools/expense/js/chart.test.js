@@ -4,6 +4,7 @@ const {
   aggregateDashboardBreakdown,
   aggregateDashboardTrend,
   buildSpendingPace,
+  buildSpendingPlainSummary,
   buildCalendarHeatmap,
   formatHeatmapAmountLabel,
   buildDashboardInsightCards
@@ -82,6 +83,12 @@ assert.strictEqual(pace.elapsedPercent, 50);
 assert.strictEqual(pace.spendingPercent, 75);
 assert.strictEqual(pace.status, 'ahead');
 
+const plainPace = buildSpendingPlainSummary(pace);
+assert.strictEqual(plainPace.title, '花得有点快');
+assert.strictEqual(plainPace.summary, '本期已花 ¥90.00，比参考进度多 ¥30.00');
+assert.strictEqual(plainPace.dailyAverage, '日均 ¥6.00');
+assert.strictEqual(plainPace.remaining, '还剩 15 天');
+
 const heatmap = buildCalendarHeatmap(expenses.slice(0, 2), {
   startDate: '2026-06-01',
   endDate: '2026-06-03',
@@ -102,6 +109,27 @@ assert.strictEqual(formatHeatmapAmountLabel(0), '');
 assert.strictEqual(formatHeatmapAmountLabel(80), '¥80');
 assert.strictEqual(formatHeatmapAmountLabel(1260), '¥1.3k');
 assert.strictEqual(formatHeatmapAmountLabel(12000), '¥12k');
+
+const monthlyHeatmap = buildCalendarHeatmap([
+  { amount: 100, date: '2026-01-02' },
+  { amount: 50, date: '2026-01-20' },
+  { amount: 30, date: '2026-03-01' }
+], {
+  startDate: '2026-01-01',
+  endDate: '2026-03-31',
+  now: '2026-02-10'
+});
+
+assert.strictEqual(monthlyHeatmap.mode, 'month');
+assert.strictEqual(monthlyHeatmap.maxMonthlyTotal, 150);
+assert.deepStrictEqual(
+  monthlyHeatmap.months.map(month => ({ month: month.month, total: month.total, isCurrentMonth: month.isCurrentMonth })),
+  [
+    { month: '2026-01', total: 150, isCurrentMonth: false },
+    { month: '2026-02', total: 0, isCurrentMonth: true },
+    { month: '2026-03', total: 30, isCurrentMonth: false }
+  ]
+);
 
 const insights = buildDashboardInsightCards(
   [

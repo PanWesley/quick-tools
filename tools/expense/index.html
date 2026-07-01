@@ -24,7 +24,7 @@
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
 <title>生活账单 - Expense Tracker</title>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=163">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=166">
 </head>
 <body>
 
@@ -104,25 +104,22 @@
     <div class="dashboard-insights" id="dashboard-insights">
       <section class="insight-panel insight-pace">
         <div class="insight-panel-header">
-          <h3>支出节奏</h3>
+          <h3>花费提醒</h3>
           <span id="pace-status">—</span>
         </div>
-        <div class="pace-bars">
-          <div class="pace-row">
-            <div class="pace-label"><span>时间进度</span><strong id="pace-time-percent">0%</strong></div>
-            <div class="pace-track"><span id="pace-time-bar"></span></div>
-          </div>
-          <div class="pace-row">
-            <div class="pace-label"><span>支出进度</span><strong id="pace-spending-percent">0%</strong></div>
-            <div class="pace-track spending"><span id="pace-spending-bar"></span></div>
-          </div>
+        <div class="pace-plain">
+          <strong id="pace-title">先记几天再判断</strong>
+          <p id="pace-copy">本期暂无支出</p>
         </div>
-        <p class="insight-copy" id="pace-copy">暂无支出节奏</p>
+        <div class="pace-mini-stats">
+          <span id="pace-daily-average">日均 ¥0.00</span>
+          <span id="pace-remaining">还剩 0 天</span>
+        </div>
       </section>
 
       <section class="insight-panel insight-heatmap">
         <div class="insight-panel-header">
-          <h3>本月日历热力图</h3>
+          <h3 id="heatmap-title">日历热力图</h3>
           <span id="heatmap-max">—</span>
         </div>
         <div class="heatmap-weekdays" aria-hidden="true">
@@ -548,7 +545,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.6.5</span>
+        <span class="setting-version">v1.6.6</span>
       </div>
     </div>
   </section>
@@ -682,19 +679,19 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/tag-management-utils.js?v=165"></script>
-<script src="/tools/expense/js/db-backup-utils.js?v=165"></script>
-<script src="/tools/expense/js/db.js?v=165"></script>
-<script src="/tools/expense/js/backup-utils.js?v=165"></script>
-<script src="/tools/expense/js/backup-crypto.js?v=165"></script>
-<script src="/tools/expense/js/backup-file-handle-db.js?v=165"></script>
-<script src="/tools/expense/js/backup-service.js?v=165"></script>
-<script src="/tools/expense/js/backup-ui.js?v=165"></script>
-<script src="/tools/expense/js/chart.js?v=165"></script>
-<script src="/tools/expense/js/import-export.js?v=165"></script>
-<script src="/tools/expense/js/guide.js?v=165"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=165"></script>
-<script src="/tools/expense/js/app.js?v=165"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=166"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=166"></script>
+<script src="/tools/expense/js/db.js?v=166"></script>
+<script src="/tools/expense/js/backup-utils.js?v=166"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=166"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=166"></script>
+<script src="/tools/expense/js/backup-service.js?v=166"></script>
+<script src="/tools/expense/js/backup-ui.js?v=166"></script>
+<script src="/tools/expense/js/chart.js?v=166"></script>
+<script src="/tools/expense/js/import-export.js?v=166"></script>
+<script src="/tools/expense/js/guide.js?v=166"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=166"></script>
+<script src="/tools/expense/js/app.js?v=166"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
