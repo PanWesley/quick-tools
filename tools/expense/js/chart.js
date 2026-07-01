@@ -7,6 +7,33 @@
 
 // Keep chart instances for cleanup
 const chartInstances = {};
+const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+let chartLibraryPromise = null;
+
+function ensureChartLibraryLoaded() {
+  if (typeof Chart !== 'undefined') {
+    return Promise.resolve(true);
+  }
+  if (typeof document === 'undefined') {
+    return Promise.resolve(false);
+  }
+  if (!chartLibraryPromise) {
+    chartLibraryPromise = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = CHART_JS_URL;
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => {
+        chartLibraryPromise = null;
+        console.warn('[Expense Charts] Chart.js failed to load');
+        resolve(false);
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return chartLibraryPromise;
+}
+
 const DASHBOARD_ALL_GROUPS = 'all-groups';
 const DASHBOARD_DEFAULT_GROUP = 'group-category';
 const FALLBACK_UNCATEGORIZED_GROUP = {
@@ -606,6 +633,7 @@ function getChartGridColor() {
  * @param {Object} data - { labels, data, colors }
  */
 function renderPieChart(canvasId, data) {
+  if (typeof Chart === 'undefined') return;
   destroyChart(canvasId);
   const ctx = document.getElementById(canvasId);
   if (!ctx) return;
@@ -662,6 +690,7 @@ function renderPieChart(canvasId, data) {
  * @param {Object} data - { labels, data }
  */
 function renderLineChart(canvasId, data) {
+  if (typeof Chart === 'undefined') return;
   destroyChart(canvasId);
   const ctx = document.getElementById(canvasId);
   if (!ctx) return;
@@ -739,6 +768,7 @@ function renderLineChart(canvasId, data) {
  * @param {Object} data - { labels, data, colors }
  */
 function renderBarChart(canvasId, data) {
+  if (typeof Chart === 'undefined') return;
   destroyChart(canvasId);
   const ctx = document.getElementById(canvasId);
   if (!ctx) return;
@@ -899,6 +929,11 @@ async function updateDashboard(filters = {}) {
 
   // Note: Hero dashboard stats are now rendered by renderDashboardHero() in app.js (v1.5.0)
 
+  const canRenderCharts = await ensureChartLibraryLoaded();
+  if (!canRenderCharts) {
+    return;
+  }
+
   const pieData = aggregateDashboardBreakdown(expenses, {
     tags: chartTags,
     groups: chartGroups,
@@ -931,7 +966,10 @@ async function updateDashboard(filters = {}) {
 function refreshChartTheme() {
   // Trigger dashboard update to re-render with new colors
   // This is called from app.js when theme toggles
-  if (typeof window !== 'undefined' && window._dashboardFilters) {
+  const dashboardView = typeof document !== 'undefined'
+    ? document.getElementById('view-dashboard')
+    : null;
+  if (typeof window !== 'undefined' && window._dashboardFilters && dashboardView && dashboardView.classList.contains('active')) {
     updateDashboard(window._dashboardFilters);
   }
 }
@@ -943,6 +981,7 @@ if (typeof window !== 'undefined') {
   window.renderBarChart = renderBarChart;
   window.aggregateByTag = aggregateByTag;
   window.aggregateByDate = aggregateByDate;
+  window.ensureChartLibraryLoaded = ensureChartLibraryLoaded;
   window.filterDashboardExpenses = filterDashboardExpenses;
   window.aggregateDashboardBreakdown = aggregateDashboardBreakdown;
   window.aggregateDashboardTrend = aggregateDashboardTrend;

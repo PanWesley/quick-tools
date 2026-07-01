@@ -4,6 +4,32 @@
  */
 
 // Using global functions from db.js: getExpenses, getTags, addExpense, addTag, exportAllData
+const SHEET_JS_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+let sheetLibraryPromise = null;
+
+function ensureSheetJSLibraryLoaded() {
+  if (typeof XLSX !== 'undefined') {
+    return Promise.resolve(true);
+  }
+  if (typeof document === 'undefined') {
+    return Promise.resolve(false);
+  }
+  if (!sheetLibraryPromise) {
+    sheetLibraryPromise = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = SHEET_JS_URL;
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => {
+        sheetLibraryPromise = null;
+        console.warn('[Expense Import] SheetJS failed to load');
+        resolve(false);
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return sheetLibraryPromise;
+}
 
 // ============================================
 // Export Functions
@@ -178,7 +204,12 @@ function parseCSVLine(line, delimiter = ',') {
  * @param {File} file
  * @returns {Promise<Array<Object>>} Parsed records
  */
-function parseExcel(file) {
+async function parseExcel(file) {
+  const canParseExcel = await ensureSheetJSLibraryLoaded();
+  if (!canParseExcel) {
+    throw new Error('SheetJS (xlsx.js) failed to load. Please check your network connection.');
+  }
+
   return new Promise((resolve, reject) => {
     if (typeof XLSX === 'undefined') {
       reject(new Error('SheetJS (xlsx.js) 未加载，请检查网络连接'));

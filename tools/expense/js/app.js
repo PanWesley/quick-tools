@@ -104,8 +104,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNLInput();
   initEditModal();
 
-  // Initial dashboard render
-  await refreshDashboard();
+  const initialHash = window.location.hash;
+  const hashMatch = initialHash.match(/#view=(\w+)/);
+  const initialView = hashMatch ? hashMatch[1] : 'add';
+  if (hashMatch && typeof window.switchView === 'function') {
+    window.switchView(initialView, true);
+  }
 
   // First visit: use enableDemoMode() for consistent 20-sample data + proper backup
   const expenses = await getExpenses();
@@ -123,9 +127,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('expense_data_initialized', '1');
   }
 
-  // Re-render after potential demo mode init
-  await renderExpenseList();
-  await refreshDashboard();
   if (window.ExpenseBackupUI) {
     window.ExpenseBackupUI.refresh().catch(error => {
       console.warn('Backup status unavailable', error);
@@ -135,7 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize guide on first visit
   try {
     const show = await shouldShowGuide();
-    if (show) {
+    if (show && initialView === 'add') {
       setTimeout(() => showGuide(), 600);
     }
   } catch (e) {
@@ -168,11 +169,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  // Handle initial hash route
-  const initialHash = window.location.hash;
-  const hashMatch = initialHash.match(/#view=(\w+)/);
   if (hashMatch) {
-    window.switchView(hashMatch[1], true);
+    window.switchView(initialView, true);
   }
 
   _appReady = true;

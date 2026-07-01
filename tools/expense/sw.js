@@ -1,6 +1,6 @@
 /**
  * Expense Tracker - Service Worker
- * 提供离线缓存和 PWA 支持（生活账单子模块独立 SW）
+ * Provides offline caching and installed PWA startup support.
  */
 
 const CACHE_NAME = 'expense-tracker-v1.6.5';
@@ -26,7 +26,6 @@ const STATIC_ASSETS = [
   '/shared/js/pwa.js'
 ];
 
-// 安装时缓存静态资源
 self.addEventListener('install', (event) => {
   console.log('[Expense SW] Installing...');
   event.waitUntil(
@@ -42,54 +41,69 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// 激活时清理旧缓存
 self.addEventListener('activate', (event) => {
   console.log('[Expense SW] Activating...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => {
-            console.log('[Expense SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    })
+    caches.keys().then((cacheNames) => Promise.all(
+      cacheNames
+        .filter((name) => name !== CACHE_NAME)
+        .map((name) => {
+          console.log('[Expense SW] Deleting old cache:', name);
+          return caches.delete(name);
+        })
+    ))
   );
   self.clients.claim();
 });
 
-// 拦截请求并提供缓存
+function shouldCacheResponse(response) {
+  return response && response.ok && response.type !== 'opaque';
+}
+
+async function cacheNetworkResponse(request, response) {
+  if (!shouldCacheResponse(response)) {
+    return;
+  }
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(request, response.clone());
+}
+
+async function refreshCachedRequest(request) {
+  try {
+    const networkResponse = await fetch(request);
+    await cacheNetworkResponse(request, networkResponse);
+  } catch (error) {
+    console.warn('[Expense SW] Background refresh failed:', request.url, error);
+  }
+}
+
+async function fetchAndCache(request) {
+  const networkResponse = await fetch(request);
+  await cacheNetworkResponse(request, networkResponse);
+  return networkResponse;
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 跳过非 GET 请求
   if (request.method !== 'GET') {
     return;
   }
 
-  // 跳过第三方请求
   if (url.origin !== self.location.origin) {
     return;
   }
 
   event.respondWith(
-    fetch(request)
-      .then((networkResponse) => {
-        // 网络成功：更新缓存
-        if (networkResponse.ok) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, clone);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        // 网络失败：回退到缓存
-        return caches.match(request, { ignoreSearch: true });
-      })
+    (async () => {
+      const cachedResponse = await caches.match(request, { ignoreSearch: true });
+      if (cachedResponse) {
+        event.waitUntil(refreshCachedRequest(request));
+        return cachedResponse;
+      }
+
+      return fetchAndCache(request);
+    })()
   );
 });
