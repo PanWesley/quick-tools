@@ -1,6 +1,41 @@
 # Changelog
 
+## v1.6.5 (2026-07-01)
+
+### UX
+- 日历热力图改为更紧凑的两行单元格，移动端自适应显示，并在日期下方展示当天消费金额。
+- 分类占比、TOP 5 分类和支出趋势统一优化为更轻的分析卡片视觉，TOP 5 改为横向条形以提升扫读效率。
+
+### Technical
+- 新增热力图每日金额标签格式化测试。
+- 更新 PWA 缓存版本。
+
+### Version
+- v1.6.4 → v1.6.5
+
+## v1.6.4 (2026-07-01)
+
+### UX
+- 概览页新增"支出节奏"，对比时间进度和支出进度，快速判断当前花费是否偏快。
+- 新增"本月日历热力图"，按日期展示支出强度，并支持点击日期跳转到账单明细。
+- 新增"异常提醒"，自动提示高支出日、最大单笔和上涨最多的分类/标签。
+- 新增洞察模块继续遵循顶部全局筛选，不引入额外筛选入口。
+
+### Technical
+- 新增概览洞察纯函数测试，覆盖支出节奏、日历热力图和提醒卡片。
+- 更新 PWA 缓存版本。
+
+### Version
+- v1.6.3 → v1.6.4
+
 ## v1.6.3 (2026-06-30)
+
+### UX
+- 概览页顶部时间、标签、金额和搜索筛选统一作用于总额、分类占比、TOP 5 和支出趋势。
+- 分类占比新增分析维度选择，可查看全部分组，也可聚焦消费类型、支付方式、人员、渠道等具体标签分组。
+- TOP 5 跟随同一个分析维度，不再固定读取旧分类字段。
+- 支出趋势取消独立时间下拉，统一跟随顶部时间筛选，较长时间范围自动按月汇总。
+- 顶部标签筛选在整组全选时显示紧凑分组标签，减少筛选栏拥挤。
 
 ### Performance
 - Installed PWA startup now serves same-origin app shell assets from cache first and refreshes them in the background.
@@ -8,8 +43,12 @@
 - Removed the remote font stylesheet import so first paint does not wait for Google Fonts.
 - Default startup no longer pre-renders Overview charts or the detail list before those views are opened.
 
+### Technical
+- 新增概览图表聚合测试，覆盖全局筛选、分组聚合和趋势按月汇总。
+- 更新 PWA 缓存版本。
+
 ### Version
-- v1.6.2 -> v1.6.3
+- v1.6.2 → v1.6.3
 
 ## v1.6.2 (2026-06-29)
 

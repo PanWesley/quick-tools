@@ -3,7 +3,7 @@
  * Uses Chart.js for data visualization.
  */
 
-// Using global functions from db.js: getExpenses, getTags
+// Using global functions from db.js: getExpenses, getTags, getTagGroups
 
 // Keep chart instances for cleanup
 const chartInstances = {};
@@ -32,6 +32,59 @@ function ensureChartLibraryLoaded() {
     });
   }
   return chartLibraryPromise;
+}
+
+const DASHBOARD_ALL_GROUPS = 'all-groups';
+const DASHBOARD_DEFAULT_GROUP = 'group-category';
+const FALLBACK_UNCATEGORIZED_GROUP = {
+  id: 'group-uncategorized',
+  name: '未分类',
+  color: '#95a5a6',
+  order: 99
+};
+const chartPalette = [
+  '#e74c3c', '#3498db', '#f39c12', '#9b59b6', '#2ecc71',
+  '#e67e22', '#1abc9c', '#95a5a6', '#34495e', '#d35400'
+];
+
+function getTagGroupId(tag) {
+  return tag && tag.parentId ? tag.parentId : 'group-uncategorized';
+}
+
+function findTag(tags, tagId) {
+  return (tags || []).find(tag => tag.id === tagId);
+}
+
+function findGroup(groups, groupId) {
+  return (groups || []).find(group => group.id === groupId)
+    || (groupId === FALLBACK_UNCATEGORIZED_GROUP.id ? FALLBACK_UNCATEGORIZED_GROUP : null);
+}
+
+function addBreakdownAmount(bucket, id, label, color, amount) {
+  if (!bucket[id]) {
+    bucket[id] = {
+      id,
+      label,
+      color,
+      amount: 0
+    };
+  }
+  bucket[id].amount += amount || 0;
+}
+
+function sortBreakdownEntries(entries) {
+  return entries.sort((a, b) => b.amount - a.amount);
+}
+
+function toBreakdownResult(entries, topN = null) {
+  const sorted = sortBreakdownEntries(entries.slice());
+  const sliced = topN ? sorted.slice(0, topN) : sorted;
+  return {
+    ids: sliced.map(item => item.id),
+    labels: sliced.map(item => item.label),
+    data: sliced.map(item => Number(item.amount.toFixed(2))),
+    colors: sliced.map((item, index) => item.color || chartPalette[index % chartPalette.length])
+  };
 }
 
 /**
@@ -118,24 +171,123 @@ async function aggregateByGroup(expenses) {
   return { labels, data, colors };
 }
 
-// Pie chart aggregation mode: 'tag' or 'group'
-let pieAggregationMode = 'tag';
+function filterDashboardExpenses(expenses, filters = {}, context = {}) {
+  const {
+    startDate = null,
+    endDate = null,
+    tags: selectedTags = null,
+    minAmount = null,
+    maxAmount = null,
+    search = ''
+  } = filters;
+  const knownTags = context.tags || [];
 
-window.togglePieMode = function() {
-  if (pieAggregationMode === 'tag') {
-    pieAggregationMode = 'group';
-  } else {
-    pieAggregationMode = 'tag';
+  return (expenses || []).filter(expense => {
+    if (startDate && expense.date < startDate) return false;
+    if (endDate && expense.date > endDate) return false;
+
+    if (selectedTags && Array.isArray(selectedTags) && selectedTags.length > 0) {
+      const expenseTags = expense.tags || [];
+      if (!selectedTags.some(tagId => expenseTags.includes(tagId))) return false;
+    }
+
+    if (minAmount !== null && minAmount !== '') {
+      const min = parseFloat(minAmount);
+      if (!Number.isNaN(min) && (expense.amount || 0) < min) return false;
+    }
+
+    if (maxAmount !== null && maxAmount !== '') {
+      const max = parseFloat(maxAmount);
+      if (!Number.isNaN(max) && (expense.amount || 0) > max) return false;
+    }
+
+    if (search && search.trim()) {
+      const query = search.trim().toLowerCase();
+      const note = (expense.note || '').toLowerCase();
+      const category = (expense.category || '').toLowerCase();
+      const tagText = (expense.tags || [])
+        .map(tagId => findTag(knownTags, tagId))
+        .filter(Boolean)
+        .map(tag => tag.name || '')
+        .join(' ')
+        .toLowerCase();
+      if (!note.includes(query) && !category.includes(query) && !tagText.includes(query)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function aggregateDashboardBreakdown(expenses, options = {}) {
+  const tags = options.tags || [];
+  const groups = options.groups || [];
+  const analysisGroupId = options.analysisGroupId || DASHBOARD_DEFAULT_GROUP;
+  const topN = options.topN || null;
+  const tagLookup = {};
+  tags.forEach(tag => {
+    tagLookup[tag.id] = tag;
+  });
+
+  const amounts = {};
+
+  for (const expense of expenses || []) {
+    const amount = expense.amount || 0;
+    const expenseTagIds = Array.isArray(expense.tags) ? expense.tags : [];
+
+    if (analysisGroupId === DASHBOARD_ALL_GROUPS) {
+      if (expenseTagIds.length === 0) {
+        addBreakdownAmount(
+          amounts,
+          FALLBACK_UNCATEGORIZED_GROUP.id,
+          FALLBACK_UNCATEGORIZED_GROUP.name,
+          FALLBACK_UNCATEGORIZED_GROUP.color,
+          amount
+        );
+        continue;
+      }
+
+      const uniqueGroupIds = [];
+      expenseTagIds.forEach(tagId => {
+        const tag = tagLookup[tagId];
+        const groupId = tag ? getTagGroupId(tag) : FALLBACK_UNCATEGORIZED_GROUP.id;
+        if (!uniqueGroupIds.includes(groupId)) uniqueGroupIds.push(groupId);
+      });
+
+      const splitAmount = uniqueGroupIds.length > 0 ? amount / uniqueGroupIds.length : amount;
+      uniqueGroupIds.forEach(groupId => {
+        const group = findGroup(groups, groupId) || FALLBACK_UNCATEGORIZED_GROUP;
+        addBreakdownAmount(amounts, group.id, group.name, group.color, splitAmount);
+      });
+      continue;
+    }
+
+    const matchingTags = expenseTagIds
+      .map(tagId => tagLookup[tagId])
+      .filter(tag => tag && getTagGroupId(tag) === analysisGroupId);
+
+    if (matchingTags.length === 0) {
+      if (analysisGroupId === FALLBACK_UNCATEGORIZED_GROUP.id && expenseTagIds.length === 0) {
+        addBreakdownAmount(
+          amounts,
+          FALLBACK_UNCATEGORIZED_GROUP.id,
+          FALLBACK_UNCATEGORIZED_GROUP.name,
+          FALLBACK_UNCATEGORIZED_GROUP.color,
+          amount
+        );
+      }
+      continue;
+    }
+
+    const splitAmount = amount / matchingTags.length;
+    matchingTags.forEach(tag => {
+      addBreakdownAmount(amounts, tag.id, tag.name, tag.color, splitAmount);
+    });
   }
-  const toggleEl = document.getElementById('pie-mode-toggle');
-  if (toggleEl) {
-    toggleEl.textContent = pieAggregationMode === 'tag' ? '按标签' : '按分组';
-  }
-  // Re-render
-  if (typeof window !== 'undefined' && window._dashboardFilters) {
-    updateDashboard(window._dashboardFilters);
-  }
-};
+
+  return toBreakdownResult(Object.values(amounts), topN);
+}
 
 /**
  * Aggregate expenses by date for trend.
@@ -183,6 +335,255 @@ function aggregateByDate(expenses, rangeOrDays = 7) {
   const data = sortedDates.map(d => dateMap[d]);
 
   return { labels, data };
+}
+
+function parseDateOnly(value) {
+  return new Date(`${value}T00:00:00`);
+}
+
+function formatDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatMonthKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getInclusiveDayCount(startDate, endDate) {
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+  return Math.floor((end - start) / 86400000) + 1;
+}
+
+function aggregateDashboardTrend(expenses, options = {}) {
+  const { startDate, endDate } = options;
+  if (!startDate || !endDate) {
+    return { labels: [], data: [] };
+  }
+
+  const byMonth = getInclusiveDayCount(startDate, endDate) > 45;
+  const amountMap = {};
+
+  if (byMonth) {
+    const cursor = new Date(parseDateOnly(startDate).getFullYear(), parseDateOnly(startDate).getMonth(), 1);
+    const end = parseDateOnly(endDate);
+    while (cursor <= end) {
+      amountMap[formatMonthKey(cursor)] = 0;
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    for (const expense of expenses || []) {
+      if (!expense.date || expense.date < startDate || expense.date > endDate) continue;
+      const key = expense.date.slice(0, 7);
+      if (Object.prototype.hasOwnProperty.call(amountMap, key)) {
+        amountMap[key] += expense.amount || 0;
+      }
+    }
+
+    const labels = Object.keys(amountMap).sort();
+    return {
+      labels: labels.map(label => label.replace('-', '/')),
+      data: labels.map(label => Number(amountMap[label].toFixed(2)))
+    };
+  }
+
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    amountMap[formatDateKey(cursor)] = 0;
+  }
+
+  for (const expense of expenses || []) {
+    if (expense.date && Object.prototype.hasOwnProperty.call(amountMap, expense.date)) {
+      amountMap[expense.date] += expense.amount || 0;
+    }
+  }
+
+  const labels = Object.keys(amountMap).sort();
+  return {
+    labels: labels.map(label => label.slice(5).replace('-', '/')),
+    data: labels.map(label => Number(amountMap[label].toFixed(2)))
+  };
+}
+
+function clampRatio(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function sumExpenseAmount(expenses) {
+  return (expenses || []).reduce((sum, expense) => sum + (expense.amount || 0), 0);
+}
+
+function formatCurrencyValue(value) {
+  return `¥${Number(value || 0).toFixed(2)}`;
+}
+
+function formatHeatmapAmountLabel(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  if (amount >= 10000) {
+    return `¥${Math.round(amount / 1000)}k`;
+  }
+  if (amount >= 1000) {
+    return `¥${(amount / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return `¥${Math.round(amount)}`;
+}
+
+function buildSpendingPace(expenses, options = {}) {
+  const { startDate, endDate, now = formatDateKey(new Date()), referenceTotal = null } = options;
+  const total = Number(sumExpenseAmount(expenses).toFixed(2));
+  const rangeDays = startDate && endDate ? Math.max(1, getInclusiveDayCount(startDate, endDate)) : 1;
+  const clampedNow = !startDate || now < startDate ? startDate : (!endDate || now <= endDate ? now : endDate);
+  const elapsedDays = startDate && clampedNow ? Math.max(1, getInclusiveDayCount(startDate, clampedNow)) : rangeDays;
+  const elapsedRatio = clampRatio(elapsedDays / rangeDays);
+  const hasReference = referenceTotal !== null && referenceTotal > 0;
+  const baseline = hasReference ? referenceTotal : total;
+  const spendingRatio = hasReference && baseline > 0 ? clampRatio(total / baseline) : elapsedRatio;
+  const delta = spendingRatio - elapsedRatio;
+  const status = hasReference && delta > 0.1 ? 'ahead' : (hasReference && delta < -0.1 ? 'behind' : 'steady');
+
+  return {
+    total,
+    referenceTotal: Number((baseline || 0).toFixed(2)),
+    hasReference,
+    elapsedRatio,
+    spendingRatio,
+    elapsedPercent: Math.round(elapsedRatio * 100),
+    spendingPercent: Math.round(spendingRatio * 100),
+    status,
+    label: status === 'ahead' ? '支出偏快' : (status === 'behind' ? '支出偏慢' : '节奏平稳')
+  };
+}
+
+function buildCalendarHeatmap(expenses, options = {}) {
+  const { startDate, endDate, now = formatDateKey(new Date()) } = options;
+  if (!startDate || !endDate) {
+    return { days: [], maxDailyTotal: 0 };
+  }
+
+  const dailyTotals = {};
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    dailyTotals[formatDateKey(cursor)] = 0;
+  }
+
+  for (const expense of expenses || []) {
+    if (expense.date && Object.prototype.hasOwnProperty.call(dailyTotals, expense.date)) {
+      dailyTotals[expense.date] += expense.amount || 0;
+    }
+  }
+
+  const maxDailyTotal = Math.max(0, ...Object.values(dailyTotals));
+  const days = Object.keys(dailyTotals).sort().map(date => {
+    const total = Number(dailyTotals[date].toFixed(2));
+    return {
+      date,
+      day: Number(date.slice(8, 10)),
+      weekday: parseDateOnly(date).getDay(),
+      total,
+      intensity: maxDailyTotal > 0 ? Number((total / maxDailyTotal).toFixed(2)) : 0,
+      isToday: date === now
+    };
+  });
+
+  return {
+    days,
+    maxDailyTotal: Number(maxDailyTotal.toFixed(2))
+  };
+}
+
+function groupExpensesByDate(expenses) {
+  const grouped = {};
+  for (const expense of expenses || []) {
+    if (!expense.date) continue;
+    grouped[expense.date] = (grouped[expense.date] || 0) + (expense.amount || 0);
+  }
+  return grouped;
+}
+
+function buildDashboardInsightCards(expenses, options = {}) {
+  const cards = [];
+  const currentExpenses = expenses || [];
+  if (currentExpenses.length === 0) {
+    return [];
+  }
+
+  const dailyTotals = groupExpensesByDate(currentExpenses);
+  const activeDailyTotals = Object.entries(dailyTotals)
+    .map(([date, total]) => ({ date, total }))
+    .sort((a, b) => b.total - a.total);
+  const maxDay = activeDailyTotals[0];
+  const activeAverage = activeDailyTotals.length > 0
+    ? activeDailyTotals.reduce((sum, day) => sum + day.total, 0) / activeDailyTotals.length
+    : 0;
+
+  if (maxDay && maxDay.total > 0 && maxDay.total >= activeAverage * 1.5) {
+    cards.push({
+      type: 'heavy-day',
+      title: '高支出日',
+      value: formatCurrencyValue(maxDay.total),
+      detail: `${maxDay.date.slice(5).replace('-', '月')}日明显高于日均`
+    });
+  }
+
+  const largestExpense = currentExpenses
+    .slice()
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0))[0];
+  if (largestExpense && largestExpense.amount > 0) {
+    cards.push({
+      type: 'large-expense',
+      title: '最大单笔',
+      value: formatCurrencyValue(largestExpense.amount),
+      detail: largestExpense.note || largestExpense.category || largestExpense.date || '一笔较大的支出'
+    });
+  }
+
+  const previousExpenses = options.previousExpenses || [];
+  if (previousExpenses.length > 0) {
+    const currentBreakdown = aggregateDashboardBreakdown(currentExpenses, {
+      tags: options.tags || [],
+      groups: options.groups || [],
+      analysisGroupId: options.analysisGroupId || DASHBOARD_DEFAULT_GROUP
+    });
+    const previousBreakdown = aggregateDashboardBreakdown(previousExpenses, {
+      tags: options.tags || [],
+      groups: options.groups || [],
+      analysisGroupId: options.analysisGroupId || DASHBOARD_DEFAULT_GROUP
+    });
+    const previousById = {};
+    previousBreakdown.ids.forEach((id, index) => {
+      previousById[id] = previousBreakdown.data[index] || 0;
+    });
+
+    const increases = currentBreakdown.ids.map((id, index) => {
+      const current = currentBreakdown.data[index] || 0;
+      const previous = previousById[id] || 0;
+      return {
+        id,
+        label: currentBreakdown.labels[index],
+        current,
+        previous,
+        increase: current - previous,
+        ratio: previous > 0 ? (current - previous) / previous : (current > 0 ? 1 : 0)
+      };
+    }).filter(item => item.increase > 0 && item.ratio >= 0.25)
+      .sort((a, b) => b.increase - a.increase)[0];
+
+    if (increases) {
+      cards.push({
+        type: 'rising-category',
+        title: '上涨最多',
+        value: `+${formatCurrencyValue(increases.increase)}`,
+        detail: `${increases.label} 比上期更高`
+      });
+    }
+  }
+
+  return cards.slice(0, 3);
 }
 
 /**
@@ -244,8 +645,9 @@ function renderPieChart(canvasId, data) {
       datasets: [{
         data: data.data,
         backgroundColor: data.colors,
-        borderWidth: 2,
-        borderColor: isDarkMode() ? '#161b22' : '#ffffff'
+        borderWidth: 3,
+        borderColor: isDarkMode() ? '#161b22' : '#ffffff',
+        hoverOffset: 8
       }]
     },
     options: {
@@ -258,7 +660,9 @@ function renderPieChart(canvasId, data) {
             color: getChartTextColor(),
             padding: 16,
             usePointStyle: true,
-            pointStyle: 'circle'
+            pointStyle: 'circle',
+            boxWidth: 8,
+            boxHeight: 8
           }
         },
         tooltip: {
@@ -272,7 +676,10 @@ function renderPieChart(canvasId, data) {
           }
         }
       },
-      cutout: '55%'
+      cutout: '64%',
+      layout: {
+        padding: 4
+      }
     }
   });
 }
@@ -298,19 +705,24 @@ function renderLineChart(canvasId, data) {
         label: '支出金额',
         data: data.data,
         borderColor: primaryColor,
-        backgroundColor: 'rgba(45, 186, 163, 0.12)',
+        backgroundColor: 'rgba(45, 186, 163, 0.14)',
         fill: true,
-        tension: 0.35,
+        tension: 0.42,
         pointBackgroundColor: primaryColor,
         pointBorderColor: isDarkMode() ? '#161b22' : '#ffffff',
         pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        borderWidth: 3
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
       plugins: {
         legend: {
           display: false
@@ -326,10 +738,11 @@ function renderLineChart(canvasId, data) {
       scales: {
         x: {
           ticks: {
-            color: getChartTextColor()
+            color: getChartTextColor(),
+            maxRotation: 0
           },
           grid: {
-            color: getChartGridColor()
+            display: false
           }
         },
         y: {
@@ -368,11 +781,14 @@ function renderBarChart(canvasId, data) {
         label: '支出金额',
         data: data.data,
         backgroundColor: data.colors,
-        borderRadius: 6,
+        borderRadius: 8,
+        barThickness: 18,
+        maxBarThickness: 22,
         borderSkipped: false
       }]
     },
     options: {
+      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -382,21 +798,13 @@ function renderBarChart(canvasId, data) {
         tooltip: {
           callbacks: {
             label: function(context) {
-              return ` ${context.label}: ¥${context.parsed.y.toFixed(2)}`;
+              return ` ${context.label}: ¥${context.parsed.x.toFixed(2)}`;
             }
           }
         }
       },
       scales: {
         x: {
-          ticks: {
-            color: getChartTextColor()
-          },
-          grid: {
-            display: false
-          }
-        },
-        y: {
           ticks: {
             color: getChartTextColor(),
             callback: function(value) {
@@ -407,6 +815,14 @@ function renderBarChart(canvasId, data) {
             color: getChartGridColor()
           },
           beginAtZero: true
+        },
+        y: {
+          ticks: {
+            color: getChartTextColor()
+          },
+          grid: {
+            display: false
+          }
         }
       }
     }
@@ -463,6 +879,18 @@ function getDateRange(range, customStart = null, customEnd = null) {
   return { startDate: start, endDate: end };
 }
 
+function getDateRangeLabel(range) {
+  const labels = {
+    'this-month': '本月',
+    'last-month': '上月',
+    'last-7': '最近7天',
+    'last-30': '最近30天',
+    'this-year': '今年',
+    custom: '自定义'
+  };
+  return labels[range] || '当前筛选';
+}
+
 /**
  * Main function: update all dashboard charts and stats.
  * @param {Object} filters
@@ -475,93 +903,58 @@ async function updateDashboard(filters = {}) {
     tags = null,
     minAmount = null,
     maxAmount = null,
-    search = ''
+    search = '',
+    analysisGroupId = DASHBOARD_DEFAULT_GROUP
   } = filters;
 
   const { startDate, endDate } = getDateRange(timeRange, customStart, customEnd);
+  const [rawExpenses, chartTags, chartGroups] = await Promise.all([
+    getExpenses({ startDate, endDate }),
+    typeof getTags === 'function' ? getTags() : Promise.resolve([]),
+    typeof getTagGroups === 'function' ? getTagGroups() : Promise.resolve([])
+  ]);
+  const expenses = filterDashboardExpenses(rawExpenses, {
+    startDate,
+    endDate,
+    tags,
+    minAmount,
+    maxAmount,
+    search
+  }, { tags: chartTags });
 
-  let expenses = await getExpenses({ startDate, endDate });
-
-  // Apply tag filter (multi-select)
-  if (tags && Array.isArray(tags) && tags.length > 0) {
-    expenses = expenses.filter(e => {
-      const et = e.tags || [];
-      return tags.some(t => et.includes(t));
-    });
-  }
-
-  // Apply amount range filter
-  if (minAmount !== null && minAmount !== '') {
-    const min = parseFloat(minAmount);
-    if (!isNaN(min)) {
-      expenses = expenses.filter(e => e.amount >= min);
-    }
-  }
-  if (maxAmount !== null && maxAmount !== '') {
-    const max = parseFloat(maxAmount);
-    if (!isNaN(max)) {
-      expenses = expenses.filter(e => e.amount <= max);
-    }
-  }
-
-  // Apply search filter
-  if (search && search.trim()) {
-    const q = search.trim().toLowerCase();
-    expenses = expenses.filter(e => {
-      const note = (e.note || '').toLowerCase();
-      const cat = (e.category || '').toLowerCase();
-      return note.includes(q) || cat.includes(q);
-    });
+  if (typeof window !== 'undefined') {
+    window._dashboardFilteredExpenses = expenses;
+    window._dashboardDateRange = { startDate, endDate };
   }
 
   // Note: Hero dashboard stats are now rendered by renderDashboardHero() in app.js (v1.5.0)
 
-  // Render charts
   const canRenderCharts = await ensureChartLibraryLoaded();
   if (!canRenderCharts) {
     return;
   }
 
-  if (pieAggregationMode === 'group') {
-    const pieData = await aggregateByGroup(expenses);
-    renderPieChart('categoryChart', pieData);
-  } else {
-    const pieData = aggregateByTag(expenses);
-    renderPieChart('categoryChart', pieData);
-  }
+  const pieData = aggregateDashboardBreakdown(expenses, {
+    tags: chartTags,
+    groups: chartGroups,
+    analysisGroupId
+  });
+  renderPieChart('categoryChart', pieData);
 
-  const barData = aggregateTopCategories(expenses, 5);
+  const barData = aggregateDashboardBreakdown(expenses, {
+    tags: chartTags,
+    groups: chartGroups,
+    analysisGroupId,
+    topN: 5
+  });
   renderBarChart('topCategoryChart', barData);
 
-  // Get trend range from user selection
-  let lineData;
-  const trendRangeEl = document.getElementById('trend-time-range');
-  if (trendRangeEl) {
-    const trendRange = trendRangeEl.value;
-    if (trendRange === 'this-month') {
-      const trendDates = getDateRange('this-month');
-      lineData = aggregateByDate(expenses, { startDate: trendDates.startDate, endDate: trendDates.endDate });
-    } else if (trendRange === 'last-month') {
-      const trendDates = getDateRange('last-month');
-      lineData = aggregateByDate(expenses, { startDate: trendDates.startDate, endDate: trendDates.endDate });
-    } else {
-      lineData = aggregateByDate(expenses, 7);
-    }
-  } else {
-    // Default: last 7 days
-    lineData = aggregateByDate(expenses, 7);
-  }
+  const lineData = aggregateDashboardTrend(expenses, { startDate, endDate });
 
   // Update title
   const titleEl = document.getElementById('trend-chart-title');
   if (titleEl) {
-    if (trendRangeEl && trendRangeEl.value === 'this-month') {
-      titleEl.textContent = '本月支出趋势';
-    } else if (trendRangeEl && trendRangeEl.value === 'last-month') {
-      titleEl.textContent = '上月支出趋势';
-    } else {
-      titleEl.textContent = '近7天支出趋势';
-    }
+    titleEl.textContent = `${getDateRangeLabel(timeRange)}支出趋势`;
   }
 
   renderLineChart('trendChart', lineData);
@@ -581,20 +974,45 @@ function refreshChartTheme() {
   }
 }
 
-window.updateDashboard = updateDashboard;
-window.renderPieChart = renderPieChart;
-window.renderLineChart = renderLineChart;
-window.renderBarChart = renderBarChart;
-window.aggregateByTag = aggregateByTag;
-window.aggregateByDate = aggregateByDate;
-window.ensureChartLibraryLoaded = ensureChartLibraryLoaded;
+if (typeof window !== 'undefined') {
+  window.updateDashboard = updateDashboard;
+  window.renderPieChart = renderPieChart;
+  window.renderLineChart = renderLineChart;
+  window.renderBarChart = renderBarChart;
+  window.aggregateByTag = aggregateByTag;
+  window.aggregateByDate = aggregateByDate;
+  window.ensureChartLibraryLoaded = ensureChartLibraryLoaded;
+  window.filterDashboardExpenses = filterDashboardExpenses;
+  window.aggregateDashboardBreakdown = aggregateDashboardBreakdown;
+  window.aggregateDashboardTrend = aggregateDashboardTrend;
+  window.buildSpendingPace = buildSpendingPace;
+  window.buildCalendarHeatmap = buildCalendarHeatmap;
+  window.formatHeatmapAmountLabel = formatHeatmapAmountLabel;
+  window.buildDashboardInsightCards = buildDashboardInsightCards;
+  window.getDateRange = getDateRange;
+  window.getDateRangeLabel = getDateRangeLabel;
+  window.DASHBOARD_ALL_GROUPS = DASHBOARD_ALL_GROUPS;
+  window.DASHBOARD_DEFAULT_GROUP = DASHBOARD_DEFAULT_GROUP;
+  window.changeTrendRange = function() {
+    if (window._dashboardFilters) {
+      updateDashboard(window._dashboardFilters);
+    }
+  };
+  window.refreshChartTheme = refreshChartTheme;
+}
 
-/**
- * Handle trend chart time range change.
- */
-window.changeTrendRange = function() {
-  if (typeof window !== 'undefined' && window._dashboardFilters) {
-    updateDashboard(window._dashboardFilters);
-  }
-};
-window.refreshChartTheme = refreshChartTheme;
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    DASHBOARD_ALL_GROUPS,
+    DASHBOARD_DEFAULT_GROUP,
+    filterDashboardExpenses,
+    aggregateDashboardBreakdown,
+    aggregateDashboardTrend,
+    buildSpendingPace,
+    buildCalendarHeatmap,
+    formatHeatmapAmountLabel,
+    buildDashboardInsightCards,
+    getDateRange,
+    getDateRangeLabel
+  };
+}

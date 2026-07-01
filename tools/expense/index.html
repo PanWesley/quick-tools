@@ -91,37 +91,79 @@
     <div class="dashboard-attention" id="dashboard-attention" hidden></div>
 
     <!-- Dashboard Hero -->
-        <div class="dashboard-hero" id="dashboard-hero">
-          <div class="hero-label">本月支出</div>
-          <div class="hero-amount" id="dash-total">¥0.00</div>
-          <div class="hero-summary">
-            <span class="hero-trend" id="dash-trend-text">—</span>
-            <span class="hero-dot">·</span>
-            <span class="hero-count" id="dash-count-text">0 笔支出</span>
-          </div>
-        </div>
+    <div class="dashboard-hero" id="dashboard-hero">
+      <div class="hero-label" id="dash-total-label">本月支出</div>
+      <div class="hero-amount" id="dash-total">¥0.00</div>
+      <div class="hero-summary">
+        <span class="hero-trend" id="dash-trend-text">—</span>
+        <span class="hero-dot">·</span>
+        <span class="hero-count" id="dash-count-text">0 笔支出</span>
+      </div>
+    </div>
 
-        <!-- Empty Dashboard State -->
-        <div class="empty-dashboard" id="empty-dashboard" style="display:none;">
-          <div class="empty-illustration">
-            <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
-              <rect x="15" y="25" width="70" height="50" rx="8" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.4"/>
-              <line x1="25" y1="38" x2="75" y2="38" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-              <line x1="25" y1="48" x2="60" y2="48" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-              <line x1="25" y1="58" x2="68" y2="58" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-              <circle cx="82" cy="22" r="14" fill="var(--primary-light)" stroke="var(--primary)" stroke-width="1.5"/>
-              <path d="M78 22h8M82 18v8" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <h3>开始记录</h3>
-          <p>点击底部"记账"按钮，3 秒完成一笔记录</p>
-          <button class="btn-primary" onclick="switchView('add')">记第一笔</button>
+    <div class="dashboard-insights" id="dashboard-insights">
+      <section class="insight-panel insight-pace">
+        <div class="insight-panel-header">
+          <h3>支出节奏</h3>
+          <span id="pace-status">—</span>
         </div>
+        <div class="pace-bars">
+          <div class="pace-row">
+            <div class="pace-label"><span>时间进度</span><strong id="pace-time-percent">0%</strong></div>
+            <div class="pace-track"><span id="pace-time-bar"></span></div>
+          </div>
+          <div class="pace-row">
+            <div class="pace-label"><span>支出进度</span><strong id="pace-spending-percent">0%</strong></div>
+            <div class="pace-track spending"><span id="pace-spending-bar"></span></div>
+          </div>
+        </div>
+        <p class="insight-copy" id="pace-copy">暂无支出节奏</p>
+      </section>
+
+      <section class="insight-panel insight-heatmap">
+        <div class="insight-panel-header">
+          <h3>本月日历热力图</h3>
+          <span id="heatmap-max">—</span>
+        </div>
+        <div class="heatmap-weekdays" aria-hidden="true">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div class="calendar-heatmap" id="calendar-heatmap" aria-label="日支出热力图"></div>
+      </section>
+
+      <section class="insight-panel insight-alerts">
+        <div class="insight-panel-header">
+          <h3>异常提醒</h3>
+          <span id="insight-count">0 条</span>
+        </div>
+        <div class="insight-alert-list" id="insight-alert-list"></div>
+      </section>
+    </div>
+
+    <!-- Empty Dashboard State -->
+    <div class="empty-dashboard" id="empty-dashboard" style="display:none;">
+      <div class="empty-illustration">
+        <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+          <rect x="15" y="25" width="70" height="50" rx="8" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.4"/>
+          <line x1="25" y1="38" x2="75" y2="38" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+          <line x1="25" y1="48" x2="60" y2="48" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+          <line x1="25" y1="58" x2="68" y2="58" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+          <circle cx="82" cy="22" r="14" fill="var(--primary-light)" stroke="var(--primary)" stroke-width="1.5"/>
+          <path d="M78 22h8M82 18v8" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>开始记录</h3>
+      <p>点击底部"记账"按钮，3 秒完成一笔记录</p>
+      <button class="btn-primary" onclick="switchView('add')">记第一笔</button>
+    </div>
 
     <!-- Charts Row 1: Pie + Bar -->
     <div class="chart-row">
       <div class="chart-card chart-half">
-        <h3>分类占比 <span class="chart-mode-toggle" id="pie-mode-toggle" onclick="togglePieMode()" style="cursor:pointer;font-size:12px;font-weight:400;color:var(--primary);margin-left:8px;">按标签</span></h3>
+        <h3>
+          <span>分类占比</span>
+          <select id="dashboard-analysis-group" class="chart-analysis-select" title="分析维度" aria-label="选择分类分析维度"></select>
+        </h3>
         <div class="chart-wrapper doughnut">
           <canvas id="categoryChart"></canvas>
         </div>
@@ -138,11 +180,6 @@
     <div class="chart-card">
       <h3>
         <span id="trend-chart-title">近7天支出趋势</span>
-        <select id="trend-time-range" class="trend-range-select" onchange="changeTrendRange()">
-          <option value="7">近7天</option>
-          <option value="this-month">本月</option>
-          <option value="last-month">上月</option>
-        </select>
       </h3>
       <div class="chart-wrapper">
         <canvas id="trendChart"></canvas>
@@ -511,7 +548,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.6.3</span>
+        <span class="setting-version">v1.6.5</span>
       </div>
     </div>
   </section>
@@ -645,19 +682,19 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/tag-management-utils.js?v=163"></script>
-<script src="/tools/expense/js/db-backup-utils.js?v=163"></script>
-<script src="/tools/expense/js/db.js?v=163"></script>
-<script src="/tools/expense/js/backup-utils.js?v=163"></script>
-<script src="/tools/expense/js/backup-crypto.js?v=163"></script>
-<script src="/tools/expense/js/backup-file-handle-db.js?v=163"></script>
-<script src="/tools/expense/js/backup-service.js?v=163"></script>
-<script src="/tools/expense/js/backup-ui.js?v=163"></script>
-<script src="/tools/expense/js/chart.js?v=163"></script>
-<script src="/tools/expense/js/import-export.js?v=163"></script>
-<script src="/tools/expense/js/guide.js?v=163"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=163"></script>
-<script src="/tools/expense/js/app.js?v=163"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=165"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=165"></script>
+<script src="/tools/expense/js/db.js?v=165"></script>
+<script src="/tools/expense/js/backup-utils.js?v=165"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=165"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=165"></script>
+<script src="/tools/expense/js/backup-service.js?v=165"></script>
+<script src="/tools/expense/js/backup-ui.js?v=165"></script>
+<script src="/tools/expense/js/chart.js?v=165"></script>
+<script src="/tools/expense/js/import-export.js?v=165"></script>
+<script src="/tools/expense/js/guide.js?v=165"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=165"></script>
+<script src="/tools/expense/js/app.js?v=165"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
