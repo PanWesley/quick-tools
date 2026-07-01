@@ -13,6 +13,7 @@
 let allTags = [];
 let allTagGroups = [];
 let selectedTagIds = [];
+let dashboardAnalysisGroupId = 'group-category';
 let filterDebounceTimer = null;
 let _originalSwitchView = null;
 let persistentStorageRequested = false;
@@ -204,6 +205,7 @@ function initDashboardFilters() {
   const amountMin = document.getElementById('dash-amount-min');
   const amountMax = document.getElementById('dash-amount-max');
   const search = document.getElementById('dash-search');
+  const analysisGroup = document.getElementById('dashboard-analysis-group');
 
   if (timeRange) {
     timeRange.addEventListener('change', () => {
@@ -219,6 +221,14 @@ function initDashboardFilters() {
   if (amountMin) amountMin.addEventListener('input', triggerDashboardUpdate);
   if (amountMax) amountMax.addEventListener('input', triggerDashboardUpdate);
   if (search) search.addEventListener('input', triggerDashboardUpdate);
+  if (analysisGroup) {
+    analysisGroup.addEventListener('change', () => {
+      dashboardAnalysisGroupId = analysisGroup.value || 'group-category';
+      refreshDashboard();
+    });
+  }
+
+  renderDashboardAnalysisOptions();
 
   // Initialize selected tags display
   renderSelectedFilterTags();
@@ -228,6 +238,30 @@ function initDashboardFilters() {
     card.addEventListener('click', goToListFromDashboard);
     card.style.cursor = 'pointer';
   });
+}
+
+function getDefaultDashboardAnalysisGroupId() {
+  if (allTagGroups.some(group => group.id === 'group-category')) {
+    return 'group-category';
+  }
+  return allTagGroups[0]?.id || 'all-groups';
+}
+
+function renderDashboardAnalysisOptions() {
+  const select = document.getElementById('dashboard-analysis-group');
+  if (!select) return;
+
+  const isKnownAnalysisGroup = dashboardAnalysisGroupId === 'all-groups'
+    || allTagGroups.some(group => group.id === dashboardAnalysisGroupId);
+  if (!dashboardAnalysisGroupId || !isKnownAnalysisGroup) {
+    dashboardAnalysisGroupId = getDefaultDashboardAnalysisGroupId();
+  }
+
+  const groupOptions = allTagGroups
+    .map(group => `<option value="${escapeAttr(group.id)}">${escapeHTML(group.name)}</option>`)
+    .join('');
+  select.innerHTML = `<option value="all-groups">全部分组</option>${groupOptions}`;
+  select.value = dashboardAnalysisGroupId;
 }
 
 function triggerDashboardUpdate() {
@@ -241,43 +275,42 @@ function triggerDashboardUpdate() {
 
 function renderDashboardHero() {
   const totalEl = document.getElementById('dash-total');
+  const labelEl = document.getElementById('dash-total-label');
   const trendEl = document.getElementById('dash-trend-text');
   const countEl = document.getElementById('dash-count-text');
   const emptyEl = document.getElementById('empty-dashboard');
 
   if (!totalEl || !emptyEl) return;
 
-  // Get filtered expenses (same logic as updateDashboard in index.html)
+  // Use the same filtered dataset as the charts so the overview has one context.
   (async () => {
-    let expenses = await getExpenses();
-
-    // Apply current filters
     const filters = window._dashboardFilters || {};
-    if (filters.timeRange && filters.timeRange !== 'custom') {
-      const { start, end } = getTimeRangeByName(filters.timeRange);
-      expenses = expenses.filter(e => e.date >= start && e.date <= end);
-    } else if (filters.customStart && filters.customEnd) {
-      expenses = expenses.filter(e => e.date >= filters.customStart && e.date <= filters.customEnd);
-    }
-    if (filters.tags && filters.tags.length > 0) {
-      expenses = expenses.filter(e => e.tags && e.tags.some(t => filters.tags.includes(t)));
-    }
-    if (filters.minAmount) {
-      expenses = expenses.filter(e => e.amount >= parseFloat(filters.minAmount));
-    }
-    if (filters.maxAmount) {
-      expenses = expenses.filter(e => e.amount <= parseFloat(filters.maxAmount));
-    }
-    if (filters.search && filters.search.trim()) {
-      const q = filters.search.toLowerCase();
-      expenses = expenses.filter(e =>
-        (e.note || '').toLowerCase().includes(q) ||
-        (e.category || '').toLowerCase().includes(q)
-      );
+    const dateRange = window._dashboardDateRange || getDateRange(
+      filters.timeRange || 'this-month',
+      filters.customStart,
+      filters.customEnd
+    );
+    let expenses = Array.isArray(window._dashboardFilteredExpenses)
+      ? window._dashboardFilteredExpenses.slice()
+      : null;
+
+    if (!expenses) {
+      const rawExpenses = await getExpenses({ startDate: dateRange.startDate, endDate: dateRange.endDate });
+      expenses = filterDashboardExpenses(rawExpenses, {
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        tags: filters.tags,
+        minAmount: filters.minAmount,
+        maxAmount: filters.maxAmount,
+        search: filters.search
+      }, { tags: allTags });
     }
 
     const total = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const count = expenses.length;
+    if (labelEl) {
+      labelEl.textContent = `${getDateRangeLabel(filters.timeRange || 'this-month')}支出`;
+    }
 
     // Show empty state
     if (count === 0) {
@@ -330,8 +363,15 @@ function renderDashboardHero() {
         const month = today.getMonth();
         const lastMonthStart = new Date(year, month - 1, 1).toISOString().slice(0, 10);
         const lastMonthEnd = new Date(year, month, 0).toISOString().slice(0, 10);
-        let lastMonthExpenses = await getExpenses();
-        lastMonthExpenses = lastMonthExpenses.filter(e => e.date >= lastMonthStart && e.date <= lastMonthEnd);
+        const rawLastMonthExpenses = await getExpenses({ startDate: lastMonthStart, endDate: lastMonthEnd });
+        const lastMonthExpenses = filterDashboardExpenses(rawLastMonthExpenses, {
+          startDate: lastMonthStart,
+          endDate: lastMonthEnd,
+          tags: filters.tags,
+          minAmount: filters.minAmount,
+          maxAmount: filters.maxAmount,
+          search: filters.search
+        }, { tags: allTags });
         const lastTotal = lastMonthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
         if (lastTotal === 0) {
           trendEl.textContent = '首月记录';
@@ -349,56 +389,17 @@ function renderDashboardHero() {
   })();
 }
 
-// Helper: get time range start/end by name (copied from index.html)
-function getTimeRangeByName(name) {
-  const now = new Date();
-  let start, end;
-  switch (name) {
-    case 'this-week':
-      start = new Date(now);
-      start.setDate(now.getDate() - now.getDay());
-      end = new Date(now);
-      break;
-    case 'this-month':
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now);
-      break;
-    case 'last-month':
-      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      end = new Date(now.getFullYear(), now.getMonth(), 0);
-      break;
-    case 'last-30':
-      start = new Date(now);
-      start.setDate(now.getDate() - 30);
-      end = new Date(now);
-      break;
-    case 'last-7':
-      start = new Date(now);
-      start.setDate(now.getDate() - 7);
-      end = new Date(now);
-      break;
-    case 'this-year':
-      start = new Date(now.getFullYear(), 0, 1);
-      end = new Date(now);
-      break;
-    default:
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now);
-  }
-  return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10)
-  };
-}
-
 async function refreshDashboard() {
   const timeRange = document.getElementById('dash-time-range');
-  const customRange = document.getElementById('dash-custom-range');
   const dateStart = document.getElementById('dash-date-start');
   const dateEnd = document.getElementById('dash-date-end');
   const amountMin = document.getElementById('dash-amount-min');
   const amountMax = document.getElementById('dash-amount-max');
   const search = document.getElementById('dash-search');
+  const analysisGroup = document.getElementById('dashboard-analysis-group');
+  if (analysisGroup && analysisGroup.value) {
+    dashboardAnalysisGroupId = analysisGroup.value;
+  }
 
   const filters = {
     timeRange: timeRange ? timeRange.value : 'this-month',
@@ -407,7 +408,8 @@ async function refreshDashboard() {
     tags: selectedTagIds.length > 0 ? selectedTagIds : null,
     minAmount: amountMin ? amountMin.value : null,
     maxAmount: amountMax ? amountMax.value : null,
-    search: search ? search.value : ''
+    search: search ? search.value : '',
+    analysisGroupId: dashboardAnalysisGroupId
   };
 
   window._dashboardFilters = filters;
@@ -473,18 +475,46 @@ function renderSelectedFilterTags() {
     return;
   }
 
-  container.innerHTML = selectedTagIds.map(id => {
+  const renderedTagIds = new Set();
+  const chips = [];
+
+  for (const group of allTagGroups) {
+    const tagsInGroup = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
+    if (tagsInGroup.length === 0) continue;
+
+    const allSelected = tagsInGroup.every(tag => selectedTagIds.includes(tag.id));
+    if (!allSelected) continue;
+
+    tagsInGroup.forEach(tag => renderedTagIds.add(tag.id));
+    const style = `background:${group.color}22;color:${group.color};border-color:${group.color}`;
+    chips.push(
+      `<span class="selected-tag-chip" style="${style}">${escapeHTML(group.name)} · 全部<button class="remove" onclick="removeFilterGroup('${escapeJSAttr(group.id)}')" aria-label="移除${escapeAttr(group.name)}分组"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`
+    );
+  }
+
+  chips.push(...selectedTagIds.map(id => {
+    if (renderedTagIds.has(id)) return '';
     const tag = allTags.find(t => t.id === id);
     if (!tag) return '';
     const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
     const groupName = group ? group.name : '';
     const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${groupName ? groupName + ' · ' : ''}${tag.name}<button class="remove" onclick="removeFilterTag('${tag.id}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
-  }).join('');
+    return `<span class="selected-tag-chip" style="${style}">${groupName ? groupName + ' · ' : ''}${escapeHTML(tag.name)}<button class="remove" onclick="removeFilterTag('${escapeJSAttr(tag.id)}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
+  }));
+
+  container.innerHTML = chips.join('');
 }
 
 window.removeFilterTag = function(tagId) {
   selectedTagIds = selectedTagIds.filter(id => id !== tagId);
+  renderTagCloud();
+  renderSelectedFilterTags();
+  refreshDashboard();
+};
+
+window.removeFilterGroup = function(groupId) {
+  const tagsInGroup = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === groupId);
+  selectedTagIds = selectedTagIds.filter(id => !tagsInGroup.some(tag => tag.id === id));
   renderTagCloud();
   renderSelectedFilterTags();
   refreshDashboard();
@@ -616,6 +646,7 @@ async function loadTags() {
   allTags = await getTags();
   allTagGroups = await getTagGroups();
   populateCategorySelects();
+  renderDashboardAnalysisOptions();
   renderTagCloud();
   await renderTagsList();
 }

@@ -97,15 +97,15 @@
     <div class="dashboard-attention" id="dashboard-attention" hidden></div>
 
     <!-- Dashboard Hero -->
-        <div class="dashboard-hero" id="dashboard-hero">
-          <div class="hero-label">本月支出</div>
-          <div class="hero-amount" id="dash-total">¥0.00</div>
-          <div class="hero-summary">
-            <span class="hero-trend" id="dash-trend-text">—</span>
-            <span class="hero-dot">·</span>
-            <span class="hero-count" id="dash-count-text">0 笔支出</span>
-          </div>
-        </div>
+    <div class="dashboard-hero" id="dashboard-hero">
+      <div class="hero-label" id="dash-total-label">本月支出</div>
+      <div class="hero-amount" id="dash-total">¥0.00</div>
+      <div class="hero-summary">
+        <span class="hero-trend" id="dash-trend-text">—</span>
+        <span class="hero-dot">·</span>
+        <span class="hero-count" id="dash-count-text">0 笔支出</span>
+      </div>
+    </div>
 
         <!-- Empty Dashboard State -->
         <div class="empty-dashboard" id="empty-dashboard" style="display:none;">
@@ -127,7 +127,10 @@
     <!-- Charts Row 1: Pie + Bar -->
     <div class="chart-row">
       <div class="chart-card chart-half">
-        <h3>分类占比 <span class="chart-mode-toggle" id="pie-mode-toggle" onclick="togglePieMode()" style="cursor:pointer;font-size:12px;font-weight:400;color:var(--primary);margin-left:8px;">按标签</span></h3>
+        <h3>
+          <span>分类占比</span>
+          <select id="dashboard-analysis-group" class="chart-analysis-select" title="分析维度" aria-label="选择分类分析维度"></select>
+        </h3>
         <div class="chart-wrapper doughnut">
           <canvas id="categoryChart"></canvas>
         </div>
@@ -144,11 +147,6 @@
     <div class="chart-card">
       <h3>
         <span id="trend-chart-title">近7天支出趋势</span>
-        <select id="trend-time-range" class="trend-range-select" onchange="changeTrendRange()">
-          <option value="7">近7天</option>
-          <option value="this-month">本月</option>
-          <option value="last-month">上月</option>
-        </select>
       </h3>
       <div class="chart-wrapper">
         <canvas id="trendChart"></canvas>
@@ -517,7 +515,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.6.2</span>
+        <span class="setting-version">v1.6.3</span>
       </div>
     </div>
   </section>
@@ -651,19 +649,19 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/tag-management-utils.js?v=162"></script>
-<script src="/tools/expense/js/db-backup-utils.js?v=162"></script>
-<script src="/tools/expense/js/db.js?v=162"></script>
-<script src="/tools/expense/js/backup-utils.js?v=162"></script>
-<script src="/tools/expense/js/backup-crypto.js?v=162"></script>
-<script src="/tools/expense/js/backup-file-handle-db.js?v=162"></script>
-<script src="/tools/expense/js/backup-service.js?v=162"></script>
-<script src="/tools/expense/js/backup-ui.js?v=162"></script>
-<script src="/tools/expense/js/chart.js?v=162"></script>
-<script src="/tools/expense/js/import-export.js?v=162"></script>
-<script src="/tools/expense/js/guide.js?v=162"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=162"></script>
-<script src="/tools/expense/js/app.js?v=162"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=163"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=163"></script>
+<script src="/tools/expense/js/db.js?v=163"></script>
+<script src="/tools/expense/js/backup-utils.js?v=163"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=163"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=163"></script>
+<script src="/tools/expense/js/backup-service.js?v=163"></script>
+<script src="/tools/expense/js/backup-ui.js?v=163"></script>
+<script src="/tools/expense/js/chart.js?v=163"></script>
+<script src="/tools/expense/js/import-export.js?v=163"></script>
+<script src="/tools/expense/js/guide.js?v=163"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=163"></script>
+<script src="/tools/expense/js/app.js?v=163"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
