@@ -86,6 +86,24 @@
     });
   }
 
+  function expenseMatchesCategoryFilters(expense, filterValues, tags) {
+    const values = Array.isArray(filterValues)
+      ? filterValues.filter(Boolean)
+      : (filterValues ? [filterValues] : []);
+    if (values.length === 0) return true;
+    return values.some(value => expenseMatchesCategoryFilter(expense, value, tags));
+  }
+
+  function formatCategoryFilterLabel(selectedTagIds, tags) {
+    const ids = Array.isArray(selectedTagIds) ? selectedTagIds.filter(Boolean) : [];
+    if (ids.length === 0) return '全部分类';
+    if (ids.length === 1) {
+      const tag = (tags || []).find(item => item.id === ids[0]);
+      return tag ? tag.name : '已选 1 个分类';
+    }
+    return `已选 ${ids.length} 个分类`;
+  }
+
   function groupExpenseTags(tagIds, tags, groups) {
     const tagMap = new Map((tags || []).map(tag => [tag.id, tag]));
     const groupMap = new Map((groups || []).map(group => [group.id, group]));
@@ -157,6 +175,8 @@
     sortExpensesForList,
     selectPrimaryExpenseTag,
     expenseMatchesCategoryFilter,
+    expenseMatchesCategoryFilters,
+    formatCategoryFilterLabel,
     groupExpenseTags,
     createExpenseDetailView,
     getExpenseGestureResult,

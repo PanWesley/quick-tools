@@ -1,4 +1,4 @@
-const assert = require('assert');
+﻿const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
@@ -55,11 +55,11 @@ requiredScripts.forEach((source, index) => {
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.6';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.7';/
 );
 assert.match(
   html,
-  /\/tools\/expense\/css\/style\.css\?v=166/,
+  /\/tools\/expense\/css\/style\.css\?v=167/,
   'main expense stylesheet must use the current asset version'
 );
 assert.match(

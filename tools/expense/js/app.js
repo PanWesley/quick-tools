@@ -13,6 +13,9 @@
 let allTags = [];
 let allTagGroups = [];
 let selectedTagIds = [];
+let selectedListCategoryTagIds = [];
+let draftListCategoryTagIds = [];
+const listCategoryCollapsedGroups = new Set();
 let dashboardAnalysisGroupId = 'group-category';
 let filterDebounceTimer = null;
 let _originalSwitchView = null;
@@ -735,11 +738,13 @@ function applyListViewFilters() {
   }
 
   // Apply category filter if single tag selected
-  const listFilterCategory = document.getElementById('list-filter-category');
-  if (listFilterCategory && filters.tags && filters.tags.length === 1) {
+  if (filters.tags && filters.tags.length === 1) {
     const tag = allTags.find(t => t.id === filters.tags[0]);
     if (tag) {
-      listFilterCategory.value = `tag:${tag.id}`;
+      selectedListCategoryTagIds = [tag.id];
+      draftListCategoryTagIds = [tag.id];
+      renderListCategoryTrigger();
+      renderListCategoryPicker();
     }
   }
 
@@ -834,7 +839,6 @@ window.loadTags = loadTags;
 
 function populateCategorySelects() {
   const catSelect = document.getElementById('exp-category');
-  const listFilter = document.getElementById('list-filter-category');
 
   if (catSelect) {
     const current = catSelect.value;
@@ -843,30 +847,138 @@ function populateCategorySelects() {
     catSelect.value = current;
   }
 
-  if (listFilter) {
-    const current = listFilter.value;
-    const tagsByGroup = {};
-    for (const group of allTagGroups) {
-      tagsByGroup[group.id] = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
-    }
-    const groupedOptions = allTagGroups.map(group => {
-      const tags = tagsByGroup[group.id] || [];
-      if (tags.length === 0) return '';
-      return `<optgroup label="${escapeAttr(group.name)}">` +
-        tags.map(tag => `<option value="tag:${escapeAttr(tag.id)}">${escapeHTML(tag.name)}</option>`).join('') +
-        '</optgroup>';
-    }).join('');
-    listFilter.innerHTML = '<option value="">全部分类</option>' + groupedOptions;
-    if (current && current.startsWith('tag:')) {
-      listFilter.value = current;
-    } else if (current) {
-      const legacyTag = allTags.find(tag => tag.name === current);
-      listFilter.value = legacyTag ? `tag:${legacyTag.id}` : '';
-    } else {
-      listFilter.value = '';
-    }
+  syncListCategorySelectionWithTags();
+  renderListCategoryTrigger();
+  renderListCategoryPicker();
+}
+
+function syncListCategorySelectionWithTags() {
+  const validIds = new Set(allTags.map(tag => tag.id));
+  selectedListCategoryTagIds = selectedListCategoryTagIds.filter(id => validIds.has(id));
+  draftListCategoryTagIds = draftListCategoryTagIds.filter(id => validIds.has(id));
+}
+
+function renderListCategoryTrigger() {
+  const labelEl = document.getElementById('list-category-trigger-label');
+  const countEl = document.getElementById('list-category-trigger-count');
+  if (!labelEl) return;
+
+  labelEl.textContent = ExpenseListUtils.formatCategoryFilterLabel(selectedListCategoryTagIds, allTags);
+  if (countEl) {
+    countEl.textContent = String(selectedListCategoryTagIds.length);
+    countEl.hidden = selectedListCategoryTagIds.length === 0;
   }
 }
+
+function renderListCategoryPicker() {
+  const selectedStrip = document.getElementById('list-category-selected-strip');
+  const groupsContainer = document.getElementById('list-category-groups');
+  if (!selectedStrip || !groupsContainer) return;
+
+  if (draftListCategoryTagIds.length === 0) {
+    selectedStrip.innerHTML = '<span class="tag-picker-selected-empty">尚未选择分类</span>';
+  } else {
+    selectedStrip.innerHTML = draftListCategoryTagIds.map(id => {
+      const tag = allTags.find(item => item.id === id);
+      if (!tag) return '';
+      const group = allTagGroups.find(item => item.id === (tag.parentId || 'group-uncategorized'));
+      return `
+        <button type="button" class="tag-picker-selected-chip" onclick="toggleListCategoryTag('${escapeJSAttr(id)}')" style="--chip-color:${escapeAttr(tag.color)}">
+          ${escapeHTML(tag.name)}
+          <small>${escapeHTML(group ? group.name : '未分类')}</small>
+        </button>
+      `;
+    }).join('');
+  }
+
+  const html = allTagGroups.map(group => {
+    const tags = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
+    if (tags.length === 0) return '';
+    const selectedCount = tags.filter(tag => draftListCategoryTagIds.includes(tag.id)).length;
+    const isCollapsed = listCategoryCollapsedGroups.has(group.id);
+
+    return `
+      <section class="tag-picker-group-card ${isCollapsed ? 'collapsed' : ''}">
+        <button type="button" class="tag-picker-group-header" onclick="toggleListCategoryGroup('${escapeJSAttr(group.id)}')" aria-expanded="${!isCollapsed}">
+          <span class="tag-group-dot" style="background:${escapeAttr(group.color)}"></span>
+          <span class="tag-picker-group-name">${escapeHTML(group.name)}</span>
+          <span class="tag-picker-group-count">${selectedCount}/${tags.length}</span>
+          <span class="tag-picker-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="tag-picker-group-body">
+          <div class="list-category-option-list">
+            ${tags.map(tag => {
+              const isSelected = draftListCategoryTagIds.includes(tag.id);
+              return `
+                <button type="button" class="list-category-option ${isSelected ? 'selected' : ''}" onclick="toggleListCategoryTag('${escapeJSAttr(tag.id)}')" style="--chip-color:${escapeAttr(tag.color)}">
+                  <span class="list-category-check" aria-hidden="true">${isSelected ? '✓' : ''}</span>
+                  <span class="tag-suggestion-dot" style="background:${escapeAttr(tag.color)}"></span>
+                  <span>${escapeHTML(tag.name)}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </section>
+    `;
+  }).join('');
+
+  groupsContainer.innerHTML = html || '<div class="tag-picker-empty">暂无可选分类</div>';
+}
+
+function updateListCategoryModalState(isOpen) {
+  const modal = document.getElementById('list-category-modal');
+  const trigger = document.getElementById('list-category-trigger');
+  if (modal) {
+    modal.classList.toggle('open', isOpen);
+    modal.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+  }
+  if (trigger) {
+    trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+  document.body.classList.toggle('list-category-open', isOpen);
+}
+
+window.openListCategoryPicker = function() {
+  draftListCategoryTagIds = [...selectedListCategoryTagIds];
+  renderListCategoryPicker();
+  updateListCategoryModalState(true);
+};
+
+window.closeListCategoryPicker = function() {
+  updateListCategoryModalState(false);
+};
+
+window.toggleListCategoryGroup = function(groupId) {
+  if (listCategoryCollapsedGroups.has(groupId)) {
+    listCategoryCollapsedGroups.delete(groupId);
+  } else {
+    listCategoryCollapsedGroups.add(groupId);
+  }
+  renderListCategoryPicker();
+};
+
+window.toggleListCategoryTag = function(tagId) {
+  if (draftListCategoryTagIds.includes(tagId)) {
+    draftListCategoryTagIds = draftListCategoryTagIds.filter(id => id !== tagId);
+  } else {
+    draftListCategoryTagIds.push(tagId);
+  }
+  renderListCategoryPicker();
+};
+
+window.clearListCategoryFilter = function() {
+  draftListCategoryTagIds = [];
+  renderListCategoryPicker();
+};
+
+window.applyListCategoryFilter = function() {
+  selectedListCategoryTagIds = [...draftListCategoryTagIds];
+  renderListCategoryTrigger();
+  updateListCategoryModalState(false);
+  listViewCurrentOffset = 0;
+  renderExpenseList();
+};
 
 // ============================================
 // Add Expense Form (legacy, kept for compatibility)
@@ -2084,20 +2196,28 @@ function escapeJSAttr(value) {
 
 function initListView() {
   const search = document.getElementById('list-search');
-  const catFilter = document.getElementById('list-filter-category');
   const sort = document.getElementById('list-sort');
+  const categoryModal = document.getElementById('list-category-modal');
 
   if (search) search.addEventListener('input', () => {
-    listViewCurrentOffset = 0;
-    renderExpenseList();
-  });
-  if (catFilter) catFilter.addEventListener('change', () => {
     listViewCurrentOffset = 0;
     renderExpenseList();
   });
   if (sort) sort.addEventListener('change', () => {
     listViewCurrentOffset = 0;
     renderExpenseList();
+  });
+  if (categoryModal) {
+    categoryModal.addEventListener('click', event => {
+      if (event.target && event.target.matches('[data-list-category-close]')) {
+        closeListCategoryPicker();
+      }
+    });
+  }
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      closeListCategoryPicker();
+    }
   });
 
   const container = document.getElementById('expense-list');
@@ -2237,7 +2357,6 @@ window.renderExpenseList = async function() {
   if (!container) return;
 
   const search = document.getElementById('list-search');
-  const catFilter = document.getElementById('list-filter-category');
   const sort = document.getElementById('list-sort');
 
   let expenses = await getExpenses();
@@ -2255,9 +2374,9 @@ window.renderExpenseList = async function() {
     );
   }
 
-  if (catFilter && catFilter.value) {
-    const catFilterValue = catFilter.value;
-    expenses = expenses.filter(e => ExpenseListUtils.expenseMatchesCategoryFilter(e, catFilterValue, allTags));
+  if (selectedListCategoryTagIds.length > 0) {
+    const filterValues = selectedListCategoryTagIds.map(id => `tag:${id}`);
+    expenses = expenses.filter(e => ExpenseListUtils.expenseMatchesCategoryFilters(e, filterValues, allTags));
   }
 
   const sortValue = sort ? sort.value : 'date-desc';
@@ -3063,11 +3182,10 @@ window.filterByTagFromList = function(tagId) {
   selectedTagIds = [tagId];
   renderSelectedFilterTags();
 
-  // Set the category filter in list view
-  const listFilterCategory = document.getElementById('list-filter-category');
-  if (listFilterCategory) {
-    listFilterCategory.value = `tag:${tag.id}`;
-  }
+  selectedListCategoryTagIds = [tag.id];
+  draftListCategoryTagIds = [tag.id];
+  renderListCategoryTrigger();
+  renderListCategoryPicker();
 
   switchView('list');
   renderExpenseList();

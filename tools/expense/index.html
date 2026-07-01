@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <script>
@@ -24,7 +24,7 @@
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
 <title>生活账单 - Expense Tracker</title>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=166">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=167">
 </head>
 <body>
 
@@ -259,9 +259,11 @@
     </div>
     <div class="filter-bar">
       <input type="text" id="list-search" placeholder="搜索备注或分类…" oninput="renderExpenseList()">
-      <select id="list-filter-category" onchange="renderExpenseList()">
-        <option value="">全部分类</option>
-      </select>
+      <button type="button" class="list-category-trigger" id="list-category-trigger" onclick="openListCategoryPicker()" aria-expanded="false" aria-controls="list-category-modal">
+        <span id="list-category-trigger-label">全部分类</span>
+        <span class="list-category-trigger-count" id="list-category-trigger-count" hidden>0</span>
+        <span class="list-category-trigger-chevron" aria-hidden="true">⌄</span>
+      </button>
       <select id="list-sort" onchange="renderExpenseList()">
         <option value="date-desc">日期 ↓</option>
         <option value="date-asc">日期 ↑</option>
@@ -545,11 +547,31 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.6.6</span>
+        <span class="setting-version">v1.6.7</span>
       </div>
     </div>
   </section>
 </main>
+
+<div class="list-category-modal" id="list-category-modal" aria-hidden="true">
+  <div class="list-category-backdrop" data-list-category-close></div>
+  <section class="list-category-sheet" role="dialog" aria-modal="true" aria-labelledby="list-category-title">
+    <div class="tag-picker-handle" aria-hidden="true"></div>
+    <div class="tag-picker-sheet-header">
+      <div>
+        <h3 id="list-category-title">选择分类</h3>
+        <p>可多选，按分组折叠</p>
+      </div>
+      <button type="button" class="tag-picker-close" onclick="closeListCategoryPicker()" aria-label="关闭">×</button>
+    </div>
+    <div class="list-category-selected-strip" id="list-category-selected-strip"></div>
+    <div class="list-category-groups" id="list-category-groups"></div>
+    <div class="list-category-actions">
+      <button type="button" class="btn-secondary" onclick="clearListCategoryFilter()">清空</button>
+      <button type="button" class="btn-primary" onclick="applyListCategoryFilter()">确定</button>
+    </div>
+  </section>
+</div>
 
 <!-- Custom Confirm Modal -->
 <div class="modal-overlay" id="confirm-modal" style="display:none;">
@@ -679,19 +701,19 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/tag-management-utils.js?v=166"></script>
-<script src="/tools/expense/js/db-backup-utils.js?v=166"></script>
-<script src="/tools/expense/js/db.js?v=166"></script>
-<script src="/tools/expense/js/backup-utils.js?v=166"></script>
-<script src="/tools/expense/js/backup-crypto.js?v=166"></script>
-<script src="/tools/expense/js/backup-file-handle-db.js?v=166"></script>
-<script src="/tools/expense/js/backup-service.js?v=166"></script>
-<script src="/tools/expense/js/backup-ui.js?v=166"></script>
-<script src="/tools/expense/js/chart.js?v=166"></script>
-<script src="/tools/expense/js/import-export.js?v=166"></script>
-<script src="/tools/expense/js/guide.js?v=166"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=166"></script>
-<script src="/tools/expense/js/app.js?v=166"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=167"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=167"></script>
+<script src="/tools/expense/js/db.js?v=167"></script>
+<script src="/tools/expense/js/backup-utils.js?v=167"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=167"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=167"></script>
+<script src="/tools/expense/js/backup-service.js?v=167"></script>
+<script src="/tools/expense/js/backup-ui.js?v=167"></script>
+<script src="/tools/expense/js/chart.js?v=167"></script>
+<script src="/tools/expense/js/import-export.js?v=167"></script>
+<script src="/tools/expense/js/guide.js?v=167"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=167"></script>
+<script src="/tools/expense/js/app.js?v=167"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->

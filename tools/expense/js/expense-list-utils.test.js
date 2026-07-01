@@ -8,6 +8,8 @@ const {
   createExpenseDetailView,
   selectPrimaryExpenseTag,
   expenseMatchesCategoryFilter,
+  expenseMatchesCategoryFilters,
+  formatCategoryFilterLabel,
   getExpenseGestureResult,
   shouldSuppressExpenseClick
 } = require('./expense-list-utils');
@@ -83,6 +85,35 @@ assert.strictEqual(
   ),
   false
 );
+assert.strictEqual(
+  expenseMatchesCategoryFilters(
+    { category: '餐饮', tags: ['wechat'] },
+    ['tag:family', 'tag:food'],
+    detailTags
+  ),
+  true,
+  'multi-select filter should match when any selected tag matches'
+);
+assert.strictEqual(
+  expenseMatchesCategoryFilters(
+    { category: '餐饮', tags: ['wechat'] },
+    ['tag:family'],
+    detailTags
+  ),
+  false
+);
+assert.strictEqual(
+  expenseMatchesCategoryFilters(
+    { category: '餐饮', tags: ['wechat'] },
+    [],
+    detailTags
+  ),
+  true,
+  'empty multi-select filter should not filter the list'
+);
+assert.strictEqual(formatCategoryFilterLabel([], detailTags), '全部分类');
+assert.strictEqual(formatCategoryFilterLabel(['wechat'], detailTags), '微信');
+assert.strictEqual(formatCategoryFilterLabel(['wechat', 'food', 'family'], detailTags), '已选 3 个分类');
 
 assert.deepStrictEqual(
   createExpenseDetailView(

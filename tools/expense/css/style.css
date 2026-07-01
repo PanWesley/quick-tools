@@ -1,6 +1,6 @@
-/* ============================================
+﻿/* ============================================
    Expense Tracker - Stylesheet
-   Theme: Forest Canopy (温润的日式账本) v1.6.6
+   Theme: Forest Canopy (温润的日式账本) v1.6.7
    ============================================ */
 
 /* CSS Variables */
@@ -942,6 +942,41 @@ h1, h2 {
 .filter-bar input:focus,
 .filter-bar select:focus {
   border-color: var(--primary);
+}
+
+.list-category-trigger {
+  flex: 1;
+  min-width: 150px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.list-category-trigger:focus {
+  border-color: var(--primary);
+}
+
+.list-category-trigger-count {
+  min-width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.list-category-trigger-chevron {
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
 }
 
 /* Dashboard Filter */
@@ -2573,6 +2608,117 @@ h1, h2 {
   flex: 1;
 }
 
+body.list-category-open {
+  overflow: hidden;
+}
+
+.list-category-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 270;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.list-category-modal.open {
+  display: flex;
+}
+
+.list-category-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(31, 38, 35, 0.32);
+  backdrop-filter: blur(2px);
+}
+
+.list-category-sheet {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: min(74vh, 700px);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -16px 44px rgba(31, 38, 35, 0.22);
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+}
+
+.list-category-selected-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 0;
+  min-height: 48px;
+}
+
+.list-category-groups {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 0 8px;
+}
+
+.tag-picker-group-card.collapsed .tag-picker-group-body {
+  display: none;
+}
+
+.list-category-option-list {
+  display: grid;
+  gap: 6px;
+}
+
+.list-category-option {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 22px 12px 1fr;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 8px 10px;
+}
+
+.list-category-option:hover,
+.list-category-option.selected {
+  background: color-mix(in srgb, var(--chip-color, var(--primary)) 10%, var(--surface));
+}
+
+.list-category-check {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border: 1.5px solid color-mix(in srgb, var(--chip-color, var(--primary)) 55%, var(--border));
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.list-category-option.selected .list-category-check {
+  border-color: var(--chip-color, var(--primary));
+  background: var(--chip-color, var(--primary));
+}
+
+.list-category-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.list-category-actions button {
+  flex: 1;
+}
+
 /* Chart analysis selector */
 .chart-analysis-select {
   max-width: 150px;
@@ -3944,16 +4090,19 @@ h1, h2 {
     font-size: 16px !important;
   }
 
-  body.tag-picker-open {
+  body.tag-picker-open,
+  body.list-category-open {
     overflow: hidden;
   }
 
-  body.tag-picker-open .bottom-nav {
+  body.tag-picker-open .bottom-nav,
+  body.list-category-open .bottom-nav {
     transform: translateY(110%);
     pointer-events: none;
   }
 
-  .tag-picker-sheet {
+  .tag-picker-sheet,
+  .list-category-sheet {
     width: 100%;
     max-height: calc(100dvh - 18px - env(safe-area-inset-top, 0px));
     border-radius: 18px 18px 0 0;
@@ -3961,11 +4110,13 @@ h1, h2 {
     padding-right: max(14px, env(safe-area-inset-right, 0px));
   }
 
-  .tag-picker-groups {
+  .tag-picker-groups,
+  .list-category-groups {
     padding-bottom: 8px;
   }
 
-  .tag-picker-actions {
+  .tag-picker-actions,
+  .list-category-actions {
     padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
   }
 
