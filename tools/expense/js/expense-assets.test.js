@@ -44,7 +44,7 @@ requiredScripts.forEach((source, index) => {
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.3';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.5';/
 );
 assert.match(
   serviceWorker,

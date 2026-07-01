@@ -273,6 +273,150 @@ function triggerDashboardUpdate() {
   }, 300);
 }
 
+function formatLocalDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const date = new Date(`${dateKey}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return formatLocalDateKey(date);
+}
+
+function getPreviousDashboardRange(dateRange) {
+  if (!dateRange || !dateRange.startDate || !dateRange.endDate) return null;
+  const start = new Date(`${dateRange.startDate}T00:00:00`);
+  const end = new Date(`${dateRange.endDate}T00:00:00`);
+  const days = Math.max(1, Math.floor((end - start) / 86400000) + 1);
+  const previousEnd = new Date(start);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - days + 1);
+  return {
+    startDate: formatLocalDateKey(previousStart),
+    endDate: formatLocalDateKey(previousEnd)
+  };
+}
+
+async function getFilteredDashboardExpensesForRange(dateRange, filters) {
+  if (!dateRange) return [];
+  const rawExpenses = await getExpenses({ startDate: dateRange.startDate, endDate: dateRange.endDate });
+  return filterDashboardExpenses(rawExpenses, {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    tags: filters.tags,
+    minAmount: filters.minAmount,
+    maxAmount: filters.maxAmount,
+    search: filters.search
+  }, { tags: allTags });
+}
+
+function renderDashboardInsights(expenses, dateRange, filters, previousExpenses) {
+  renderSpendingPaceInsight(expenses, dateRange, previousExpenses);
+  renderCalendarHeatmapInsight(expenses, dateRange);
+  renderDashboardInsightCards(expenses, dateRange, filters, previousExpenses);
+}
+
+function renderSpendingPaceInsight(expenses, dateRange, previousExpenses) {
+  const pace = buildSpendingPace(expenses, {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    now: formatLocalDateKey(new Date()),
+    referenceTotal: previousExpenses && previousExpenses.length > 0
+      ? previousExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0)
+      : null
+  });
+  const statusEl = document.getElementById('pace-status');
+  const timePercentEl = document.getElementById('pace-time-percent');
+  const spendingPercentEl = document.getElementById('pace-spending-percent');
+  const timeBar = document.getElementById('pace-time-bar');
+  const spendingBar = document.getElementById('pace-spending-bar');
+  const copyEl = document.getElementById('pace-copy');
+
+  if (statusEl) {
+    statusEl.textContent = pace.hasReference ? pace.label : '参考不足';
+    statusEl.className = `pace-status ${pace.status}`;
+  }
+  if (timePercentEl) timePercentEl.textContent = `${pace.elapsedPercent}%`;
+  if (spendingPercentEl) spendingPercentEl.textContent = `${pace.spendingPercent}%`;
+  if (timeBar) timeBar.style.width = `${pace.elapsedPercent}%`;
+  if (spendingBar) {
+    spendingBar.style.width = `${pace.spendingPercent}%`;
+    spendingBar.className = pace.status;
+  }
+  if (copyEl) {
+    if (!pace.hasReference) {
+      copyEl.textContent = '上一段暂无可比数据，先积累几天会更准。';
+    } else if (pace.status === 'ahead') {
+      copyEl.textContent = `已花 ${pace.spendingPercent}%，快于时间进度 ${pace.elapsedPercent}%。`;
+    } else if (pace.status === 'behind') {
+      copyEl.textContent = `已花 ${pace.spendingPercent}%，低于时间进度 ${pace.elapsedPercent}%。`;
+    } else {
+      copyEl.textContent = `已花 ${pace.spendingPercent}%，和时间进度基本同步。`;
+    }
+  }
+}
+
+function renderCalendarHeatmapInsight(expenses, dateRange) {
+  const heatmap = buildCalendarHeatmap(expenses, {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    now: formatLocalDateKey(new Date())
+  });
+  const container = document.getElementById('calendar-heatmap');
+  const maxEl = document.getElementById('heatmap-max');
+  if (!container) return;
+
+  if (maxEl) {
+    maxEl.textContent = heatmap.maxDailyTotal > 0 ? `峰值 ¥${heatmap.maxDailyTotal.toFixed(0)}` : '暂无支出';
+  }
+
+  const leadingOffset = heatmap.days.length > 0
+    ? (heatmap.days[0].weekday + 6) % 7
+    : 0;
+  const blanks = Array.from({ length: leadingOffset }, () => '<span class="heatmap-cell empty" aria-hidden="true"></span>');
+  const cells = heatmap.days.map(day => {
+    const level = day.intensity === 0 ? 0 : Math.max(1, Math.min(4, Math.ceil(day.intensity * 4)));
+    const title = `${day.date} 支出 ¥${day.total.toFixed(2)}`;
+    const amountLabel = typeof formatHeatmapAmountLabel === 'function'
+      ? formatHeatmapAmountLabel(day.total)
+      : (day.total > 0 ? `¥${Math.round(day.total)}` : '');
+    return `<button class="heatmap-cell level-${level} ${day.isToday ? 'today' : ''}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}" onclick="goToListForDate('${escapeJSAttr(day.date)}')"><span class="heatmap-day">${day.day}</span><span class="heatmap-amount ${amountLabel ? '' : 'empty'}">${amountLabel ? escapeHTML(amountLabel) : '&nbsp;'}</span></button>`;
+  });
+  container.innerHTML = blanks.concat(cells).join('');
+}
+
+function renderDashboardInsightCards(expenses, dateRange, filters, previousExpenses) {
+  const container = document.getElementById('insight-alert-list');
+  const countEl = document.getElementById('insight-count');
+  if (!container) return;
+
+  const cards = buildDashboardInsightCards(expenses, {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    tags: allTags,
+    groups: allTagGroups,
+    analysisGroupId: filters.analysisGroupId,
+    previousExpenses
+  });
+
+  if (countEl) countEl.textContent = `${cards.length} 条`;
+  if (cards.length === 0) {
+    container.innerHTML = '<div class="insight-alert empty">暂时没有明显异常，节奏挺稳。</div>';
+    return;
+  }
+
+  container.innerHTML = cards.map(card => `
+    <div class="insight-alert ${escapeAttr(card.type)}">
+      <div>
+        <strong>${escapeHTML(card.title)}</strong>
+        <span>${escapeHTML(card.detail)}</span>
+      </div>
+      <em>${escapeHTML(card.value)}</em>
+    </div>
+  `).join('');
+}
+
 function renderDashboardHero() {
   const totalEl = document.getElementById('dash-total');
   const labelEl = document.getElementById('dash-total-label');
@@ -315,6 +459,8 @@ function renderDashboardHero() {
     // Show empty state
     if (count === 0) {
       if (emptyEl) emptyEl.style.display = 'flex';
+      const insightsEl = document.getElementById('dashboard-insights');
+      if (insightsEl) insightsEl.style.display = 'none';
       if (document.getElementById('dashboard-hero')) {
         document.getElementById('dashboard-hero').style.display = 'none';
       }
@@ -334,11 +480,19 @@ function renderDashboardHero() {
     if (document.getElementById('dashboard-hero')) {
       document.getElementById('dashboard-hero').style.display = 'block';
     }
+    const insightsEl = document.getElementById('dashboard-insights');
+    if (insightsEl) insightsEl.style.display = 'grid';
     // Show chart sections
     const chartRows = document.querySelectorAll('.chart-row');
     chartRows.forEach(r => r.style.display = 'grid');
     const chartCards = document.querySelectorAll('.chart-card');
     chartCards.forEach(c => c.style.display = 'block');
+
+    const previousRange = getPreviousDashboardRange(dateRange);
+    const previousExpenses = previousRange
+      ? await getFilteredDashboardExpensesForRange(previousRange, filters)
+      : [];
+    renderDashboardInsights(expenses, dateRange, filters, previousExpenses);
 
     // Format total
     if (totalEl) {
@@ -542,6 +696,16 @@ window.goToListFromDashboard = function() {
 
   _originalSwitchView('list');
   applyListViewFilters();
+};
+
+window.goToListForDate = function(date) {
+  _originalSwitchView('list');
+  const listSearch = document.getElementById('list-search');
+  if (listSearch) {
+    listSearch.value = date;
+  }
+  listViewCurrentOffset = 0;
+  renderExpenseList();
 };
 
 function applyListViewFilters() {
@@ -2049,6 +2213,7 @@ window.renderExpenseList = async function() {
   if (search && search.value.trim()) {
     const q = search.value.trim().toLowerCase();
     expenses = expenses.filter(e =>
+      (e.date || '').toLowerCase().includes(q) ||
       (e.note || '').toLowerCase().includes(q) ||
       (e.category || '').toLowerCase().includes(q) ||
       (e.tags || []).some(tid => {

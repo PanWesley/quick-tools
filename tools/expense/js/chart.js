@@ -315,7 +315,7 @@ function parseDateOnly(value) {
 }
 
 function formatDateKey(date) {
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function formatMonthKey(date) {
@@ -379,6 +379,186 @@ function aggregateDashboardTrend(expenses, options = {}) {
   };
 }
 
+function clampRatio(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function sumExpenseAmount(expenses) {
+  return (expenses || []).reduce((sum, expense) => sum + (expense.amount || 0), 0);
+}
+
+function formatCurrencyValue(value) {
+  return `¥${Number(value || 0).toFixed(2)}`;
+}
+
+function formatHeatmapAmountLabel(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  if (amount >= 10000) {
+    return `¥${Math.round(amount / 1000)}k`;
+  }
+  if (amount >= 1000) {
+    return `¥${(amount / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return `¥${Math.round(amount)}`;
+}
+
+function buildSpendingPace(expenses, options = {}) {
+  const { startDate, endDate, now = formatDateKey(new Date()), referenceTotal = null } = options;
+  const total = Number(sumExpenseAmount(expenses).toFixed(2));
+  const rangeDays = startDate && endDate ? Math.max(1, getInclusiveDayCount(startDate, endDate)) : 1;
+  const clampedNow = !startDate || now < startDate ? startDate : (!endDate || now <= endDate ? now : endDate);
+  const elapsedDays = startDate && clampedNow ? Math.max(1, getInclusiveDayCount(startDate, clampedNow)) : rangeDays;
+  const elapsedRatio = clampRatio(elapsedDays / rangeDays);
+  const hasReference = referenceTotal !== null && referenceTotal > 0;
+  const baseline = hasReference ? referenceTotal : total;
+  const spendingRatio = hasReference && baseline > 0 ? clampRatio(total / baseline) : elapsedRatio;
+  const delta = spendingRatio - elapsedRatio;
+  const status = hasReference && delta > 0.1 ? 'ahead' : (hasReference && delta < -0.1 ? 'behind' : 'steady');
+
+  return {
+    total,
+    referenceTotal: Number((baseline || 0).toFixed(2)),
+    hasReference,
+    elapsedRatio,
+    spendingRatio,
+    elapsedPercent: Math.round(elapsedRatio * 100),
+    spendingPercent: Math.round(spendingRatio * 100),
+    status,
+    label: status === 'ahead' ? '支出偏快' : (status === 'behind' ? '支出偏慢' : '节奏平稳')
+  };
+}
+
+function buildCalendarHeatmap(expenses, options = {}) {
+  const { startDate, endDate, now = formatDateKey(new Date()) } = options;
+  if (!startDate || !endDate) {
+    return { days: [], maxDailyTotal: 0 };
+  }
+
+  const dailyTotals = {};
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    dailyTotals[formatDateKey(cursor)] = 0;
+  }
+
+  for (const expense of expenses || []) {
+    if (expense.date && Object.prototype.hasOwnProperty.call(dailyTotals, expense.date)) {
+      dailyTotals[expense.date] += expense.amount || 0;
+    }
+  }
+
+  const maxDailyTotal = Math.max(0, ...Object.values(dailyTotals));
+  const days = Object.keys(dailyTotals).sort().map(date => {
+    const total = Number(dailyTotals[date].toFixed(2));
+    return {
+      date,
+      day: Number(date.slice(8, 10)),
+      weekday: parseDateOnly(date).getDay(),
+      total,
+      intensity: maxDailyTotal > 0 ? Number((total / maxDailyTotal).toFixed(2)) : 0,
+      isToday: date === now
+    };
+  });
+
+  return {
+    days,
+    maxDailyTotal: Number(maxDailyTotal.toFixed(2))
+  };
+}
+
+function groupExpensesByDate(expenses) {
+  const grouped = {};
+  for (const expense of expenses || []) {
+    if (!expense.date) continue;
+    grouped[expense.date] = (grouped[expense.date] || 0) + (expense.amount || 0);
+  }
+  return grouped;
+}
+
+function buildDashboardInsightCards(expenses, options = {}) {
+  const cards = [];
+  const currentExpenses = expenses || [];
+  if (currentExpenses.length === 0) {
+    return [];
+  }
+
+  const dailyTotals = groupExpensesByDate(currentExpenses);
+  const activeDailyTotals = Object.entries(dailyTotals)
+    .map(([date, total]) => ({ date, total }))
+    .sort((a, b) => b.total - a.total);
+  const maxDay = activeDailyTotals[0];
+  const activeAverage = activeDailyTotals.length > 0
+    ? activeDailyTotals.reduce((sum, day) => sum + day.total, 0) / activeDailyTotals.length
+    : 0;
+
+  if (maxDay && maxDay.total > 0 && maxDay.total >= activeAverage * 1.5) {
+    cards.push({
+      type: 'heavy-day',
+      title: '高支出日',
+      value: formatCurrencyValue(maxDay.total),
+      detail: `${maxDay.date.slice(5).replace('-', '月')}日明显高于日均`
+    });
+  }
+
+  const largestExpense = currentExpenses
+    .slice()
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0))[0];
+  if (largestExpense && largestExpense.amount > 0) {
+    cards.push({
+      type: 'large-expense',
+      title: '最大单笔',
+      value: formatCurrencyValue(largestExpense.amount),
+      detail: largestExpense.note || largestExpense.category || largestExpense.date || '一笔较大的支出'
+    });
+  }
+
+  const previousExpenses = options.previousExpenses || [];
+  if (previousExpenses.length > 0) {
+    const currentBreakdown = aggregateDashboardBreakdown(currentExpenses, {
+      tags: options.tags || [],
+      groups: options.groups || [],
+      analysisGroupId: options.analysisGroupId || DASHBOARD_DEFAULT_GROUP
+    });
+    const previousBreakdown = aggregateDashboardBreakdown(previousExpenses, {
+      tags: options.tags || [],
+      groups: options.groups || [],
+      analysisGroupId: options.analysisGroupId || DASHBOARD_DEFAULT_GROUP
+    });
+    const previousById = {};
+    previousBreakdown.ids.forEach((id, index) => {
+      previousById[id] = previousBreakdown.data[index] || 0;
+    });
+
+    const increases = currentBreakdown.ids.map((id, index) => {
+      const current = currentBreakdown.data[index] || 0;
+      const previous = previousById[id] || 0;
+      return {
+        id,
+        label: currentBreakdown.labels[index],
+        current,
+        previous,
+        increase: current - previous,
+        ratio: previous > 0 ? (current - previous) / previous : (current > 0 ? 1 : 0)
+      };
+    }).filter(item => item.increase > 0 && item.ratio >= 0.25)
+      .sort((a, b) => b.increase - a.increase)[0];
+
+    if (increases) {
+      cards.push({
+        type: 'rising-category',
+        title: '上涨最多',
+        value: `+${formatCurrencyValue(increases.increase)}`,
+        detail: `${increases.label} 比上期更高`
+      });
+    }
+  }
+
+  return cards.slice(0, 3);
+}
+
 /**
  * Get top N spending categories.
  * @param {Array} expenses
@@ -437,8 +617,9 @@ function renderPieChart(canvasId, data) {
       datasets: [{
         data: data.data,
         backgroundColor: data.colors,
-        borderWidth: 2,
-        borderColor: isDarkMode() ? '#161b22' : '#ffffff'
+        borderWidth: 3,
+        borderColor: isDarkMode() ? '#161b22' : '#ffffff',
+        hoverOffset: 8
       }]
     },
     options: {
@@ -451,7 +632,9 @@ function renderPieChart(canvasId, data) {
             color: getChartTextColor(),
             padding: 16,
             usePointStyle: true,
-            pointStyle: 'circle'
+            pointStyle: 'circle',
+            boxWidth: 8,
+            boxHeight: 8
           }
         },
         tooltip: {
@@ -465,7 +648,10 @@ function renderPieChart(canvasId, data) {
           }
         }
       },
-      cutout: '55%'
+      cutout: '64%',
+      layout: {
+        padding: 4
+      }
     }
   });
 }
@@ -490,19 +676,24 @@ function renderLineChart(canvasId, data) {
         label: '支出金额',
         data: data.data,
         borderColor: primaryColor,
-        backgroundColor: 'rgba(45, 186, 163, 0.12)',
+        backgroundColor: 'rgba(45, 186, 163, 0.14)',
         fill: true,
-        tension: 0.35,
+        tension: 0.42,
         pointBackgroundColor: primaryColor,
         pointBorderColor: isDarkMode() ? '#161b22' : '#ffffff',
         pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        borderWidth: 3
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
       plugins: {
         legend: {
           display: false
@@ -518,10 +709,11 @@ function renderLineChart(canvasId, data) {
       scales: {
         x: {
           ticks: {
-            color: getChartTextColor()
+            color: getChartTextColor(),
+            maxRotation: 0
           },
           grid: {
-            color: getChartGridColor()
+            display: false
           }
         },
         y: {
@@ -559,11 +751,14 @@ function renderBarChart(canvasId, data) {
         label: '支出金额',
         data: data.data,
         backgroundColor: data.colors,
-        borderRadius: 6,
+        borderRadius: 8,
+        barThickness: 18,
+        maxBarThickness: 22,
         borderSkipped: false
       }]
     },
     options: {
+      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -573,21 +768,13 @@ function renderBarChart(canvasId, data) {
         tooltip: {
           callbacks: {
             label: function(context) {
-              return ` ${context.label}: ¥${context.parsed.y.toFixed(2)}`;
+              return ` ${context.label}: ¥${context.parsed.x.toFixed(2)}`;
             }
           }
         }
       },
       scales: {
         x: {
-          ticks: {
-            color: getChartTextColor()
-          },
-          grid: {
-            display: false
-          }
-        },
-        y: {
           ticks: {
             color: getChartTextColor(),
             callback: function(value) {
@@ -598,6 +785,14 @@ function renderBarChart(canvasId, data) {
             color: getChartGridColor()
           },
           beginAtZero: true
+        },
+        y: {
+          ticks: {
+            color: getChartTextColor()
+          },
+          grid: {
+            display: false
+          }
         }
       }
     }
@@ -751,6 +946,10 @@ if (typeof window !== 'undefined') {
   window.filterDashboardExpenses = filterDashboardExpenses;
   window.aggregateDashboardBreakdown = aggregateDashboardBreakdown;
   window.aggregateDashboardTrend = aggregateDashboardTrend;
+  window.buildSpendingPace = buildSpendingPace;
+  window.buildCalendarHeatmap = buildCalendarHeatmap;
+  window.formatHeatmapAmountLabel = formatHeatmapAmountLabel;
+  window.buildDashboardInsightCards = buildDashboardInsightCards;
   window.getDateRange = getDateRange;
   window.getDateRangeLabel = getDateRangeLabel;
   window.DASHBOARD_ALL_GROUPS = DASHBOARD_ALL_GROUPS;
@@ -770,6 +969,10 @@ if (typeof module !== 'undefined' && module.exports) {
     filterDashboardExpenses,
     aggregateDashboardBreakdown,
     aggregateDashboardTrend,
+    buildSpendingPace,
+    buildCalendarHeatmap,
+    formatHeatmapAmountLabel,
+    buildDashboardInsightCards,
     getDateRange,
     getDateRangeLabel
   };
