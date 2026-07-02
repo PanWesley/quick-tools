@@ -7,6 +7,15 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Web-brightgreen.svg)
 
+## 站点级匿名统计
+
+- 统计入口：`/analytics/`
+- 采集范围：网站首页和各工具首页，包括 `/tools/diff/`、`/tools/json/`、`/tools/expense/`、`/tools/time/`
+- 采集字段：匿名会话、工具标识、规范化路由、页面视图、设备类型、来源类型和活跃时长
+- 不采集内容：账单金额、备注、标签名、JSON 输入内容、文本对比内容、待办内容等用户输入数据
+- 后端：Cloudflare Worker + D1，接口为 `/api/analytics` 和 `/api/analytics/summary`
+- 可视化：用 `ANALYTICS_READ_TOKEN` 在 `/analytics/` 查看 DAU、sessions、pageviews、平均停留、工具排行和页面排行
+
 ## 🛠️ 包含工具
 
 ### 1. 📊 Diff 文本对比工具
