@@ -49,6 +49,15 @@
     }[priority || 'none'] || '无';
   }
 
+  function priorityTone(priority) {
+    return {
+      high: 'coral',
+      medium: 'sun',
+      low: 'mint',
+      none: 'sky'
+    }[priority || 'none'] || 'sky';
+  }
+
   function formatDateMeta(task) {
     if (!task.date) return '收集箱';
     var prefix = task.date < appState.todayKey ? '逾期' : task.date === appState.todayKey ? '今天' : task.date;
@@ -61,6 +70,7 @@
 
   function renderTask(task, options) {
     var opts = options || {};
+    var title = State.getTaskDisplayTitle(task);
     var completeButton = opts.complete === false
       ? '<span></span>'
       : '<button class="task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
@@ -78,13 +88,39 @@
       '<article class="task-row">',
       completeButton,
       '<div>',
-      '<div class="task-title">' + escapeHtml(task.title) + '</div>',
+      '<div class="task-title">' + escapeHtml(title) + '</div>',
       '<div class="task-meta">' + escapeHtml(formatDateMeta(task)) + '</div>',
       '</div>',
       '<div class="priority-tag ' + escapeHtml(task.priority || 'none') + '">' + escapeHtml(priorityLabel(task.priority)) + '</div>',
       actions.length ? '<div class="task-actions">' + actions.join('') + '</div>' : '',
       '</article>'
     ].join('');
+  }
+
+  function renderDateTask(task) {
+    var actions = task.status === 'completed'
+      ? ''
+      : '<div class="date-actions"><button class="text-action" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button><button class="text-action danger-text" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button></div>';
+    var completeButton = task.status === 'completed'
+      ? '<span class="date-icon done-icon">✓</span>'
+      : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
+    return [
+      '<article class="date-row date-task-row">',
+      completeButton,
+      '<div class="date-row-main">',
+      '<div class="task-title">' + escapeHtml(State.getTaskDisplayTitle(task)) + '</div>',
+      '<div class="task-meta">' + escapeHtml(formatDateMeta(task)) + '</div>',
+      '</div>',
+      '<span class="priority-tag ' + escapeHtml(task.priority || 'none') + '">' + escapeHtml(priorityLabel(task.priority)) + '</span>',
+      actions,
+      '</article>'
+    ].join('');
+  }
+
+  function calendarEntryTone(entry) {
+    if (entry.type === 'task') return priorityTone(entry.priority);
+    if (entry.type === 'habit') return entry.state === 'done' ? 'mint' : 'lilac';
+    return 'rose';
   }
 
   function renderHabit(habit) {
@@ -130,19 +166,25 @@
     els.calendarLabel.textContent = DateUtils.formatMonthLabel(appState.calendarYear, appState.calendarMonth);
     els.calendarGrid.innerHTML = grid.map(function(cell) {
       var mark = marks[cell.dateKey] || { tasks: 0, habits: 0, journal: false };
+      var entries = State.getCalendarEntries(appState.data, cell.dateKey);
       var dots = [
         mark.tasks ? '<span class="day-dot"></span>' : '',
         mark.habits ? '<span class="day-dot habit"></span>' : '',
         mark.journal ? '<span class="day-dot journal"></span>' : ''
       ].join('');
+      var strips = entries.slice(0, 2).map(function(entry) {
+        return '<span class="calendar-strip ' + calendarEntryTone(entry) + '">' + escapeHtml(entry.label) + '</span>';
+      }).join('');
+      var overflow = entries.length > 2 ? '<span class="calendar-more">+' + (entries.length - 2) + '</span>' : '';
       return [
         '<button class="day-cell',
         cell.isCurrentMonth ? '' : ' outside',
         cell.isToday ? ' today' : '',
         cell.dateKey === appState.selectedDateKey ? ' selected' : '',
         '" type="button" data-action="select-date" data-date="' + escapeHtml(cell.dateKey) + '">',
-        '<span class="day-number">' + cell.day + '</span>',
+        '<span class="day-top"><span class="day-number">' + cell.day + '</span><span class="day-lunar">' + DateUtils.formatWeekday(cell.dateKey).replace('周', '') + '</span></span>',
         '<span class="day-dots">' + dots + '</span>',
+        '<span class="calendar-strips">' + strips + overflow + '</span>',
         '</button>'
       ].join('');
     }).join('');
@@ -163,14 +205,14 @@
     var rows = [];
 
     tasks.forEach(function(task) {
-      rows.push(renderTask(task, { complete: task.status !== 'completed', delete: task.status !== 'completed' }));
+      rows.push(renderDateTask(task));
     });
     habits.forEach(function(habit) {
       var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, dateKey);
-      rows.push('<article class="date-row"><span></span><div><div class="task-title">' + escapeHtml(habit.title) + '</div><div class="task-meta">习惯 · ' + escapeHtml(log ? log.state : '待打卡') + '</div></div></article>');
+      rows.push('<article class="date-row date-note-row"><span class="date-icon habit-icon">习</span><div><div class="task-title">' + escapeHtml(habit.title || '未命名习惯') + '</div><div class="task-meta">习惯 · ' + escapeHtml(log ? log.state : '待打卡') + '</div></div></article>');
     });
     if (journal) {
-      rows.push('<article class="date-row"><span></span><div><div class="task-title">每日一句</div><div class="task-meta">' + escapeHtml(journal.content) + '</div></div></article>');
+      rows.push('<article class="date-row date-note-row"><span class="date-icon journal-icon">记</span><div><div class="task-title">每日一句</div><div class="task-meta">' + escapeHtml(journal.content) + '</div></div></article>');
     }
 
     els.selectedDateTitle.textContent = dateKey;
@@ -207,6 +249,11 @@
     renderLists();
   }
 
+  function viewFromHash() {
+    var view = (window.location.hash || '#today').replace('#', '');
+    return ['today', 'calendar', 'list', 'profile'].includes(view) ? view : 'today';
+  }
+
   function switchView(view) {
     appState.view = view;
     document.querySelectorAll('.view').forEach(function(section) {
@@ -215,7 +262,9 @@
     document.querySelectorAll('.nav-item').forEach(function(button) {
       button.classList.toggle('active', button.dataset.view === view);
     });
-    window.location.hash = view;
+    if (window.location.hash !== '#' + view) {
+      window.location.hash = view;
+    }
   }
 
   function openSheet() {
@@ -364,6 +413,14 @@
     renderCalendar();
   }
 
+  function jumpToTodayMonth() {
+    var today = DateUtils.fromDateKey(appState.todayKey);
+    appState.calendarYear = today.getFullYear();
+    appState.calendarMonth = today.getMonth();
+    appState.selectedDateKey = appState.todayKey;
+    renderCalendar();
+  }
+
   function exportData() {
     var payload = Exporter.buildExportPayload(appState.data);
     Exporter.downloadJson(payload, 'today-youxu-' + appState.todayKey + '.json');
@@ -467,6 +524,7 @@
     });
     $('settings-button').addEventListener('click', function() { switchView('profile'); });
     $('prev-month').addEventListener('click', function() { changeMonth(-1); });
+    $('today-month').addEventListener('click', jumpToTodayMonth);
     $('next-month').addEventListener('click', function() { changeMonth(1); });
     els.openAdd.addEventListener('click', openSheet);
     els.openAddInline.addEventListener('click', openSheet);
@@ -485,6 +543,12 @@
     els.importFile.addEventListener('change', handleImportFile);
     els.clearButton.addEventListener('click', clearData);
     document.addEventListener('click', handleAction);
+    window.addEventListener('hashchange', function() {
+      var nextView = viewFromHash();
+      if (nextView !== appState.view) {
+        switchView(nextView);
+      }
+    });
   }
 
   function registerServiceWorker() {
@@ -497,11 +561,7 @@
   function init() {
     cacheElements();
     bindEvents();
-    var initialView = (window.location.hash || '#today').replace('#', '');
-    if (!['today', 'calendar', 'list', 'profile'].includes(initialView)) {
-      initialView = 'today';
-    }
-    switchView(initialView);
+    switchView(viewFromHash());
     loadData();
     registerServiceWorker();
   }

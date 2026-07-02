@@ -5,6 +5,8 @@ const {
   getInboxTasks,
   getUpcomingTasks,
   getDeletedTasks,
+  getTaskDisplayTitle,
+  getCalendarEntries,
   getCalendarMarks,
   habitDueOn,
   getHabitLogForDate
@@ -39,6 +41,12 @@ test('getDeletedTasks returns deleted tasks newest first', () => {
   assert.deepEqual(getDeletedTasks(tasks).map((task) => task.id), ['c', 'a']);
 });
 
+test('getTaskDisplayTitle falls back when imported task title is missing', () => {
+  assert.equal(getTaskDisplayTitle({ title: null }), '未命名任务');
+  assert.equal(getTaskDisplayTitle({ title: '  ' }), '未命名任务');
+  assert.equal(getTaskDisplayTitle({ title: '整理行程' }), '整理行程');
+});
+
 test('habitDueOn supports daily weekdays and weekly schedules', () => {
   assert.equal(habitDueOn({ schedule: 'daily' }, '2026-07-04'), true);
   assert.equal(habitDueOn({ schedule: 'weekdays' }, '2026-07-04'), false);
@@ -60,4 +68,24 @@ test('getCalendarMarks reports task habit and journal markers', () => {
   }, ['2026-07-02']);
 
   assert.deepEqual(marks['2026-07-02'], { tasks: 1, habits: 1, journal: true });
+});
+
+test('getCalendarEntries returns compact task habit and journal entries', () => {
+  const entries = getCalendarEntries({
+    tasks: [
+      { id: 'task_1', title: null, date: '2026-07-02', status: 'active' },
+      { id: 'task_2', title: '已完成', date: '2026-07-02', status: 'completed' },
+      { id: 'task_3', title: '已删除', date: '2026-07-02', status: 'deleted' }
+    ],
+    habits: [{ id: 'habit_1', title: '喝水', schedule: 'daily', status: 'active' }],
+    habitLogs: [{ id: 'log_1', habitId: 'habit_1', date: '2026-07-02', state: 'done' }],
+    journals: [{ id: 'journal_1', date: '2026-07-02', content: '今天状态不错' }]
+  }, '2026-07-02');
+
+  assert.deepEqual(entries.map((entry) => [entry.type, entry.label, entry.state]), [
+    ['task', '未命名任务', 'active'],
+    ['task', '已完成', 'completed'],
+    ['habit', '喝水', 'done'],
+    ['journal', '每日一句', 'noted']
+  ]);
 });
