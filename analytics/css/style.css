@@ -204,6 +204,10 @@ button {
   gap: 18px;
 }
 
+.insight-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .panel {
   padding: 16px;
   display: grid;
@@ -308,6 +312,10 @@ meter {
 
 .route-list li {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.compact-list li {
+  grid-template-columns: minmax(0, 1fr) 90px auto;
 }
 
 .empty {

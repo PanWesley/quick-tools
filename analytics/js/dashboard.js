@@ -49,6 +49,9 @@
     renderTrend(summary.daily || []);
     renderTools(summary.topTools || []);
     renderRoutes(summary.topRoutes || []);
+    renderBreakdown('device-list', summary.deviceBreakdown || [], 'device');
+    renderBreakdown('referrer-list', summary.referrerBreakdown || [], 'referrer');
+    renderBreakdown('location-list', summary.locationBreakdown || [], 'location');
   }
 
   function renderCards(summary) {
@@ -88,7 +91,7 @@
       <li>
         <div>
           <strong>${row.label}</strong>
-          <span>${row.pageviews} PV · ${utils.formatDuration(row.engagedSeconds)}</span>
+          <span>${row.visitors} UV · ${row.pageviews} PV · ${utils.formatDuration(row.engagedSeconds)}</span>
         </div>
         <meter min="0" max="100" value="${row.share}"></meter>
         <b>${row.share}%</b>
@@ -104,6 +107,20 @@
         <span>${Number(row.pageviews) || 0} PV</span>
       </li>
     `).join('') || '<li class="empty">暂无页面数据</li>';
+  }
+
+  function renderBreakdown(elementId, sourceRows, type) {
+    const rows = utils.buildBreakdownRows(sourceRows, type);
+    getElement(elementId).innerHTML = rows.map(row => `
+      <li>
+        <div>
+          <strong>${row.label}</strong>
+          <span>${row.visitors} UV</span>
+        </div>
+        <meter min="0" max="100" value="${row.share}"></meter>
+        <b>${row.share}%</b>
+      </li>
+    `).join('') || '<li class="empty">暂无 UV 数据</li>';
   }
 
   function selectDays(days) {
@@ -133,7 +150,14 @@
   document.addEventListener('DOMContentLoaded', () => {
     getElement('token-input').value = localStorage.getItem(TOKEN_KEY) || '';
     bindEvents();
-    renderSummary({ daily: [], topTools: [], topRoutes: [] });
+    renderSummary({
+      daily: [],
+      topTools: [],
+      topRoutes: [],
+      deviceBreakdown: [],
+      referrerBreakdown: [],
+      locationBreakdown: []
+    });
     if (getToken()) {
       loadSummary().catch(error => setStatus(error.message, 'error'));
     }

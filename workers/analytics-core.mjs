@@ -66,6 +66,21 @@ function normalizeDuration(durationSeconds) {
   return Math.min(numericValue, 120);
 }
 
+function normalizeAlphaCode(value, fallback, maxLength) {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, '');
+  return normalized ? normalized.slice(0, maxLength) : fallback;
+}
+
+export function normalizeCloudflareLocation(cf) {
+  return {
+    country: normalizeAlphaCode(cf && cf.country, 'unknown', 8),
+    colo: normalizeAlphaCode(cf && cf.colo, 'unknown', 12)
+  };
+}
+
 export function normalizeIncomingEvent(rawEvent, now = new Date()) {
   if (!rawEvent || typeof rawEvent !== 'object') {
     return null;
@@ -101,9 +116,10 @@ export function normalizeIncomingEvent(rawEvent, now = new Date()) {
   };
 }
 
-export function createAggregationPlan(event, visitorKey, timestamp) {
+export function createAggregationPlan(event, visitorKey, timestamp, location = {}) {
   const name = event.type === 'feature_event' ? event.feature : event.view;
   const engagedSeconds = event.type === 'engagement' ? event.durationSeconds : 0;
+  const normalizedLocation = normalizeCloudflareLocation(location);
   return {
     visitor: {
       day: event.day,
@@ -131,6 +147,27 @@ export function createAggregationPlan(event, visitorKey, timestamp) {
       tool: event.tool,
       incrementBy: event.type === 'engagement' ? 0 : 1,
       engagedSeconds
+    },
+    toolVisitor: {
+      day: event.day,
+      tool: event.tool,
+      visitorKey
+    },
+    deviceVisitor: {
+      day: event.day,
+      device: event.device,
+      visitorKey
+    },
+    referrerVisitor: {
+      day: event.day,
+      referrer: event.referrer,
+      visitorKey
+    },
+    locationVisitor: {
+      day: event.day,
+      country: normalizedLocation.country,
+      colo: normalizedLocation.colo,
+      visitorKey
     },
     dimensions: {
       day: event.day,

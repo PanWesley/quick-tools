@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BillNest Analytics</title>
   <link rel="icon" type="image/png" href="/icons/icon-192x192.png">
-  <link rel="stylesheet" href="/analytics/css/style.css?v=1">
+  <link rel="stylesheet" href="/analytics/css/style.css?v=2">
 </head>
 <body>
   <header>
@@ -74,9 +74,35 @@
       </div>
       <ul class="list route-list" id="route-list"></ul>
     </section>
+
+    <section class="grid insight-grid">
+      <article class="panel">
+        <div>
+          <h2>设备分布</h2>
+          <p class="muted">按 UV 统计 mobile / tablet / desktop。</p>
+        </div>
+        <ul class="list compact-list" id="device-list"></ul>
+      </article>
+
+      <article class="panel">
+        <div>
+          <h2>来源分布</h2>
+          <p class="muted">direct / internal / external 的匿名访客数。</p>
+        </div>
+        <ul class="list compact-list" id="referrer-list"></ul>
+      </article>
+
+      <article class="panel">
+        <div>
+          <h2>地区分布</h2>
+          <p class="muted">Cloudflare 国家和 colo 的粗粒度统计。</p>
+        </div>
+        <ul class="list compact-list" id="location-list"></ul>
+      </article>
+    </section>
   </main>
 
-  <script src="/analytics/js/dashboard-utils.js?v=1"></script>
-  <script src="/analytics/js/dashboard.js?v=1"></script>
+  <script src="/analytics/js/dashboard-utils.js?v=2"></script>
+  <script src="/analytics/js/dashboard.js?v=2"></script>
 </body>
 </html>

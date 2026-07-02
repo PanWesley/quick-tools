@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import {
   createAggregationPlan,
+  normalizeCloudflareLocation,
   normalizeIncomingEvent,
   summarizeDailyRows
 } from './analytics-core.mjs';
@@ -33,7 +34,24 @@ assert.deepStrictEqual(normalized, {
   durationSeconds: 0
 });
 
-const plan = createAggregationPlan(normalized, 'visitor-key-1', '2026-07-02T10:00:00.000Z');
+assert.deepStrictEqual(normalizeCloudflareLocation({
+  country: 'cn',
+  colo: 'hkg'
+}), {
+  country: 'CN',
+  colo: 'HKG'
+});
+assert.deepStrictEqual(normalizeCloudflareLocation({}), {
+  country: 'unknown',
+  colo: 'unknown'
+});
+
+const plan = createAggregationPlan(
+  normalized,
+  'visitor-key-1',
+  '2026-07-02T10:00:00.000Z',
+  { country: 'CN', colo: 'HKG' }
+);
 assert.strictEqual(plan.visitor.day, '2026-07-02');
 assert.strictEqual(plan.session.sessionId, 'session-1');
 assert.deepStrictEqual(plan.eventBucket, {
@@ -43,6 +61,27 @@ assert.deepStrictEqual(plan.eventBucket, {
   route: '/tools/expense/#view=dashboard',
   incrementBy: 1,
   engagedSeconds: 0
+});
+assert.deepStrictEqual(plan.toolVisitor, {
+  day: '2026-07-02',
+  tool: 'expense',
+  visitorKey: 'visitor-key-1'
+});
+assert.deepStrictEqual(plan.deviceVisitor, {
+  day: '2026-07-02',
+  device: 'mobile',
+  visitorKey: 'visitor-key-1'
+});
+assert.deepStrictEqual(plan.referrerVisitor, {
+  day: '2026-07-02',
+  referrer: 'external',
+  visitorKey: 'visitor-key-1'
+});
+assert.deepStrictEqual(plan.locationVisitor, {
+  day: '2026-07-02',
+  country: 'CN',
+  colo: 'HKG',
+  visitorKey: 'visitor-key-1'
 });
 assert.deepStrictEqual(plan.toolBucket, {
   day: '2026-07-02',
