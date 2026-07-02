@@ -3,26 +3,71 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   } else {
-    root.BillNestAnalyticsUtils = api;
+    root.SiteAnalyticsUtils = api;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
   const VALID_TYPES = new Set(['session_start', 'page_view', 'engagement', 'feature_event']);
-  const VALID_VIEWS = new Set(['add', 'dashboard', 'list', 'tags', 'settings', 'import']);
+  const VALID_TOOLS = new Set(['home', 'diff', 'json', 'expense', 'time', 'unknown']);
+  const VALID_VIEWS = new Set(['home', 'main', 'add', 'dashboard', 'list', 'tags', 'settings', 'import']);
   const SAFE_FEATURE_PATTERN = /[^a-z0-9_]/g;
   const MAX_DURATION_SECONDS = 120;
 
-  function getAnalyticsViewFromHash(hash) {
-    const value = String(hash || '');
-    const match = value.match(/(?:^#|[?&])view=([^&]+)/);
+  function normalizeView(view, fallback) {
+    const normalized = String(view || '').trim().toLowerCase();
+    if (VALID_VIEWS.has(normalized)) {
+      return normalized;
+    }
+    return fallback || 'main';
+  }
+
+  function getSiteToolFromPathname(pathname) {
+    const path = normalizePathname(pathname);
+    if (path === '/' || path === '/index.html') {
+      return 'home';
+    }
+    const match = path.match(/^\/tools\/([^/]+)(?:\/|$)/);
+    if (!match) {
+      return 'unknown';
+    }
+    const tool = match[1].toLowerCase();
+    return VALID_TOOLS.has(tool) ? tool : 'unknown';
+  }
+
+  function getSiteViewFromLocation(pathname, hash) {
+    const tool = getSiteToolFromPathname(pathname);
+    if (tool === 'home') {
+      return 'home';
+    }
+    if (tool !== 'expense') {
+      return 'main';
+    }
+
+    const match = String(hash || '').match(/(?:^#|[?&])view=([^&]+)/);
     if (!match) {
       return 'add';
     }
-    return normalizeView(decodeURIComponent(match[1]));
+    return normalizeView(decodeURIComponent(match[1]), 'add');
   }
 
-  function normalizeView(view) {
-    const normalized = String(view || '').trim().toLowerCase();
-    return VALID_VIEWS.has(normalized) ? normalized : 'add';
+  function getAnalyticsRoute(pathname, hash) {
+    const path = normalizePathname(pathname).replace(/\/index\.html$/, '/');
+    const tool = getSiteToolFromPathname(path);
+    if (tool === 'home') {
+      return '/';
+    }
+    if (tool === 'expense') {
+      const view = getSiteViewFromLocation(path, hash);
+      return `/tools/expense/#view=${view}`;
+    }
+    if (tool === 'unknown') {
+      return '/unknown';
+    }
+    return `/tools/${tool}/`;
+  }
+
+  function normalizePathname(pathname) {
+    const value = String(pathname || '/').trim();
+    return value.startsWith('/') ? value : `/${value}`;
   }
 
   function getDeviceClass(width) {
@@ -70,6 +115,29 @@
     return Math.min(numericValue, MAX_DURATION_SECONDS);
   }
 
+  function normalizeTool(tool) {
+    const normalized = String(tool || '').trim().toLowerCase();
+    return VALID_TOOLS.has(normalized) ? normalized : null;
+  }
+
+  function normalizeRoute(route, tool) {
+    const value = String(route || '').trim();
+    if (!value || !value.startsWith('/')) {
+      return null;
+    }
+    if (tool === 'home') {
+      return '/';
+    }
+    if (tool === 'unknown') {
+      return '/unknown';
+    }
+    if (tool === 'expense') {
+      return value.startsWith('/tools/expense/') ? value.slice(0, 120) : null;
+    }
+    const expectedRoute = `/tools/${tool}/`;
+    return value === expectedRoute ? value : null;
+  }
+
   function sanitizeAnalyticsEvent(rawEvent) {
     if (!rawEvent || typeof rawEvent !== 'object') {
       return null;
@@ -77,13 +145,22 @@
 
     const type = String(rawEvent.type || '').trim();
     const sessionId = String(rawEvent.sessionId || '').trim();
-    if (!VALID_TYPES.has(type) || !sessionId) {
+    const tool = normalizeTool(rawEvent.tool);
+    if (!VALID_TYPES.has(type) || !sessionId || !tool) {
+      return null;
+    }
+
+    const viewFallback = tool === 'home' ? 'home' : (tool === 'expense' ? 'add' : 'main');
+    const route = normalizeRoute(rawEvent.route, tool);
+    if (!route) {
       return null;
     }
 
     const event = {
       type,
-      view: normalizeView(rawEvent.view),
+      tool,
+      route,
+      view: normalizeView(rawEvent.view, viewFallback),
       sessionId: sessionId.slice(0, 80)
     };
 
@@ -111,10 +188,14 @@
   }
 
   function createAnalyticsEvent(input) {
+    const pathname = input && input.pathname;
+    const hash = input && input.hash;
     const width = Number(input && input.width) || 0;
     return sanitizeAnalyticsEvent({
       type: input && input.type,
-      view: input && input.view,
+      tool: getSiteToolFromPathname(pathname),
+      route: getAnalyticsRoute(pathname, hash),
+      view: getSiteViewFromLocation(pathname, hash),
       sessionId: input && input.sessionId,
       standalone: Boolean(input && input.standalone),
       device: getDeviceClass(width),
@@ -126,8 +207,10 @@
 
   return {
     createAnalyticsEvent,
-    getAnalyticsViewFromHash,
+    getAnalyticsRoute,
     getDeviceClass,
+    getSiteToolFromPathname,
+    getSiteViewFromLocation,
     sanitizeAnalyticsEvent
   };
 });

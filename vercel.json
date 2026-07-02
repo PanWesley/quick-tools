@@ -1,6 +1,24 @@
 {
   "headers": [
     {
+      "source": "/shared/(.*)\\.(css|js)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/analytics/(.*)\\.(css|js)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
       "source": "/tools/expense/(.*)\\.(css|js)",
       "headers": [
         {
@@ -41,6 +59,8 @@
     { "source": "/tools/expense", "destination": "/tools/expense/" },
     { "source": "/tools/expense/", "destination": "/tools/expense/index.html" },
     { "source": "/tools/time", "destination": "/tools/time/" },
-    { "source": "/tools/time/", "destination": "/tools/time/index.html" }
+    { "source": "/tools/time/", "destination": "/tools/time/index.html" },
+    { "source": "/analytics", "destination": "/analytics/" },
+    { "source": "/analytics/", "destination": "/analytics/index.html" }
   ]
 }
