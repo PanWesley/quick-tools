@@ -3,7 +3,7 @@
  * Provides offline caching and installed PWA startup support.
  */
 
-const CACHE_NAME = 'expense-tracker-v1.6.7';
+const CACHE_NAME = 'expense-tracker-v1.6.8';
 const STATIC_ASSETS = [
   '/tools/expense/',
   '/tools/expense/index.html',
@@ -22,6 +22,8 @@ const STATIC_ASSETS = [
   '/tools/expense/js/guide.js',
   '/tools/expense/js/expense-list-utils.js',
   '/tools/expense/js/app.js',
+  '/tools/expense/js/analytics-utils.js',
+  '/tools/expense/js/analytics.js',
   '/shared/css/pwa.css',
   '/shared/js/pwa.js'
 ];
@@ -86,6 +88,10 @@ async function fetchAndCache(request) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  if (url.pathname.startsWith('/api/analytics')) {
+    return;
+  }
 
   if (request.method !== 'GET') {
     return;

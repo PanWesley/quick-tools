@@ -1,0 +1,8 @@
+name = "billnest-analytics"
+main = "analytics-worker.mjs"
+compatibility_date = "2026-07-02"
+
+[[d1_databases]]
+binding = "ANALYTICS_DB"
+database_name = "billnest_analytics"
+database_id = "replace-with-your-d1-database-id"

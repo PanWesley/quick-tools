@@ -17,6 +17,11 @@ const requiredScripts = [
   '/tools/expense/js/backup-ui.js'
 ];
 
+const analyticsScripts = [
+  '/tools/expense/js/analytics-utils.js',
+  '/tools/expense/js/analytics.js'
+];
+
 const scriptSources = [...html.matchAll(/<script\s+src="([^"]+)"/g)]
   .map(match => match[1].replace(/\?.*$/, ''));
 assert.ok(
@@ -52,15 +57,36 @@ requiredScripts.forEach((source, index) => {
     `${source} must be cached by the service worker`
   );
 });
+analyticsScripts.forEach((source) => {
+  assert.ok(
+    scriptSources.indexOf(source) > appIndex,
+    `${source} must load after app.js so it can wrap app navigation without blocking startup`
+  );
+  assert.match(
+    serviceWorker,
+    new RegExp(`['"]${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`),
+    `${source} must be cached by the service worker`
+  );
+});
+assert.ok(
+  scriptSources.indexOf('/tools/expense/js/analytics-utils.js') <
+  scriptSources.indexOf('/tools/expense/js/analytics.js'),
+  'analytics runtime must load after analytics utility helpers'
+);
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.7';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.8';/
 );
 assert.match(
   html,
-  /\/tools\/expense\/css\/style\.css\?v=167/,
+  /\/tools\/expense\/css\/style\.css\?v=168/,
   'main expense stylesheet must use the current asset version'
+);
+assert.match(
+  serviceWorker,
+  /url\.pathname\.startsWith\('\/api\/analytics'\)/,
+  'analytics API requests must stay network-only and out of the static cache'
 );
 assert.match(
   serviceWorker,

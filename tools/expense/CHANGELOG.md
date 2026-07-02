@@ -1,5 +1,20 @@
 ﻿# Changelog
 
+## v1.6.8 (2026-07-02)
+
+### Analytics
+- 新增第一方匿名统计客户端，采集打开、页面切换和活跃时长事件，默认不上传任何账单字段。
+- 设置页新增“匿名使用统计”开关，用户可关闭统计。
+- 新增 Cloudflare Worker + D1 聚合示例，支持每日 DAU、sessions、pageviews、engaged seconds 和热门页面摘要。
+
+### Technical
+- 新增统计事件清洗测试和 Worker 聚合口径测试。
+- Analytics API 请求保持 network-only，不进入 PWA 静态缓存。
+- 更新 PWA 缓存版本。
+
+### Version
+- v1.6.7 → v1.6.8
+
 ## v1.6.7 (2026-07-02)
 
 ### UX

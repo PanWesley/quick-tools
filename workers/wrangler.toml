@@ -1,0 +1,13 @@
+name = "billnest-analytics"
+main = "analytics-worker.mjs"
+compatibility_date = "2026-07-02"
+
+routes = [
+  { pattern = "billnest.top/api/analytics*", zone_name = "billnest.top" },
+  { pattern = "www.billnest.top/api/analytics*", zone_name = "billnest.top" }
+]
+
+[[d1_databases]]
+binding = "ANALYTICS_DB"
+database_name = "billnest_analytics"
+database_id = "f66b4c30-a4a6-4b59-aa8c-b1b1a558e057"

@@ -24,7 +24,7 @@
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
 <title>生活账单 - Expense Tracker</title>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=167">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=168">
 </head>
 <body>
 
@@ -521,6 +521,19 @@
       </div>
     </div>
     <div class="settings-group">
+      <h3>隐私</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">匿名使用统计</span>
+          <span class="setting-desc">只记录打开、页面与活跃时长，不上传账单内容</span>
+        </div>
+        <label class="toggle-switch" aria-label="匿名使用统计">
+          <input type="checkbox" id="analytics-enabled-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="settings-group">
       <h3>危险操作</h3>
       <div class="setting-item danger">
         <div class="setting-info">
@@ -547,7 +560,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.6.7</span>
+        <span class="setting-version">v1.6.8</span>
       </div>
     </div>
   </section>
@@ -701,19 +714,21 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/tag-management-utils.js?v=167"></script>
-<script src="/tools/expense/js/db-backup-utils.js?v=167"></script>
-<script src="/tools/expense/js/db.js?v=167"></script>
-<script src="/tools/expense/js/backup-utils.js?v=167"></script>
-<script src="/tools/expense/js/backup-crypto.js?v=167"></script>
-<script src="/tools/expense/js/backup-file-handle-db.js?v=167"></script>
-<script src="/tools/expense/js/backup-service.js?v=167"></script>
-<script src="/tools/expense/js/backup-ui.js?v=167"></script>
-<script src="/tools/expense/js/chart.js?v=167"></script>
-<script src="/tools/expense/js/import-export.js?v=167"></script>
-<script src="/tools/expense/js/guide.js?v=167"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=167"></script>
-<script src="/tools/expense/js/app.js?v=167"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=168"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=168"></script>
+<script src="/tools/expense/js/db.js?v=168"></script>
+<script src="/tools/expense/js/backup-utils.js?v=168"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=168"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=168"></script>
+<script src="/tools/expense/js/backup-service.js?v=168"></script>
+<script src="/tools/expense/js/backup-ui.js?v=168"></script>
+<script src="/tools/expense/js/chart.js?v=168"></script>
+<script src="/tools/expense/js/import-export.js?v=168"></script>
+<script src="/tools/expense/js/guide.js?v=168"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=168"></script>
+<script src="/tools/expense/js/app.js?v=168"></script>
+<script src="/tools/expense/js/analytics-utils.js?v=168"></script>
+<script src="/tools/expense/js/analytics.js?v=168"></script>
 <!-- PWA Scripts -->
 <script src="/shared/js/pwa.js?v=2"></script>
 <!-- Expense Tracker 独立 Service Worker 注册（覆盖 pwa.js 的默认 /sw.js 注册） -->
