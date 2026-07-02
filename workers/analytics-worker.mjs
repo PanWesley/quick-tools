@@ -49,6 +49,15 @@ async function ensureSchema(db) {
       )
     `),
     db.prepare(`
+      CREATE TABLE IF NOT EXISTS analytics_tools (
+        day TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        engaged_seconds INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (day, tool)
+      )
+    `),
+    db.prepare(`
       CREATE TABLE IF NOT EXISTS analytics_dimensions (
         day TEXT NOT NULL,
         device TEXT NOT NULL,
@@ -138,6 +147,18 @@ async function recordEvent(request, env) {
       plan.eventBucket.engagedSeconds
     ),
     env.ANALYTICS_DB.prepare(`
+      INSERT INTO analytics_tools (day, tool, count, engaged_seconds)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(day, tool) DO UPDATE SET
+        count = analytics_tools.count + excluded.count,
+        engaged_seconds = analytics_tools.engaged_seconds + excluded.engaged_seconds
+    `).bind(
+      plan.toolBucket.day,
+      plan.toolBucket.tool,
+      plan.toolBucket.incrementBy,
+      plan.toolBucket.engagedSeconds
+    ),
+    env.ANALYTICS_DB.prepare(`
       INSERT INTO analytics_dimensions (day, device, referrer, standalone, count)
       VALUES (?, ?, ?, ?, 1)
       ON CONFLICT(day, device, referrer, standalone) DO UPDATE SET
@@ -203,7 +224,7 @@ async function getSummary(request, env) {
   `).bind(sinceModifier).all();
 
   const topRoutes = await env.ANALYTICS_DB.prepare(`
-    SELECT route, SUM(count) AS pageviews
+    SELECT route, SUM(count) AS pageviews, SUM(engaged_seconds) AS engagedSeconds
     FROM analytics_events
     WHERE type = 'page_view'
       AND day >= date('now', ?)
@@ -212,9 +233,19 @@ async function getSummary(request, env) {
     LIMIT 10
   `).bind(sinceModifier).all();
 
+  const topTools = await env.ANALYTICS_DB.prepare(`
+    SELECT tool, SUM(count) AS pageviews, SUM(engaged_seconds) AS engagedSeconds
+    FROM analytics_tools
+    WHERE day >= date('now', ?)
+    GROUP BY tool
+    ORDER BY pageviews DESC, engagedSeconds DESC
+    LIMIT 10
+  `).bind(sinceModifier).all();
+
   return jsonResponse({
     days,
     daily: summarizeDailyRows(daily.results || []),
+    topTools: topTools.results || [],
     topRoutes: topRoutes.results || []
   });
 }

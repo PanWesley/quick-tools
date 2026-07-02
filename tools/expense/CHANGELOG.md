@@ -1,5 +1,20 @@
 ﻿# Changelog
 
+## v1.6.9 (2026-07-02)
+
+### Analytics
+- 将匿名统计客户端迁移到 `/shared/js/site-analytics*.js`，不再作为生活账单的专属模块。
+- 统计事件新增 `tool` 和规范化 `route`，用于站点级工具使用排行与页面排行。
+- 新增 `/analytics/` 站点分析页，可用读取 token 查看 DAU、sessions、pageviews、平均停留、工具排行和页面排行。
+
+### Technical
+- Worker 新增 `analytics_tools` 聚合表，并在 summary 中返回 `topTools`。
+- 根 Service Worker 跳过 `/api/analytics`，避免分析摘要被静态缓存。
+- 更新 PWA 缓存版本。
+
+### Version
+- v1.6.8 → v1.6.9
+
 ## v1.6.8 (2026-07-02)
 
 ### Analytics

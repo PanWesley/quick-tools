@@ -18,8 +18,8 @@ const requiredScripts = [
 ];
 
 const analyticsScripts = [
-  '/tools/expense/js/analytics-utils.js',
-  '/tools/expense/js/analytics.js'
+  '/shared/js/site-analytics-utils.js',
+  '/shared/js/site-analytics.js'
 ];
 
 const scriptSources = [...html.matchAll(/<script\s+src="([^"]+)"/g)]
@@ -69,18 +69,18 @@ analyticsScripts.forEach((source) => {
   );
 });
 assert.ok(
-  scriptSources.indexOf('/tools/expense/js/analytics-utils.js') <
-  scriptSources.indexOf('/tools/expense/js/analytics.js'),
+  scriptSources.indexOf('/shared/js/site-analytics-utils.js') <
+  scriptSources.indexOf('/shared/js/site-analytics.js'),
   'analytics runtime must load after analytics utility helpers'
 );
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.8';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.9';/
 );
 assert.match(
   html,
-  /\/tools\/expense\/css\/style\.css\?v=168/,
+  /\/tools\/expense\/css\/style\.css\?v=169/,
   'main expense stylesheet must use the current asset version'
 );
 assert.match(
