@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BillNest Analytics</title>
+  <link rel="icon" type="image/png" href="/icons/icon-192x192.png">
+  <link rel="stylesheet" href="/analytics/css/style.css?v=1">
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark">B</span>
+        <div>
+          <strong>BillNest Analytics</strong>
+          <span>站点使用洞察</span>
+        </div>
+      </a>
+      <a class="muted" href="/">返回首页</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="heading">
+      <div>
+        <h1>站点分析</h1>
+        <p class="muted">查看 DAU、会话、停留时间，以及用户具体使用的工具。</p>
+      </div>
+      <p id="status" role="status" aria-live="polite">等待读取数据</p>
+    </section>
+
+    <section class="controls" aria-label="分析筛选">
+      <label>
+        读取 token
+        <input id="token-input" type="password" autocomplete="off" placeholder="ANALYTICS_READ_TOKEN">
+      </label>
+      <div class="segments" aria-label="时间范围">
+        <button type="button" data-days="7">7天</button>
+        <button class="active" type="button" data-days="14">14天</button>
+        <button type="button" data-days="30">30天</button>
+      </div>
+      <button class="primary" id="load-button" type="button">读取</button>
+    </section>
+
+    <section class="metrics" id="summary-cards" aria-label="核心指标"></section>
+
+    <section class="grid">
+      <article class="panel">
+        <div>
+          <h2>每日趋势</h2>
+          <p class="muted">绿色为 DAU，蓝色为页面浏览。</p>
+        </div>
+        <div class="chart" id="trend-chart"></div>
+        <div class="legend">
+          <span><i class="bar dau"></i>DAU</span>
+          <span><i class="bar pv"></i>PV</span>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div>
+          <h2>工具使用排行</h2>
+          <p class="muted">按页面浏览数排序。</p>
+        </div>
+        <ul class="list" id="tool-list"></ul>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div>
+        <h2>页面排行</h2>
+        <p class="muted">用于判断用户停留在哪个工具或账单页面。</p>
+      </div>
+      <ul class="list route-list" id="route-list"></ul>
+    </section>
+  </main>
+
+  <script src="/analytics/js/dashboard-utils.js?v=1"></script>
+  <script src="/analytics/js/dashboard.js?v=1"></script>
+</body>
+</html>

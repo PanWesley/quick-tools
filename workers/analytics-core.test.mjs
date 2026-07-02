@@ -7,6 +7,8 @@ import {
 
 const normalized = normalizeIncomingEvent({
   type: 'page_view',
+  tool: 'expense',
+  route: '/tools/expense/#view=dashboard',
   view: 'dashboard',
   sessionId: 'session-1',
   standalone: true,
@@ -20,6 +22,8 @@ const normalized = normalizeIncomingEvent({
 assert.deepStrictEqual(normalized, {
   day: '2026-07-02',
   type: 'page_view',
+  tool: 'expense',
+  route: '/tools/expense/#view=dashboard',
   view: 'dashboard',
   sessionId: 'session-1',
   standalone: true,
@@ -36,7 +40,13 @@ assert.deepStrictEqual(plan.eventBucket, {
   day: '2026-07-02',
   type: 'page_view',
   name: 'dashboard',
-  route: 'dashboard',
+  route: '/tools/expense/#view=dashboard',
+  incrementBy: 1,
+  engagedSeconds: 0
+});
+assert.deepStrictEqual(plan.toolBucket, {
+  day: '2026-07-02',
+  tool: 'expense',
   incrementBy: 1,
   engagedSeconds: 0
 });
@@ -48,6 +58,7 @@ const engagementPlan = createAggregationPlan({
 }, 'visitor-key-1', '2026-07-02T10:00:30.000Z');
 assert.strictEqual(engagementPlan.session.engagedSeconds, 30);
 assert.strictEqual(engagementPlan.eventBucket.engagedSeconds, 30);
+assert.strictEqual(engagementPlan.toolBucket.engagedSeconds, 30);
 
 assert.deepStrictEqual(summarizeDailyRows([
   {

@@ -1,5 +1,5 @@
 (function() {
-  const utils = window.BillNestAnalyticsUtils;
+  const utils = window.SiteAnalyticsUtils;
   if (!utils) {
     return;
   }
@@ -7,9 +7,9 @@
   const ENDPOINT = '/api/analytics';
   const OPT_OUT_KEY = 'billnest-analytics-opt-out';
   const HEARTBEAT_SECONDS = 30;
-  const SESSION_KEY = 'billnest-analytics-session';
-  let currentView = utils.getAnalyticsViewFromHash(window.location.hash);
+  const SESSION_KEY = 'billnest-site-analytics-session';
   let heartbeatTimer = null;
+  let lastPageViewKey = '';
   let originalSwitchView = null;
 
   function getSessionId() {
@@ -35,33 +35,15 @@
     }
   }
 
-  function setOptOut(optedOut) {
-    try {
-      if (optedOut) {
-        localStorage.setItem(OPT_OUT_KEY, '1');
-      } else {
-        localStorage.removeItem(OPT_OUT_KEY);
-      }
-    } catch (error) {
-      // Ignore storage failures; analytics must never block the app.
-    }
-    if (optedOut) {
-      stopHeartbeat();
-    } else {
-      startHeartbeat();
-      track('session_start', currentView);
-      track('page_view', currentView);
-    }
-  }
-
   function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
 
-  function buildEvent(type, view, extra) {
+  function getCurrentEvent(type, extra) {
     return utils.createAnalyticsEvent({
       type,
-      view,
+      pathname: window.location.pathname,
+      hash: window.location.hash,
       sessionId: getSessionId(),
       standalone: isStandalone(),
       width: window.innerWidth,
@@ -92,32 +74,32 @@
         credentials: 'omit'
       }).catch(() => {});
     } catch (error) {
-      // Silent by design.
+      // Analytics must never interrupt the tool.
     }
   }
 
-  function track(type, view, extra) {
-    sendEvent(buildEvent(type, view || currentView, extra));
+  function track(type, extra) {
+    sendEvent(getCurrentEvent(type, extra));
   }
 
-  function trackPageView(view) {
-    const normalizedView = utils.sanitizeAnalyticsEvent({
-      type: 'page_view',
-      view,
-      sessionId: getSessionId()
-    }).view;
-    if (normalizedView === currentView && document.visibilityState !== 'hidden') {
+  function trackPageView(force) {
+    const event = getCurrentEvent('page_view');
+    if (!event) {
       return;
     }
-    currentView = normalizedView;
-    track('page_view', currentView);
+    const key = `${event.route}|${event.view}`;
+    if (!force && key === lastPageViewKey) {
+      return;
+    }
+    lastPageViewKey = key;
+    sendEvent(event);
   }
 
   function startHeartbeat() {
     stopHeartbeat();
     heartbeatTimer = window.setInterval(() => {
       if (document.visibilityState === 'visible' && !isOptedOut()) {
-        track('engagement', currentView, { durationSeconds: HEARTBEAT_SECONDS });
+        track('engagement', { durationSeconds: HEARTBEAT_SECONDS });
       }
     }, HEARTBEAT_SECONDS * 1000);
   }
@@ -129,14 +111,35 @@
     }
   }
 
-  function wrapSwitchView() {
+  function setOptOut(optedOut) {
+    try {
+      if (optedOut) {
+        localStorage.setItem(OPT_OUT_KEY, '1');
+      } else {
+        localStorage.removeItem(OPT_OUT_KEY);
+      }
+    } catch (error) {
+      // Ignore storage failures.
+    }
+
+    if (optedOut) {
+      stopHeartbeat();
+      return;
+    }
+
+    track('session_start');
+    trackPageView(true);
+    startHeartbeat();
+  }
+
+  function wrapExpenseNavigation() {
     if (typeof window.switchView !== 'function' || window.switchView === originalSwitchView) {
       return;
     }
     originalSwitchView = window.switchView;
-    window.switchView = function(view) {
+    window.switchView = function() {
       const result = originalSwitchView.apply(this, arguments);
-      trackPageView(view);
+      window.setTimeout(() => trackPageView(false), 0);
       return result;
     };
   }
@@ -152,32 +155,32 @@
     });
   }
 
-  window.BillNestAnalytics = {
+  window.QuickToolsAnalytics = {
     trackFeature(feature) {
-      track('feature_event', currentView, { feature });
+      track('feature_event', { feature });
     },
     setOptOut,
     isOptedOut
   };
+  window.BillNestAnalytics = window.QuickToolsAnalytics;
 
   document.addEventListener('DOMContentLoaded', () => {
-    currentView = utils.getAnalyticsViewFromHash(window.location.hash);
     setupSettingsToggle();
-    wrapSwitchView();
+    wrapExpenseNavigation();
     if (!isOptedOut()) {
-      track('session_start', currentView);
-      track('page_view', currentView);
+      track('session_start');
+      trackPageView(true);
       startHeartbeat();
     }
   });
 
   window.addEventListener('hashchange', () => {
-    trackPageView(utils.getAnalyticsViewFromHash(window.location.hash));
+    trackPageView(false);
   });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      track('engagement', currentView, { durationSeconds: 5 });
+      track('engagement', { durationSeconds: 5 });
     }
   });
 })();

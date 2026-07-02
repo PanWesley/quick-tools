@@ -7,6 +7,13 @@ const CACHE_NAME = 'quick-tools-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
+  '/analytics/',
+  '/analytics/index.html',
+  '/analytics/css/style.css',
+  '/analytics/js/dashboard-utils.js',
+  '/analytics/js/dashboard.js',
+  '/shared/js/site-analytics-utils.js',
+  '/shared/js/site-analytics.js',
   '/tools/json/',
   '/tools/diff/',
   '/tools/expense/',
@@ -52,6 +59,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  if (url.pathname.startsWith('/api/analytics')) {
+    return;
+  }
 
   // 跳过非 GET 请求
   if (request.method !== 'GET') {

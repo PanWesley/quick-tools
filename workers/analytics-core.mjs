@@ -1,11 +1,47 @@
 const VALID_TYPES = new Set(['session_start', 'page_view', 'engagement', 'feature_event']);
-const VALID_VIEWS = new Set(['add', 'dashboard', 'list', 'tags', 'settings', 'import']);
+const VALID_TOOLS = new Set(['home', 'diff', 'json', 'expense', 'time', 'unknown']);
+const VALID_VIEWS = new Set(['home', 'main', 'add', 'dashboard', 'list', 'tags', 'settings', 'import']);
 const VALID_DEVICES = new Set(['mobile', 'tablet', 'desktop']);
 const VALID_REFERRERS = new Set(['direct', 'internal', 'external']);
 
-function normalizeView(view) {
+function normalizeView(view, fallback = 'main') {
   const normalized = String(view || '').trim().toLowerCase();
-  return VALID_VIEWS.has(normalized) ? normalized : 'add';
+  return VALID_VIEWS.has(normalized) ? normalized : fallback;
+}
+
+function normalizeTool(tool) {
+  const normalized = String(tool || '').trim().toLowerCase();
+  return VALID_TOOLS.has(normalized) ? normalized : null;
+}
+
+function inferToolFromRoute(route) {
+  const value = String(route || '').trim().toLowerCase();
+  if (value === '/' || value === '/index.html') {
+    return 'home';
+  }
+  const match = value.match(/^\/tools\/([^/]+)(?:\/|$)/);
+  return match && VALID_TOOLS.has(match[1]) ? match[1] : null;
+}
+
+function fallbackRouteForTool(tool, view) {
+  if (tool === 'home') {
+    return '/';
+  }
+  if (tool === 'expense') {
+    return `/tools/expense/#view=${normalizeView(view, 'add')}`;
+  }
+  if (tool === 'unknown') {
+    return '/unknown';
+  }
+  return `/tools/${tool}/`;
+}
+
+function normalizeRoute(route, tool, view) {
+  const value = String(route || '').trim();
+  if (!value || !value.startsWith('/')) {
+    return fallbackRouteForTool(tool, view);
+  }
+  return value.slice(0, 120);
 }
 
 function normalizeFeature(feature) {
@@ -41,6 +77,8 @@ export function normalizeIncomingEvent(rawEvent, now = new Date()) {
     return null;
   }
 
+  const tool = normalizeTool(rawEvent.tool) || inferToolFromRoute(rawEvent.route) || 'expense';
+  const viewFallback = tool === 'home' ? 'home' : (tool === 'expense' ? 'add' : 'main');
   const device = String(rawEvent.device || '').trim().toLowerCase();
   const referrer = String(rawEvent.referrer || '').trim().toLowerCase();
   const feature = type === 'feature_event' ? normalizeFeature(rawEvent.feature) : null;
@@ -51,7 +89,9 @@ export function normalizeIncomingEvent(rawEvent, now = new Date()) {
   return {
     day: now.toISOString().slice(0, 10),
     type,
-    view: normalizeView(rawEvent.view),
+    tool,
+    route: normalizeRoute(rawEvent.route, tool, rawEvent.view),
+    view: normalizeView(rawEvent.view, viewFallback),
     sessionId,
     standalone: normalizeBoolean(rawEvent.standalone),
     device: VALID_DEVICES.has(device) ? device : 'desktop',
@@ -82,7 +122,13 @@ export function createAggregationPlan(event, visitorKey, timestamp) {
       day: event.day,
       type: event.type,
       name,
-      route: event.view,
+      route: event.route,
+      incrementBy: event.type === 'engagement' ? 0 : 1,
+      engagedSeconds
+    },
+    toolBucket: {
+      day: event.day,
+      tool: event.tool,
       incrementBy: event.type === 'engagement' ? 0 : 1,
       engagedSeconds
     },
