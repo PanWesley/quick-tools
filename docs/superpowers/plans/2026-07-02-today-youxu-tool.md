@@ -41,7 +41,7 @@
 - Create: `tools/time/js/export.js`
 - Create: `tools/time/js/app-state.js`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 `tools/time/js/date-utils.test.js`:
 
@@ -165,7 +165,7 @@ test('getCalendarMarks reports task habit and journal markers', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify red**
+- [x] **Step 2: Run tests and verify red**
 
 Run:
 
@@ -175,11 +175,11 @@ node --test tools/time/js/date-utils.test.js tools/time/js/export.test.js tools/
 
 Expected: fail because the required modules do not exist.
 
-- [ ] **Step 3: Implement utilities**
+- [x] **Step 3: Implement utilities**
 
 Implement `date-utils.js`, `export.js`, and `app-state.js` with CommonJS exports and browser globals.
 
-- [ ] **Step 4: Run tests and verify green**
+- [x] **Step 4: Run tests and verify green**
 
 Run:
 
@@ -194,11 +194,11 @@ Expected: all tests pass.
 **Files:**
 - Create: `tools/time/js/db.js`
 
-- [ ] **Step 1: Implement DB wrapper after utility tests are green**
+- [x] **Step 1: Implement DB wrapper after utility tests are green**
 
 Add `todayYouxuDB` version 1 with stores `tasks`, `habits`, `habitLogs`, `journals`, and `opLogs`. Each write method creates an OpLog row with `syncState: "local"`.
 
-- [ ] **Step 2: Syntax-check DB**
+- [x] **Step 2: Syntax-check DB**
 
 Run:
 
@@ -215,15 +215,15 @@ Expected: no output and exit code 0.
 - Create: `tools/time/css/style.css`
 - Create: `tools/time/js/app.js`
 
-- [ ] **Step 1: Build app shell**
+- [x] **Step 1: Build app shell**
 
 Create semantic sections for `today`, `calendar`, `list`, and `profile`, plus a quick-add sheet and modal-style edit surfaces.
 
-- [ ] **Step 2: Implement render and handlers**
+- [x] **Step 2: Implement render and handlers**
 
 Use `TodayYouxuDB`, `TodayYouxuDateUtils`, `TodayYouxuExport`, and `TodayYouxuState` from browser globals. Render the approved “今日优先” layout and keep all writes local-first.
 
-- [ ] **Step 3: Syntax-check app**
+- [x] **Step 3: Syntax-check app**
 
 Run:
 
@@ -244,15 +244,15 @@ Expected: no output and exit code 0.
 - Modify: `sw.js`
 - Modify: `vercel.json`
 
-- [ ] **Step 1: Add PWA metadata and cache shell**
+- [x] **Step 1: Add PWA metadata and cache shell**
 
 Use `start_url` and `scope` as `/tools/time/`, name as `今日有序`, and cache the app shell, CSS, and JS files.
 
-- [ ] **Step 2: Add root integrations**
+- [x] **Step 2: Add root integrations**
 
 Add a tool card, manifest shortcut, root SW cached route, Vercel headers, and rewrite entries.
 
-- [ ] **Step 3: Validate JSON and SW syntax**
+- [x] **Step 3: Validate JSON and SW syntax**
 
 Run:
 
@@ -269,7 +269,7 @@ Expected: no output and exit code 0.
 **Files:**
 - Verify all files above.
 
-- [ ] **Step 1: Run automated checks**
+- [x] **Step 1: Run automated checks**
 
 Run:
 
@@ -287,7 +287,7 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 2: Browser verification**
+- [x] **Step 2: Browser verification**
 
 Serve the repository on a fresh local port and verify:
 
@@ -298,7 +298,7 @@ Serve the repository on a fresh local port and verify:
 - Writing 今日一句 marks the selected date in the calendar.
 - JSON export contains `tasks`, `habits`, `habitLogs`, `journals`, and `opLogs`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run:
 
