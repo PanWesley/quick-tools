@@ -58,6 +58,39 @@ async function ensureSchema(db) {
       )
     `),
     db.prepare(`
+      CREATE TABLE IF NOT EXISTS analytics_tool_visitors (
+        day TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        visitor_key TEXT NOT NULL,
+        PRIMARY KEY (day, tool, visitor_key)
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS analytics_device_visitors (
+        day TEXT NOT NULL,
+        device TEXT NOT NULL,
+        visitor_key TEXT NOT NULL,
+        PRIMARY KEY (day, device, visitor_key)
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS analytics_referrer_visitors (
+        day TEXT NOT NULL,
+        referrer TEXT NOT NULL,
+        visitor_key TEXT NOT NULL,
+        PRIMARY KEY (day, referrer, visitor_key)
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS analytics_location_visitors (
+        day TEXT NOT NULL,
+        country TEXT NOT NULL,
+        colo TEXT NOT NULL,
+        visitor_key TEXT NOT NULL,
+        PRIMARY KEY (day, country, colo, visitor_key)
+      )
+    `),
+    db.prepare(`
       CREATE TABLE IF NOT EXISTS analytics_dimensions (
         day TEXT NOT NULL,
         device TEXT NOT NULL,
@@ -111,7 +144,7 @@ async function recordEvent(request, env) {
   await ensureSchema(env.ANALYTICS_DB);
   const timestamp = now.toISOString();
   const visitorKey = await getVisitorKey(request, env, event.day);
-  const plan = createAggregationPlan(event, visitorKey, timestamp);
+  const plan = createAggregationPlan(event, visitorKey, timestamp, request.cf || {});
 
   await env.ANALYTICS_DB.batch([
     env.ANALYTICS_DB.prepare(`
@@ -157,6 +190,39 @@ async function recordEvent(request, env) {
       plan.toolBucket.tool,
       plan.toolBucket.incrementBy,
       plan.toolBucket.engagedSeconds
+    ),
+    env.ANALYTICS_DB.prepare(`
+      INSERT OR IGNORE INTO analytics_tool_visitors (day, tool, visitor_key)
+      VALUES (?, ?, ?)
+    `).bind(
+      plan.toolVisitor.day,
+      plan.toolVisitor.tool,
+      plan.toolVisitor.visitorKey
+    ),
+    env.ANALYTICS_DB.prepare(`
+      INSERT OR IGNORE INTO analytics_device_visitors (day, device, visitor_key)
+      VALUES (?, ?, ?)
+    `).bind(
+      plan.deviceVisitor.day,
+      plan.deviceVisitor.device,
+      plan.deviceVisitor.visitorKey
+    ),
+    env.ANALYTICS_DB.prepare(`
+      INSERT OR IGNORE INTO analytics_referrer_visitors (day, referrer, visitor_key)
+      VALUES (?, ?, ?)
+    `).bind(
+      plan.referrerVisitor.day,
+      plan.referrerVisitor.referrer,
+      plan.referrerVisitor.visitorKey
+    ),
+    env.ANALYTICS_DB.prepare(`
+      INSERT OR IGNORE INTO analytics_location_visitors (day, country, colo, visitor_key)
+      VALUES (?, ?, ?, ?)
+    `).bind(
+      plan.locationVisitor.day,
+      plan.locationVisitor.country,
+      plan.locationVisitor.colo,
+      plan.locationVisitor.visitorKey
     ),
     env.ANALYTICS_DB.prepare(`
       INSERT INTO analytics_dimensions (day, device, referrer, standalone, count)
@@ -234,11 +300,59 @@ async function getSummary(request, env) {
   `).bind(sinceModifier).all();
 
   const topTools = await env.ANALYTICS_DB.prepare(`
-    SELECT tool, SUM(count) AS pageviews, SUM(engaged_seconds) AS engagedSeconds
-    FROM analytics_tools
+    WITH tool_keys AS (
+      SELECT tool FROM analytics_tools WHERE day >= date('now', ?)
+      UNION
+      SELECT tool FROM analytics_tool_visitors WHERE day >= date('now', ?)
+    ),
+    pageview_totals AS (
+      SELECT tool, SUM(count) AS pageviews, SUM(engaged_seconds) AS engagedSeconds
+      FROM analytics_tools
+      WHERE day >= date('now', ?)
+      GROUP BY tool
+    ),
+    visitor_totals AS (
+      SELECT tool, COUNT(DISTINCT visitor_key) AS visitors
+      FROM analytics_tool_visitors
+      WHERE day >= date('now', ?)
+      GROUP BY tool
+    )
+    SELECT
+      tool_keys.tool AS tool,
+      COALESCE(visitor_totals.visitors, 0) AS visitors,
+      COALESCE(pageview_totals.pageviews, 0) AS pageviews,
+      COALESCE(pageview_totals.engagedSeconds, 0) AS engagedSeconds
+    FROM tool_keys
+    LEFT JOIN pageview_totals ON pageview_totals.tool = tool_keys.tool
+    LEFT JOIN visitor_totals ON visitor_totals.tool = tool_keys.tool
+    ORDER BY visitors DESC, pageviews DESC, engagedSeconds DESC
+    LIMIT 10
+  `).bind(sinceModifier, sinceModifier, sinceModifier, sinceModifier).all();
+
+  const deviceBreakdown = await env.ANALYTICS_DB.prepare(`
+    SELECT device, COUNT(DISTINCT visitor_key) AS visitors
+    FROM analytics_device_visitors
     WHERE day >= date('now', ?)
-    GROUP BY tool
-    ORDER BY pageviews DESC, engagedSeconds DESC
+    GROUP BY device
+    ORDER BY visitors DESC
+    LIMIT 10
+  `).bind(sinceModifier).all();
+
+  const referrerBreakdown = await env.ANALYTICS_DB.prepare(`
+    SELECT referrer, COUNT(DISTINCT visitor_key) AS visitors
+    FROM analytics_referrer_visitors
+    WHERE day >= date('now', ?)
+    GROUP BY referrer
+    ORDER BY visitors DESC
+    LIMIT 10
+  `).bind(sinceModifier).all();
+
+  const locationBreakdown = await env.ANALYTICS_DB.prepare(`
+    SELECT country, colo, COUNT(DISTINCT visitor_key) AS visitors
+    FROM analytics_location_visitors
+    WHERE day >= date('now', ?)
+    GROUP BY country, colo
+    ORDER BY visitors DESC
     LIMIT 10
   `).bind(sinceModifier).all();
 
@@ -246,7 +360,10 @@ async function getSummary(request, env) {
     days,
     daily: summarizeDailyRows(daily.results || []),
     topTools: topTools.results || [],
-    topRoutes: topRoutes.results || []
+    topRoutes: topRoutes.results || [],
+    deviceBreakdown: deviceBreakdown.results || [],
+    referrerBreakdown: referrerBreakdown.results || [],
+    locationBreakdown: locationBreakdown.results || []
   });
 }
 

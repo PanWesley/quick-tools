@@ -57,16 +57,49 @@
 
   function buildToolRows(topTools) {
     const rows = Array.isArray(topTools) ? topTools : [];
-    const total = rows.reduce((sum, row) => sum + (Number(row.pageviews) || 0), 0);
+    const totalVisitors = rows.reduce((sum, row) => sum + (Number(row.visitors) || 0), 0);
+    const totalPageviews = rows.reduce((sum, row) => sum + (Number(row.pageviews) || 0), 0);
+    const total = totalVisitors || totalPageviews;
     return rows.map(row => {
+      const visitors = Number(row.visitors) || 0;
       const pageviews = Number(row.pageviews) || 0;
       const key = String(row.tool || 'unknown');
       return {
         key,
         label: TOOL_LABELS[key] || key,
+        visitors,
         pageviews,
         engagedSeconds: Number(row.engagedSeconds) || 0,
-        share: total ? Math.round((pageviews / total) * 100) : 0
+        share: total ? Math.round(((totalVisitors ? visitors : pageviews) / total) * 100) : 0
+      };
+    });
+  }
+
+  function getBreakdownKey(row, type) {
+    if (type === 'location') {
+      return `${row.country || 'unknown'}-${row.colo || 'unknown'}`;
+    }
+    return String(row[type] || 'unknown');
+  }
+
+  function getBreakdownLabel(row, type) {
+    if (type === 'location') {
+      return `${row.country || 'unknown'} / ${row.colo || 'unknown'}`;
+    }
+    const value = String(row[type] || 'unknown');
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  function buildBreakdownRows(sourceRows, type) {
+    const rows = Array.isArray(sourceRows) ? sourceRows : [];
+    const total = rows.reduce((sum, row) => sum + (Number(row.visitors) || 0), 0);
+    return rows.map(row => {
+      const visitors = Number(row.visitors) || 0;
+      return {
+        key: getBreakdownKey(row, type),
+        label: getBreakdownLabel(row, type),
+        visitors,
+        share: total ? Math.round((visitors / total) * 100) : 0
       };
     });
   }
@@ -82,6 +115,7 @@
   }
 
   return {
+    buildBreakdownRows,
     buildSummaryCards,
     buildToolRows,
     formatDuration,
