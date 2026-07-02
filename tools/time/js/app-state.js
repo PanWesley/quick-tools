@@ -45,6 +45,16 @@
       });
   }
 
+  function getDeletedTasks(tasks) {
+    return (tasks || [])
+      .filter(function(task) {
+        return task && task.status === 'deleted';
+      })
+      .sort(function(a, b) {
+        return String(b.deletedAt || '').localeCompare(String(a.deletedAt || ''));
+      });
+  }
+
   function weekdayFromDateKey(dateKey) {
     var parts = String(dateKey).split('-').map(Number);
     return new Date(parts[0], parts[1] - 1, parts[2]).getDay();
@@ -90,6 +100,7 @@
     getInboxTasks: getInboxTasks,
     getUpcomingTasks: getUpcomingTasks,
     getCompletedTasks: getCompletedTasks,
+    getDeletedTasks: getDeletedTasks,
     habitDueOn: habitDueOn,
     getHabitLogForDate: getHabitLogForDate,
     getCalendarMarks: getCalendarMarks

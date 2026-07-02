@@ -11,7 +11,8 @@
     selectedDateKey: DateUtils.getTodayKey(),
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth(),
-    search: ''
+    search: '',
+    editingTaskId: ''
   };
 
   var els = {};
@@ -63,9 +64,15 @@
     var completeButton = opts.complete === false
       ? '<span></span>'
       : '<button class="task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
-    var deleteButton = opts.delete === false
-      ? ''
-      : '<button class="btn ghost" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>';
+    var actions = [];
+    if (opts.edit !== false && task.status !== 'completed' && task.status !== 'deleted') {
+      actions.push('<button class="btn ghost" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button>');
+    }
+    if (opts.restore === true) {
+      actions.push('<button class="btn secondary" type="button" data-action="restore-task" data-id="' + escapeHtml(task.id) + '">恢复</button>');
+    } else if (opts.delete !== false && task.status !== 'deleted') {
+      actions.push('<button class="btn ghost" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
+    }
 
     return [
       '<article class="task-row">',
@@ -75,7 +82,7 @@
       '<div class="task-meta">' + escapeHtml(formatDateMeta(task)) + '</div>',
       '</div>',
       '<div class="priority-tag ' + escapeHtml(task.priority || 'none') + '">' + escapeHtml(priorityLabel(task.priority)) + '</div>',
-      deleteButton,
+      actions.length ? '<div class="task-actions">' + actions.join('') + '</div>' : '',
       '</article>'
     ].join('');
   }
@@ -183,11 +190,15 @@
     var inbox = State.getInboxTasks(tasks);
     var upcoming = State.getUpcomingTasks(tasks, appState.todayKey);
     var completed = State.getCompletedTasks(tasks).slice(0, 20);
+    var deleted = State.getDeletedTasks(appState.data.tasks).slice(0, 20);
     els.inboxList.innerHTML = inbox.length ? inbox.map(renderTask).join('') : renderEmpty('收集箱为空。');
     els.upcomingList.innerHTML = upcoming.length ? upcoming.map(renderTask).join('') : renderEmpty('还没有未来任务。');
     els.completedList.innerHTML = completed.length ? completed.map(function(task) {
       return renderTask(task, { complete: false, delete: false });
     }).join('') : renderEmpty('还没有完成记录。');
+    els.deletedList.innerHTML = deleted.length ? deleted.map(function(task) {
+      return renderTask(task, { complete: false, edit: false, restore: true });
+    }).join('') : renderEmpty('最近没有删除的任务。');
   }
 
   function render() {
@@ -208,6 +219,10 @@
   }
 
   function openSheet() {
+    appState.editingTaskId = '';
+    $('quick-sheet-title').textContent = '快速新增';
+    els.quickEditId.value = '';
+    els.quickType.disabled = false;
     els.quickDate.value = appState.todayKey;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
@@ -218,6 +233,8 @@
     els.sheetBackdrop.hidden = true;
     els.quickSheet.hidden = true;
     els.quickForm.reset();
+    els.quickType.disabled = false;
+    appState.editingTaskId = '';
   }
 
   function loadData() {
@@ -238,18 +255,29 @@
       return;
     }
 
-    var action = type === 'habit'
-      ? DB.createHabit({ title: title, schedule: 'daily' })
-      : DB.createTask({
+    var action;
+    if (appState.editingTaskId) {
+      action = DB.updateTask(appState.editingTaskId, {
         title: title,
         notes: els.quickNotes.value,
         date: els.quickDate.value,
         priority: els.quickPriority.value
       });
+    } else {
+      action = type === 'habit'
+        ? DB.createHabit({ title: title, schedule: 'daily' })
+        : DB.createTask({
+        title: title,
+        notes: els.quickNotes.value,
+        date: els.quickDate.value,
+        priority: els.quickPriority.value
+      });
+    }
 
     action.then(function() {
+      var wasEditing = Boolean(appState.editingTaskId);
       closeSheet();
-      showToast(type === 'habit' ? '习惯已创建' : '任务已创建');
+      showToast(wasEditing ? '任务已更新' : type === 'habit' ? '习惯已创建' : '任务已创建');
       return loadData();
     }).catch(function(error) {
       showToast('保存失败：' + error.message);
@@ -291,10 +319,14 @@
     if (action === 'save-journal') {
       event.preventDefault();
       saveJournal();
+    } else if (action === 'edit-task') {
+      openEditTask(id);
     } else if (action === 'complete-task') {
       DB.completeTask(id).then(loadData).then(function() { showToast('任务已完成'); });
     } else if (action === 'delete-task') {
       DB.deleteTask(id).then(loadData).then(function() { showToast('任务已删除'); });
+    } else if (action === 'restore-task') {
+      DB.restoreTask(id).then(loadData).then(function() { showToast('任务已恢复'); });
     } else if (action === 'check-habit') {
       DB.upsertHabitLog(id, appState.todayKey, 'done').then(loadData).then(function() { showToast('打卡完成'); });
     } else if (action === 'skip-habit') {
@@ -303,6 +335,26 @@
       appState.selectedDateKey = target.dataset.date;
       renderCalendar();
     }
+  }
+
+  function openEditTask(id) {
+    var task = appState.data.tasks.find(function(item) { return item.id === id; });
+    if (!task) {
+      showToast('没有找到这条任务');
+      return;
+    }
+    appState.editingTaskId = id;
+    $('quick-sheet-title').textContent = '编辑任务';
+    els.quickEditId.value = id;
+    els.quickType.value = 'task';
+    els.quickType.disabled = true;
+    els.quickTitle.value = task.title || '';
+    els.quickDate.value = task.date || '';
+    els.quickPriority.value = task.priority || 'none';
+    els.quickNotes.value = task.notes || '';
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    els.quickTitle.focus();
   }
 
   function changeMonth(delta) {
@@ -327,6 +379,39 @@
     });
   }
 
+  function handleImportClick() {
+    els.importFile.value = '';
+    els.importFile.click();
+  }
+
+  function readImportFile(file) {
+    return file.text().then(function(text) {
+      return JSON.parse(text);
+    });
+  }
+
+  function handleImportFile() {
+    var file = els.importFile.files && els.importFile.files[0];
+    if (!file) return;
+    readImportFile(file).then(function(payload) {
+      var validation = window.TodayYouxuImport.validateImportPayload(payload);
+      if (!validation.valid) {
+        showToast(validation.reason);
+        return null;
+      }
+      var summary = window.TodayYouxuImport.summarizeImportPayload(payload);
+      var message = '将导入：任务 ' + summary.tasks + '，习惯 ' + summary.habits + '，打卡 ' + summary.habitLogs + '，日记 ' + summary.journals + '。导入会合并数据，不会清空本地。';
+      if (!window.confirm(message)) return null;
+      return DB.importData(payload).then(function(result) {
+        var totals = result.stats.totals;
+        showToast('导入完成：新增 ' + totals.inserted + '，更新 ' + totals.updated + '，跳过 ' + totals.skipped);
+        return loadData();
+      });
+    }).catch(function(error) {
+      showToast('导入失败：' + error.message);
+    });
+  }
+
   function cacheElements() {
     els.todayTitle = $('today-title');
     els.todayWeekday = $('today-weekday');
@@ -347,18 +432,23 @@
     els.inboxList = $('inbox-list');
     els.upcomingList = $('upcoming-list');
     els.completedList = $('completed-list');
+    els.deletedList = $('deleted-list');
     els.openAdd = $('open-add');
+    els.openAddInline = $('open-add-inline');
     els.closeAdd = $('close-add');
     els.cancelAdd = $('cancel-add');
     els.quickSheet = $('quick-sheet');
     els.sheetBackdrop = $('sheet-backdrop');
     els.quickForm = $('quick-form');
+    els.quickEditId = $('quick-edit-id');
     els.quickType = $('quick-type');
     els.quickTitle = $('quick-title');
     els.quickDate = $('quick-date');
     els.quickPriority = $('quick-priority');
     els.quickNotes = $('quick-notes');
     els.exportButton = $('export-button');
+    els.importButton = $('import-button');
+    els.importFile = $('import-file');
     els.clearButton = $('clear-button');
     els.toast = $('toast');
   }
@@ -379,6 +469,7 @@
     $('prev-month').addEventListener('click', function() { changeMonth(-1); });
     $('next-month').addEventListener('click', function() { changeMonth(1); });
     els.openAdd.addEventListener('click', openSheet);
+    els.openAddInline.addEventListener('click', openSheet);
     els.closeAdd.addEventListener('click', closeSheet);
     els.cancelAdd.addEventListener('click', closeSheet);
     els.sheetBackdrop.addEventListener('click', closeSheet);
@@ -390,6 +481,8 @@
       renderLists();
     });
     els.exportButton.addEventListener('click', exportData);
+    els.importButton.addEventListener('click', handleImportClick);
+    els.importFile.addEventListener('change', handleImportFile);
     els.clearButton.addEventListener('click', clearData);
     document.addEventListener('click', handleAction);
   }

@@ -1,6 +1,7 @@
 (function(root, factory) {
   root.TodayYouxuDB = factory();
 })(typeof self !== 'undefined' ? self : this, function() {
+  var ImportUtils = typeof self !== 'undefined' ? self.TodayYouxuImport : null;
   var DB_NAME = 'todayYouxuDB';
   var DB_VERSION = 1;
   var STORE_NAMES = ['tasks', 'habits', 'habitLogs', 'journals', 'opLogs'];
@@ -153,6 +154,17 @@
     return updateTask(id, { status: 'deleted', deletedAt: nowIso() });
   }
 
+  function restoreTask(id) {
+    return getOne('tasks', id).then(function(task) {
+      var next = Object.assign({}, task, {
+        status: 'active',
+        deletedAt: '',
+        updatedAt: nowIso()
+      });
+      return writeWithOp('tasks', next, 'restore', { status: 'active', deletedAt: '' });
+    });
+  }
+
   function createHabit(input) {
     var timestamp = nowIso();
     var habit = {
@@ -229,16 +241,54 @@
     });
   }
 
+  function importData(payload) {
+    if (!ImportUtils) {
+      return Promise.reject(new Error('导入工具未加载'));
+    }
+    return getAllData().then(function(localData) {
+      var result = ImportUtils.buildImportResult(localData, payload);
+      if (!result.valid) {
+        throw new Error(result.reason);
+      }
+
+      return openDatabase().then(function(db) {
+        var transaction = db.transaction(STORE_NAMES, 'readwrite');
+        STORE_NAMES.forEach(function(storeName) {
+          var store = transaction.objectStore(storeName);
+          store.clear();
+          result.data[storeName].forEach(function(record) {
+            store.put(record);
+          });
+        });
+        transaction.objectStore('opLogs').put({
+          id: createId('op'),
+          entityType: 'import',
+          entityId: 'import',
+          action: 'import',
+          payload: result.stats,
+          clientTs: nowIso(),
+          syncState: 'local'
+        });
+        return transactionDone(transaction).then(function() {
+          db.close();
+          return result;
+        });
+      });
+    });
+  }
+
   return {
     createTask: createTask,
     updateTask: updateTask,
     completeTask: completeTask,
     deleteTask: deleteTask,
+    restoreTask: restoreTask,
     createHabit: createHabit,
     updateHabit: updateHabit,
     upsertHabitLog: upsertHabitLog,
     upsertJournal: upsertJournal,
     getAllData: getAllData,
+    importData: importData,
     clearAll: clearAll
   };
 });

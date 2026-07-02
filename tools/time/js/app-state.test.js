@@ -4,6 +4,7 @@ const {
   getTodayTasks,
   getInboxTasks,
   getUpcomingTasks,
+  getDeletedTasks,
   getCalendarMarks,
   habitDueOn,
   getHabitLogForDate
@@ -27,6 +28,15 @@ test('list selectors split inbox and upcoming tasks', () => {
   ];
   assert.deepEqual(getInboxTasks(tasks).map((task) => task.id), ['a']);
   assert.deepEqual(getUpcomingTasks(tasks, '2026-07-02').map((task) => task.id), ['b']);
+});
+
+test('getDeletedTasks returns deleted tasks newest first', () => {
+  const tasks = [
+    { id: 'a', status: 'deleted', deletedAt: '2026-07-01T00:00:00.000Z' },
+    { id: 'b', status: 'active', deletedAt: '' },
+    { id: 'c', status: 'deleted', deletedAt: '2026-07-03T00:00:00.000Z' }
+  ];
+  assert.deepEqual(getDeletedTasks(tasks).map((task) => task.id), ['c', 'a']);
 });
 
 test('habitDueOn supports daily weekdays and weekly schedules', () => {
