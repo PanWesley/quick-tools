@@ -12,6 +12,7 @@ const APP_SHELL = [
   '/tools/time/js/date-utils.js?v=100',
   '/tools/time/js/app-state.js?v=100',
   '/tools/time/js/export.js?v=100',
+  '/tools/time/js/import-utils.js?v=100',
   '/tools/time/js/db.js?v=100',
   '/tools/time/js/app.js?v=100',
   '/shared/css/pwa.css?v=2',

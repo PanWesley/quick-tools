@@ -226,7 +226,7 @@ button {
 .task-row,
 .date-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 10px;
@@ -391,6 +391,27 @@ textarea {
   text-align: left;
 }
 
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.task-actions .btn {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
 .day-cell.outside {
   opacity: 0.45;
 }
@@ -437,6 +458,10 @@ textarea {
 
 .actions-panel .button-row {
   margin-top: 14px;
+}
+
+.deleted-panel {
+  border-style: dashed;
 }
 
 .fine-print,
