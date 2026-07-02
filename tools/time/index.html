@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<script>
+  (function() {
+    var preference = localStorage.getItem('quick-tools-theme') || 'light';
+    var theme = preference === 'system'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : preference;
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2E8F7C">
+<meta name="description" content="今日有序：日历、待办与习惯打卡，一起管理美好的今天。">
+<link rel="manifest" href="/tools/time/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+<link rel="stylesheet" href="/shared/css/pwa.css?v=2">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=100">
+<title>今日有序 - 今日时间管理</title>
+</head>
+<body>
+<header class="app-header">
+  <a class="brand" href="#today" data-view-link="today" aria-label="返回今日">
+    <span class="brand-mark">今</span>
+    <span>
+      <strong>今日有序</strong>
+      <small>日历、待办与习惯打卡，一起管理美好的今天。</small>
+    </span>
+  </a>
+  <button class="icon-button" id="settings-button" type="button" title="我的" aria-label="打开我的">
+    <span aria-hidden="true">⚙</span>
+  </button>
+</header>
+
+<main class="app-shell">
+  <section class="view active" id="view-today" aria-labelledby="today-title">
+    <div class="today-hero">
+      <div>
+        <p class="eyebrow" id="today-weekday">今天</p>
+        <h1 id="today-title">今天</h1>
+        <p id="today-summary">正在读取本地数据...</p>
+      </div>
+      <span class="mode-pill">本地模式</span>
+    </div>
+
+    <section class="panel priority-panel" aria-labelledby="tasks-title">
+      <div class="panel-head">
+        <div>
+          <h2 id="tasks-title">现在要做</h2>
+          <p>包含今天和逾期未完成事项</p>
+        </div>
+        <span class="count-badge" id="today-task-count">0</span>
+      </div>
+      <div class="stack-list" id="today-task-list"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="habits-title">
+      <div class="panel-head">
+        <div>
+          <h2 id="habits-title">待打卡</h2>
+          <p>轻轻完成，也允许跳过</p>
+        </div>
+        <span class="count-badge" id="today-habit-count">0</span>
+      </div>
+      <div class="habit-grid" id="today-habit-list"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="journal-title">
+      <div class="panel-head">
+        <div>
+          <h2 id="journal-title">今日一句</h2>
+          <p>给今天留一句简短记录</p>
+        </div>
+      </div>
+      <form class="journal-form" id="journal-form">
+        <textarea id="journal-content" rows="3" placeholder="写一句今天的状态、收获或想法..."></textarea>
+        <button class="btn primary" id="journal-save" type="button" data-action="save-journal" onclick="window.TodayYouxuApp.saveJournal()">保存今日一句</button>
+      </form>
+    </section>
+  </section>
+
+  <section class="view" id="view-calendar" aria-labelledby="calendar-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">日历</p>
+        <h1 id="calendar-title">月视图</h1>
+      </div>
+      <div class="segmented-actions">
+        <button class="icon-button" id="prev-month" type="button" aria-label="上个月">‹</button>
+        <button class="icon-button" id="next-month" type="button" aria-label="下个月">›</button>
+      </div>
+    </div>
+    <div class="calendar-card">
+      <div class="calendar-label" id="calendar-label"></div>
+      <div class="weekday-row" aria-hidden="true">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+    </div>
+    <section class="panel" id="date-detail-panel">
+      <div class="panel-head">
+        <div>
+          <h2 id="selected-date-title">日期详情</h2>
+          <p id="selected-date-subtitle">选择一个日期查看安排</p>
+        </div>
+      </div>
+      <div class="stack-list" id="selected-date-list"></div>
+    </section>
+  </section>
+
+  <section class="view" id="view-list" aria-labelledby="list-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">清单</p>
+        <h1 id="list-title">整理事项</h1>
+      </div>
+    </div>
+    <input class="search-input" id="task-search" type="search" placeholder="搜索任务标题或备注">
+    <div class="list-columns">
+      <section class="panel">
+        <h2>收集箱</h2>
+        <div class="stack-list" id="inbox-list"></div>
+      </section>
+      <section class="panel">
+        <h2>即将到来</h2>
+        <div class="stack-list" id="upcoming-list"></div>
+      </section>
+      <section class="panel">
+        <h2>已完成</h2>
+        <div class="stack-list" id="completed-list"></div>
+      </section>
+    </div>
+  </section>
+
+  <section class="view" id="view-profile" aria-labelledby="profile-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">我的</p>
+        <h1 id="profile-title">数据与设置</h1>
+      </div>
+    </div>
+    <div class="settings-list">
+      <section class="panel setting-row">
+        <div>
+          <h2>本地模式</h2>
+          <p>数据默认保存在本机 IndexedDB，不需要登录。</p>
+        </div>
+        <span class="mode-pill">已开启</span>
+      </section>
+      <section class="panel setting-row">
+        <div>
+          <h2>登录同步</h2>
+          <p>后续支持账号、多端同步和冲突处理。</p>
+        </div>
+        <span class="muted-pill">后续支持</span>
+      </section>
+      <section class="panel setting-row">
+        <div>
+          <h2>提醒</h2>
+          <p>首版不承诺离线精确提醒，后续接入 Web Push。</p>
+        </div>
+        <span class="muted-pill">未开启</span>
+      </section>
+      <section class="panel actions-panel">
+        <h2>本地数据</h2>
+        <div class="button-row">
+          <button class="btn secondary" id="export-button" type="button">导出 JSON</button>
+          <button class="btn danger" id="clear-button" type="button">清空本地数据</button>
+        </div>
+        <p class="fine-print">今日有序不接广告 SDK；导出文件会包含 tasks、habits、habitLogs、journals、opLogs。</p>
+      </section>
+    </div>
+  </section>
+</main>
+
+<button class="fab" id="open-add" type="button" aria-label="快速新增">+</button>
+
+<nav class="bottom-nav" aria-label="主导航">
+  <button class="nav-item active" type="button" data-view="today">今日</button>
+  <button class="nav-item" type="button" data-view="calendar">日历</button>
+  <button class="nav-item" type="button" data-view="list">清单</button>
+  <button class="nav-item" type="button" data-view="profile">我的</button>
+</nav>
+
+<div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+<section class="quick-sheet" id="quick-sheet" aria-labelledby="quick-sheet-title" aria-modal="true" role="dialog" hidden>
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <div class="sheet-head">
+    <h2 id="quick-sheet-title">快速新增</h2>
+    <button class="icon-button" id="close-add" type="button" aria-label="关闭">×</button>
+  </div>
+  <form id="quick-form">
+    <label>
+      类型
+      <select id="quick-type">
+        <option value="task">任务</option>
+        <option value="habit">习惯</option>
+      </select>
+    </label>
+    <label>
+      标题
+      <input id="quick-title" type="text" autocomplete="off" placeholder="例如：整理本周计划" required>
+    </label>
+    <div class="form-grid">
+      <label>
+        日期
+        <input id="quick-date" type="date">
+      </label>
+      <label>
+        优先级
+        <select id="quick-priority">
+          <option value="none">无</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+        </select>
+      </label>
+    </div>
+    <label>
+      备注
+      <textarea id="quick-notes" rows="3" placeholder="可选"></textarea>
+    </label>
+    <div class="button-row">
+      <button class="btn secondary" id="cancel-add" type="button">取消</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/tools/time/js/date-utils.js?v=100"></script>
+<script src="/tools/time/js/app-state.js?v=100"></script>
+<script src="/tools/time/js/export.js?v=100"></script>
+<script src="/tools/time/js/db.js?v=100"></script>
+<script src="/tools/time/js/app.js?v=100"></script>
+</body>
+</html>

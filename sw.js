@@ -10,6 +10,7 @@ const STATIC_ASSETS = [
   '/tools/json/',
   '/tools/diff/',
   '/tools/expense/',
+  '/tools/time/',
   '/manifest.json'
 ];
 

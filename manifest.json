@@ -95,6 +95,13 @@
       "description": "快速记录和统计日常消费",
       "url": "/tools/expense/",
       "icons": [{ "src": "/icons/expense-icon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "今日有序",
+      "short_name": "今日",
+      "description": "日历、待办与习惯打卡，一起管理美好的今天",
+      "url": "/tools/time/",
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ],
   "related_applications": [],

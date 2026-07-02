@@ -1,0 +1,47 @@
+{
+  "name": "今日有序 - 时间管理",
+  "short_name": "今日有序",
+  "description": "日历、待办与习惯打卡，一起管理美好的今天。",
+  "start_url": "/tools/time/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#2E8F7C",
+  "orientation": "portrait",
+  "scope": "/tools/time/",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "related_applications": [],
+  "prefer_related_applications": false
+}
