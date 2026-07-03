@@ -1,0 +1,418 @@
+(function() {
+  var parser = window.ZhenjiaLinkParser;
+  var judge = window.ZhenjiaPriceJudge;
+  var db = window.ZhenjiaDB;
+  var chart = window.ZhenjiaChart;
+  var sampleData = window.ZhenjiaSampleData;
+  var exporter = window.ZhenjiaExport;
+
+  var state = {
+    view: 'home',
+    activeProduct: null,
+    activeSnapshots: [],
+    activeWatch: null,
+    products: [],
+    watches: [],
+    snapshots: [],
+    range: '30'
+  };
+
+  function $(selector) {
+    return document.querySelector(selector);
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function money(value) {
+    var number = Number(value || 0);
+    if (!Number.isFinite(number) || number <= 0) return '暂无';
+    return '¥' + (Number.isInteger(number) ? String(number) : number.toFixed(2));
+  }
+
+  function setMessage(id, text) {
+    var element = document.getElementById(id);
+    if (element) element.textContent = text || '';
+  }
+
+  function switchView(view) {
+    state.view = view;
+    document.querySelectorAll('.view').forEach(function(section) {
+      section.classList.toggle('active', section.id === 'view-' + view);
+    });
+    document.querySelectorAll('.nav-item').forEach(function(button) {
+      button.classList.toggle('active', button.dataset.view === view);
+    });
+    if (location.hash !== '#' + view) {
+      location.hash = view === 'home' ? '#home' : '#' + view;
+    }
+  }
+
+  function platformLabel(platform) {
+    return parser.normalizePlatformLabel(platform);
+  }
+
+  function productCard(product, mode) {
+    return [
+      '<article class="panel product-card">',
+      '<p class="eyebrow">', escapeHtml(platformLabel(product.platform)), ' · ', escapeHtml(product.source || 'local'), '</p>',
+      '<h3>', escapeHtml(product.title || '未命名商品'), '</h3>',
+      '<p class="fine-print">', escapeHtml(product.shopName || '本地记录'), '</p>',
+      '<button class="btn secondary" type="button" data-product-id="', escapeHtml(product.id), '" data-open-product="', escapeHtml(mode || 'local'), '">查看分析</button>',
+      '</article>'
+    ].join('');
+  }
+
+  function renderSamples() {
+    var container = $('#sample-products');
+    if (!container) return;
+    container.innerHTML = sampleData.getSampleProducts().map(function(product) {
+      return productCard(product, 'sample');
+    }).join('');
+  }
+
+  function renderRecentWatches() {
+    var container = $('#recent-watches');
+    if (!container) return;
+    var enabled = state.watches.filter(function(watch) {
+      return watch.enabled;
+    }).slice(0, 4);
+    if (!enabled.length) {
+      container.innerHTML = '<p class="fine-print">还没有本地关注。先分析一个商品，再设置目标价。</p>';
+      return;
+    }
+    container.innerHTML = enabled.map(function(watch) {
+      var product = state.products.find(function(item) {
+        return item.id === watch.productId;
+      });
+      return [
+        '<article class="panel">',
+        '<h3>', escapeHtml(product ? product.title : watch.productId), '</h3>',
+        '<p class="fine-print">目标价 ', escapeHtml(money(watch.targetPrice)), '</p>',
+        '<button class="btn ghost" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">查看分析</button>',
+        '</article>'
+      ].join('');
+    }).join('');
+  }
+
+  function renderWatchList() {
+    var container = $('#watch-list');
+    if (!container) return;
+    if (!state.watches.length) {
+      container.innerHTML = '<p class="fine-print">本地关注清单为空。</p>';
+      return;
+    }
+    container.innerHTML = state.watches.map(function(watch) {
+      var product = state.products.find(function(item) {
+        return item.id === watch.productId;
+      });
+      var snapshots = snapshotsForProduct(watch.productId);
+      var latest = latestSnapshot(snapshots);
+      return [
+        '<article class="panel">',
+        '<h2>', escapeHtml(product ? product.title : watch.productId), '</h2>',
+        '<p>目标价 ', escapeHtml(money(watch.targetPrice)), ' · 最近记录 ', escapeHtml(money(latest && latest.finalPrice)), '</p>',
+        '<div class="button-row">',
+        '<button class="btn secondary" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">查看分析</button>',
+        '<button class="btn ghost" type="button" data-delete-watch="', escapeHtml(watch.id), '">取消关注</button>',
+        '</div>',
+        '</article>'
+      ].join('');
+    }).join('');
+  }
+
+  function snapshotsForProduct(productId) {
+    return state.snapshots.filter(function(snapshot) {
+      return snapshot.productId === productId;
+    });
+  }
+
+  function watchForProduct(productId) {
+    return state.watches.find(function(watch) {
+      return watch.productId === productId && watch.enabled;
+    }) || null;
+  }
+
+  function latestSnapshot(snapshots) {
+    return snapshots.slice().sort(function(a, b) {
+      return String(b.capturedAt).localeCompare(String(a.capturedAt));
+    })[0] || null;
+  }
+
+  function filteredSnapshots(snapshots) {
+    if (state.range === 'all') return snapshots;
+    var days = Number(state.range || 30);
+    var cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return snapshots.filter(function(snapshot) {
+      return new Date(snapshot.capturedAt).getTime() >= cutoff;
+    });
+  }
+
+  function renderAnalysis(product, snapshots, watch) {
+    var latest = latestSnapshot(snapshots);
+    var currentPrice = latest ? latest.finalPrice : 0;
+    var result = judge.judgePrice({
+      currentFinalPrice: currentPrice,
+      snapshots: snapshots,
+      nowIso: new Date().toISOString()
+    });
+
+    state.activeProduct = product;
+    state.activeSnapshots = snapshots;
+    state.activeWatch = watch || null;
+
+    $('#truth-bench').innerHTML = [
+      '<div>',
+      '<p class="eyebrow">', escapeHtml(platformLabel(product.platform)), ' · ', escapeHtml(product.source || 'local'), '</p>',
+      '<h1>', escapeHtml(result.title), '</h1>',
+      '<p>', escapeHtml(result.suggestion), '</p>',
+      '<p><strong>', escapeHtml(money(currentPrice)), '</strong> · ', escapeHtml(product.title), '</p>',
+      '<ul>', result.reasons.map(function(reason) {
+        return '<li>' + escapeHtml(reason) + '</li>';
+      }).join(''), '</ul>',
+      '</div>',
+      '<div class="score-ring" style="--score:', String(result.score), '"><span>', String(result.score), '</span></div>'
+    ].join('');
+
+    chart.renderPriceChart($('#price-chart'), filteredSnapshots(snapshots));
+    $('#watch-target').value = watch && watch.targetPrice ? watch.targetPrice : '';
+    switchView('analysis');
+  }
+
+  function openSample(productId) {
+    var product = sampleData.getSampleProducts().find(function(item) {
+      return item.id === productId;
+    });
+    if (!product) return;
+    renderAnalysis(product, sampleData.getSampleSnapshots(productId), null);
+  }
+
+  function openLocalProduct(productId) {
+    var product = state.products.find(function(item) {
+      return item.id === productId;
+    });
+    if (!product) return;
+    renderAnalysis(product, snapshotsForProduct(product.id), watchForProduct(product.id));
+  }
+
+  function loadAllData() {
+    if (!window.indexedDB) {
+      setMessage('parse-message', '浏览器不支持本地数据库，无法保存关注和价格记录。');
+      renderSamples();
+      renderRecentWatches();
+      renderWatchList();
+      return Promise.resolve();
+    }
+    return db.getAllData().then(function(data) {
+      state.products = data.products;
+      state.snapshots = data.priceSnapshots;
+      state.watches = data.watches;
+      renderSamples();
+      renderRecentWatches();
+      renderWatchList();
+    }).catch(function(error) {
+      setMessage('parse-message', error.message || '读取本地数据失败。');
+    });
+  }
+
+  function createParsedProduct(parsed) {
+    return db.upsertProduct({
+      platform: parsed.platform,
+      itemId: parsed.itemId,
+      skuId: parsed.skuId,
+      shopId: parsed.shopId,
+      title: parser.normalizePlatformLabel(parsed.platform) + '商品 ' + parsed.itemId,
+      shopName: '本地解析',
+      rawUrl: parsed.rawUrl,
+      canonicalUrl: parsed.canonicalUrl,
+      source: 'parsed'
+    }).then(function(product) {
+      return loadAllData().then(function() {
+        return state.products.find(function(item) {
+          return item.id === product.id;
+        }) || product;
+      });
+    });
+  }
+
+  function ensureActiveProductSaved() {
+    if (!state.activeProduct) return Promise.reject(new Error('missing active product'));
+    var existing = state.products.find(function(product) {
+      return product.id === state.activeProduct.id;
+    });
+    if (existing) return Promise.resolve(existing);
+    return db.upsertProduct(Object.assign({}, state.activeProduct, {
+      source: state.activeProduct.source === 'sample' ? 'sample' : state.activeProduct.source
+    })).then(function(product) {
+      return loadAllData().then(function() {
+        state.activeProduct = state.products.find(function(item) {
+          return item.id === product.id;
+        }) || product;
+        return state.activeProduct;
+      });
+    });
+  }
+
+  function importPayload(payload) {
+    var valid = exporter.validateImportPayload(payload);
+    if (!valid.ok) return Promise.reject(new Error(valid.error.message));
+    return db.clearAll().then(function() {
+      var writes = [];
+      valid.data.products.forEach(function(product) {
+        writes.push(db.upsertProduct(product));
+      });
+      valid.data.priceSnapshots.forEach(function(snapshot) {
+        writes.push(db.addPriceSnapshot(snapshot));
+      });
+      valid.data.watches.forEach(function(watch) {
+        writes.push(db.upsertWatch(watch));
+      });
+      return Promise.all(writes);
+    });
+  }
+
+  function bindEvents() {
+    $('#parse-form').addEventListener('submit', function(event) {
+      event.preventDefault();
+      setMessage('parse-message', '');
+      var result = parser.parseProductInput($('#product-input').value);
+      if (!result.ok) {
+        setMessage('parse-message', result.error.message);
+        return;
+      }
+      createParsedProduct(result.data).then(function(product) {
+        renderAnalysis(product, snapshotsForProduct(product.id), watchForProduct(product.id));
+      }).catch(function(error) {
+        setMessage('parse-message', error.message || '解析后保存商品失败。');
+      });
+    });
+
+    $('#use-sample-button').addEventListener('click', function() {
+      var first = sampleData.getSampleProducts()[0];
+      if (first) openSample(first.id);
+    });
+
+    document.addEventListener('click', function(event) {
+      var openButton = event.target.closest('[data-open-product]');
+      var viewButton = event.target.closest('[data-view], [data-view-link]');
+      var rangeButton = event.target.closest('[data-range]');
+      var deleteWatch = event.target.closest('[data-delete-watch]');
+
+      if (openButton) {
+        if (openButton.dataset.openProduct === 'sample') openSample(openButton.dataset.productId);
+        else openLocalProduct(openButton.dataset.productId);
+      }
+      if (viewButton) {
+        switchView(viewButton.dataset.view || viewButton.dataset.viewLink);
+      }
+      if (rangeButton) {
+        state.range = rangeButton.dataset.range;
+        document.querySelectorAll('[data-range]').forEach(function(button) {
+          button.classList.toggle('active', button === rangeButton);
+        });
+        chart.renderPriceChart($('#price-chart'), filteredSnapshots(state.activeSnapshots));
+      }
+      if (deleteWatch) {
+        db.deleteOne('watches', deleteWatch.dataset.deleteWatch).then(loadAllData);
+      }
+    });
+
+    $('#snapshot-form').addEventListener('submit', function(event) {
+      event.preventDefault();
+      if (!state.activeProduct) return;
+      var price = Number($('#snapshot-price').value);
+      if (!Number.isFinite(price) || price <= 0) return;
+      ensureActiveProductSaved().then(function(product) {
+        return db.addPriceSnapshot({
+          productId: product.id,
+          capturedAt: new Date().toISOString(),
+          listPrice: price,
+          promoPrice: price,
+          couponPrice: price,
+          finalPrice: price,
+          promotionInfo: $('#snapshot-note').value,
+          source: 'manual',
+          stockStatus: 'unknown'
+        });
+      }).then(loadAllData).then(function() {
+        renderAnalysis(state.activeProduct, snapshotsForProduct(state.activeProduct.id), watchForProduct(state.activeProduct.id));
+        $('#snapshot-price').value = '';
+        $('#snapshot-note').value = '';
+      });
+    });
+
+    $('#watch-form').addEventListener('submit', function(event) {
+      event.preventDefault();
+      if (!state.activeProduct) return;
+      var target = Number($('#watch-target').value);
+      if (!Number.isFinite(target) || target <= 0) return;
+      ensureActiveProductSaved().then(function(product) {
+        return db.upsertWatch({
+          productId: product.id,
+          targetPrice: target,
+          watchType: 'target_price',
+          enabled: true
+        });
+      }).then(loadAllData).then(function() {
+        renderAnalysis(state.activeProduct, snapshotsForProduct(state.activeProduct.id), watchForProduct(state.activeProduct.id));
+      });
+    });
+
+    $('#export-button').addEventListener('click', function() {
+      db.getAllData().then(function(data) {
+        var payload = exporter.buildExportPayload(data);
+        var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'zhenjia-assistant-backup.json';
+        link.click();
+        URL.revokeObjectURL(url);
+        setMessage('data-message', '导出已开始。');
+      }).catch(function(error) {
+        setMessage('data-message', error.message || '导出失败。');
+      });
+    });
+
+    $('#import-file').addEventListener('change', function(event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) return;
+      file.text().then(function(text) {
+        return importPayload(JSON.parse(text));
+      }).then(loadAllData).then(function() {
+        setMessage('data-message', '导入完成。');
+        event.target.value = '';
+      }).catch(function(error) {
+        setMessage('data-message', error.message || '导入失败。');
+      });
+    });
+
+    $('#clear-button').addEventListener('click', function() {
+      if (confirm('确定清空真价助手的本地数据吗？')) {
+        db.clearAll().then(loadAllData).then(function() {
+          setMessage('data-message', '本地数据已清空。');
+        });
+      }
+    });
+  }
+
+  function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/tools/price/sw.js').catch(function(error) {
+        console.warn('[Zhenjia] Service worker registration failed:', error);
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    bindEvents();
+    loadAllData();
+    registerServiceWorker();
+  });
+})();
