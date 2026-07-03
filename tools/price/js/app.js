@@ -43,6 +43,7 @@
 
   function switchView(view) {
     state.view = view;
+    document.body.dataset.view = view;
     document.querySelectorAll('.view').forEach(function(section) {
       section.classList.toggle('active', section.id === 'view-' + view);
     });
@@ -167,8 +168,9 @@
     state.activeSnapshots = snapshots;
     state.activeWatch = watch || null;
 
+    $('#truth-bench').className = 'truth-bench level-' + escapeHtml(result.level);
     $('#truth-bench').innerHTML = [
-      '<div>',
+      '<div class="truth-copy">',
       '<p class="eyebrow">', escapeHtml(platformLabel(product.platform)), ' · ', escapeHtml(product.source || 'local'), '</p>',
       '<h1>', escapeHtml(result.title), '</h1>',
       '<p>', escapeHtml(result.suggestion), '</p>',
@@ -177,7 +179,10 @@
         return '<li>' + escapeHtml(reason) + '</li>';
       }).join(''), '</ul>',
       '</div>',
-      '<div class="score-ring" style="--score:', String(result.score), '"><span>', String(result.score), '</span></div>'
+      '<div class="score-column">',
+      '<span class="score-label">可信分</span>',
+      '<div class="score-ring" style="--score:', String(result.score), '"><span>', String(result.score), '</span></div>',
+      '</div>'
     ].join('');
 
     chart.renderPriceChart($('#price-chart'), filteredSnapshots(snapshots));
@@ -445,6 +450,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
+    document.body.dataset.view = state.view;
     bindEvents();
     loadAllData();
     registerServiceWorker();
