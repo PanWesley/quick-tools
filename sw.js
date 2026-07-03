@@ -18,6 +18,7 @@ const STATIC_ASSETS = [
   '/tools/diff/',
   '/tools/expense/',
   '/tools/time/',
+  '/tools/price/',
   '/manifest.json'
 ];
 
