@@ -40,7 +40,10 @@ body {
   background:
     radial-gradient(circle at 12% 0%, rgba(255, 210, 170, 0.38), transparent 30%),
     linear-gradient(180deg, #fff9f3 0%, var(--bg) 42%, #fff 100%);
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.45;
   padding-bottom: calc(82px + env(safe-area-inset-bottom));
 }
 
@@ -76,15 +79,15 @@ button {
 }
 
 .brand-mark {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   border-radius: 8px;
   background: linear-gradient(135deg, var(--accent), var(--primary));
   color: #fff;
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: 0 10px 22px rgba(255, 122, 138, 0.24);
 }
 
@@ -94,9 +97,10 @@ button {
 }
 
 .brand strong {
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.2;
   letter-spacing: 0;
+  font-weight: 700;
 }
 
 .brand small {
@@ -138,15 +142,16 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin: 8px 0 16px;
+  margin: 6px 0 12px;
 }
 
 .today-hero h1,
 .section-head h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.15;
   letter-spacing: 0;
+  font-weight: 650;
 }
 
 .today-hero p,
@@ -159,8 +164,8 @@ button {
 .eyebrow {
   margin: 0;
   color: var(--primary);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .mode-pill,
@@ -197,12 +202,13 @@ button {
 
 .panel,
 .calendar-card {
+  min-height: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  margin-bottom: 14px;
-  padding: 16px;
+  margin-bottom: 12px;
+  padding: 14px;
 }
 
 .priority-panel {
@@ -211,13 +217,15 @@ button {
 
 .panel h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
+  font-weight: 650;
 }
 
 .panel p {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: var(--text-muted);
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .panel-head,
@@ -230,25 +238,25 @@ button {
 
 .stack-list {
   display: grid;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .task-row,
 .date-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  padding: 10px 11px;
+  gap: 8px;
+  padding: 9px 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
 .task-check {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border: 2px solid var(--mint);
   border-radius: 50%;
   background: transparent;
@@ -263,7 +271,8 @@ button {
 .task-title {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -274,12 +283,23 @@ button {
 }
 
 .priority-tag {
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   background: var(--mint-soft);
   color: #247d67;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.task-row.is-completed .task-title,
+.date-row.is-completed .task-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.task-row.is-completed,
+.date-row.is-completed {
+  opacity: 0.62;
 }
 
 .priority-tag.high {
@@ -300,12 +320,12 @@ button {
 .habit-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .habit-card {
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-soft);
@@ -320,7 +340,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .journal-form {
@@ -346,12 +366,12 @@ textarea {
 }
 
 .btn {
-  min-height: 44px;
-  padding: 10px 14px;
+  min-height: 40px;
+  padding: 9px 13px;
   border: 1px solid transparent;
   border-radius: var(--radius);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .btn.primary {
@@ -384,11 +404,18 @@ textarea {
   flex-wrap: wrap;
 }
 
+.calendar-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
 .calendar-label {
-  margin: 0 auto 14px;
-  width: max-content;
-  font-size: 24px;
-  font-weight: 800;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
   letter-spacing: 0;
 }
 
@@ -401,20 +428,20 @@ textarea {
 
 .weekday-row {
   color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   text-align: center;
   margin-bottom: 0;
   border-bottom: 1px solid var(--border);
 }
 
 .weekday-row span {
-  padding: 8px 0;
+  padding: 6px 0;
 }
 
 .day-cell {
-  min-height: 104px;
-  padding: 7px 5px 6px;
+  min-height: 78px;
+  padding: 6px 4px 5px;
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
@@ -445,9 +472,9 @@ textarea {
 }
 
 .task-actions .btn {
-  min-height: 32px;
+  min-height: 30px;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .day-cell.outside {
@@ -472,8 +499,8 @@ textarea {
 
 .day-number {
   display: inline-block;
-  font-weight: 800;
-  font-size: 17px;
+  font-weight: 650;
+  font-size: 15px;
 }
 
 .day-lunar {
@@ -483,26 +510,10 @@ textarea {
   white-space: nowrap;
 }
 
-.day-dots {
-  display: flex;
-  gap: 3px;
-  margin-top: 5px;
-}
-
-.day-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--primary);
-}
-
-.day-dot.habit { background: var(--accent); }
-.day-dot.journal { background: #6f7ddf; }
-
 .calendar-strips {
   display: grid;
   gap: 3px;
-  margin-top: 7px;
+  margin-top: 6px;
 }
 
 .calendar-strip,
@@ -520,6 +531,11 @@ textarea {
   white-space: nowrap;
 }
 
+.calendar-strip.is-done {
+  opacity: 0.48;
+  text-decoration: line-through;
+}
+
 .calendar-strip.coral { background: rgba(255, 122, 138, 0.28); }
 .calendar-strip.sun { background: rgba(255, 211, 110, 0.38); }
 .calendar-strip.mint { background: rgba(85, 199, 165, 0.28); }
@@ -533,14 +549,30 @@ textarea {
 }
 
 .month-today {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 40px;
+  min-height: 40px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--primary-strong);
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 650;
+}
+
+.calendar-toggle {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.calendar-card.is-collapsed .calendar-body {
+  display: none;
 }
 
 .date-task-row {
@@ -609,6 +641,15 @@ textarea {
 .settings-list {
   display: grid;
   gap: 14px;
+  align-items: start;
+}
+
+.compact-panel {
+  padding: 13px;
+}
+
+.compact-panel .stack-list {
+  margin-top: 8px;
 }
 
 .actions-panel .button-row {
@@ -622,8 +663,12 @@ textarea {
 .fine-print,
 .empty-state {
   color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.empty-state {
+  margin: 0;
 }
 
 .bottom-nav {
@@ -647,7 +692,7 @@ textarea {
   background: transparent;
   cursor: pointer;
   color: var(--text-muted);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .nav-item.active {
@@ -660,15 +705,15 @@ textarea {
   right: 18px;
   bottom: calc(82px + env(safe-area-inset-bottom));
   z-index: 35;
-  width: 56px;
-  height: 56px;
+  width: 54px;
+  height: 54px;
   border: 0;
   border-radius: 50%;
   background: linear-gradient(135deg, #ff9b32, #ff6f52);
   color: #fff;
   box-shadow: 0 14px 30px rgba(255, 126, 42, 0.34);
   cursor: pointer;
-  font-size: 30px;
+  font-size: 28px;
 }
 
 .sheet-backdrop {
@@ -759,11 +804,6 @@ textarea {
     padding: 28px 28px 132px;
   }
 
-  .list-columns,
-  .settings-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .bottom-nav {
     left: 50%;
     right: auto;
@@ -782,6 +822,13 @@ textarea {
   }
 }
 
+@media (min-width: 920px) {
+  .list-columns,
+  .settings-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 430px) {
   .brand small {
     max-width: 48vw;
@@ -789,19 +836,38 @@ textarea {
 
   .today-hero h1,
   .section-head h1 {
-    font-size: 26px;
+    font-size: 22px;
   }
 
   .app-shell {
-    padding: 14px 12px 96px;
+    padding: 12px 10px 94px;
   }
 
   .calendar-card {
-    padding: 10px;
+    padding: 10px 8px;
+  }
+
+  .calendar-toolbar {
+    align-items: center;
+  }
+
+  .segmented-actions {
+    gap: 6px;
+  }
+
+  .icon-button,
+  .month-today,
+  .calendar-toggle {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .calendar-toggle {
+    padding-inline: 8px;
   }
 
   .day-cell {
-    min-height: 92px;
+    min-height: 66px;
     padding: 6px 3px 5px;
   }
 
@@ -819,11 +885,11 @@ textarea {
 
   .task-row,
   .date-row {
-    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr);
   }
 
   .task-row {
-    grid-template-columns: 30px minmax(0, 1fr) 68px;
+    grid-template-columns: 26px minmax(0, 1fr) 58px;
     align-items: start;
   }
 

@@ -11,6 +11,7 @@
     selectedDateKey: DateUtils.getTodayKey(),
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth(),
+    calendarCollapsed: false,
     search: '',
     editingTaskId: ''
   };
@@ -85,7 +86,7 @@
     }
 
     return [
-      '<article class="task-row">',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + '">',
       completeButton,
       '<div>',
       '<div class="task-title">' + escapeHtml(title) + '</div>',
@@ -105,7 +106,7 @@
       ? '<span class="date-icon done-icon">✓</span>'
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     return [
-      '<article class="date-row date-task-row">',
+      '<article class="date-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + '">',
       completeButton,
       '<div class="date-row-main">',
       '<div class="task-title">' + escapeHtml(State.getTaskDisplayTitle(task)) + '</div>',
@@ -121,6 +122,10 @@
     if (entry.type === 'task') return priorityTone(entry.priority);
     if (entry.type === 'habit') return entry.state === 'done' ? 'mint' : 'lilac';
     return 'rose';
+  }
+
+  function calendarEntryStateClass(entry) {
+    return ['completed', 'done', 'skipped'].includes(entry.state) ? ' is-done' : '';
   }
 
   function renderHabit(habit) {
@@ -162,18 +167,14 @@
 
   function renderCalendar() {
     var grid = DateUtils.buildMonthGrid(appState.calendarYear, appState.calendarMonth);
-    var marks = State.getCalendarMarks(appState.data, grid.map(function(cell) { return cell.dateKey; }));
     els.calendarLabel.textContent = DateUtils.formatMonthLabel(appState.calendarYear, appState.calendarMonth);
+    els.calendarCard.classList.toggle('is-collapsed', appState.calendarCollapsed);
+    els.calendarToggle.textContent = appState.calendarCollapsed ? '展开' : '收起';
+    els.calendarToggle.setAttribute('aria-expanded', String(!appState.calendarCollapsed));
     els.calendarGrid.innerHTML = grid.map(function(cell) {
-      var mark = marks[cell.dateKey] || { tasks: 0, habits: 0, journal: false };
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
-      var dots = [
-        mark.tasks ? '<span class="day-dot"></span>' : '',
-        mark.habits ? '<span class="day-dot habit"></span>' : '',
-        mark.journal ? '<span class="day-dot journal"></span>' : ''
-      ].join('');
       var strips = entries.slice(0, 2).map(function(entry) {
-        return '<span class="calendar-strip ' + calendarEntryTone(entry) + '">' + escapeHtml(entry.label) + '</span>';
+        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(entry.label) + '</span>';
       }).join('');
       var overflow = entries.length > 2 ? '<span class="calendar-more">+' + (entries.length - 2) + '</span>' : '';
       return [
@@ -183,7 +184,6 @@
         cell.dateKey === appState.selectedDateKey ? ' selected' : '',
         '" type="button" data-action="select-date" data-date="' + escapeHtml(cell.dateKey) + '">',
         '<span class="day-top"><span class="day-number">' + cell.day + '</span><span class="day-lunar">' + DateUtils.formatWeekday(cell.dateKey).replace('周', '') + '</span></span>',
-        '<span class="day-dots">' + dots + '</span>',
         '<span class="calendar-strips">' + strips + overflow + '</span>',
         '</button>'
       ].join('');
@@ -481,6 +481,8 @@
     els.journalSave = $('journal-save');
     els.journalContent = $('journal-content');
     els.calendarLabel = $('calendar-label');
+    els.calendarCard = $('calendar-card');
+    els.calendarToggle = $('toggle-calendar');
     els.calendarGrid = $('calendar-grid');
     els.selectedDateTitle = $('selected-date-title');
     els.selectedDateSubtitle = $('selected-date-subtitle');
@@ -526,8 +528,12 @@
     $('prev-month').addEventListener('click', function() { changeMonth(-1); });
     $('today-month').addEventListener('click', jumpToTodayMonth);
     $('next-month').addEventListener('click', function() { changeMonth(1); });
+    els.calendarToggle.addEventListener('click', function() {
+      appState.calendarCollapsed = !appState.calendarCollapsed;
+      renderCalendar();
+    });
     els.openAdd.addEventListener('click', openSheet);
-    els.openAddInline.addEventListener('click', openSheet);
+    if (els.openAddInline) els.openAddInline.addEventListener('click', openSheet);
     els.closeAdd.addEventListener('click', closeSheet);
     els.cancelAdd.addEventListener('click', closeSheet);
     els.sheetBackdrop.addEventListener('click', closeSheet);
