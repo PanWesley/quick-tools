@@ -15,6 +15,7 @@ assert.strictEqual(getSiteToolFromPathname('/tools/diff/'), 'diff');
 assert.strictEqual(getSiteToolFromPathname('/tools/json/index.html'), 'json');
 assert.strictEqual(getSiteToolFromPathname('/tools/expense/'), 'expense');
 assert.strictEqual(getSiteToolFromPathname('/tools/time/'), 'time');
+assert.strictEqual(getSiteToolFromPathname('/tools/price/'), 'price');
 assert.strictEqual(getSiteToolFromPathname('/something-else/'), 'unknown');
 
 assert.strictEqual(getSiteViewFromLocation('/tools/expense/', '#view=dashboard'), 'dashboard');
@@ -25,6 +26,7 @@ assert.strictEqual(getSiteViewFromLocation('/', ''), 'home');
 assert.strictEqual(getAnalyticsRoute('/tools/expense/', '#view=dashboard'), '/tools/expense/#view=dashboard');
 assert.strictEqual(getAnalyticsRoute('/tools/json/index.html', ''), '/tools/json/');
 assert.strictEqual(getAnalyticsRoute('/tools/diff/', '#ignored'), '/tools/diff/');
+assert.strictEqual(getAnalyticsRoute('/tools/price/', '#ignored'), '/tools/price/');
 assert.strictEqual(getAnalyticsRoute('/index.html', ''), '/');
 
 assert.strictEqual(getDeviceClass(390), 'mobile');
@@ -61,6 +63,21 @@ assert.ok(!Object.prototype.hasOwnProperty.call(event, 'amount'));
 assert.ok(!Object.prototype.hasOwnProperty.call(event, 'note'));
 assert.ok(!Object.prototype.hasOwnProperty.call(event, 'category'));
 assert.ok(!Object.prototype.hasOwnProperty.call(event, 'tags'));
+
+const priceEvent = createAnalyticsEvent({
+  type: 'page_view',
+  pathname: '/tools/price/',
+  hash: '#ignored',
+  sessionId: 'session-2',
+  standalone: false,
+  width: 1280,
+  referrer: '',
+  origin: 'https://www.billnest.top'
+});
+
+assert.strictEqual(priceEvent.tool, 'price');
+assert.strictEqual(priceEvent.route, '/tools/price/');
+assert.strictEqual(priceEvent.view, 'main');
 
 assert.deepStrictEqual(sanitizeAnalyticsEvent({
   type: 'feature_event',

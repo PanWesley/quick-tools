@@ -17,6 +17,8 @@ const APP_SHELL = [
   '/tools/price/js/chart.js?v=100',
   '/tools/price/js/app.js?v=100',
   '/shared/css/pwa.css?v=2',
+  '/shared/js/site-analytics-utils.js?v=1',
+  '/shared/js/site-analytics.js?v=1',
   '/icons/icon-192x192.png'
 ];
 
