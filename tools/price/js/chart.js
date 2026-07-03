@@ -20,7 +20,16 @@
   }
 
   function isValidDate(value) {
-    return !Number.isNaN(new Date(value).getTime());
+    var date;
+    if (typeof value === 'string') {
+      if (!value.trim()) return false;
+      date = new Date(value);
+    } else if (value instanceof Date) {
+      date = value;
+    } else {
+      return false;
+    }
+    return Number.isFinite(date.getTime());
   }
 
   function isValidSnapshot(snapshot) {
