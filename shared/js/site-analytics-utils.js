@@ -7,7 +7,7 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
   const VALID_TYPES = new Set(['session_start', 'page_view', 'engagement', 'feature_event']);
-  const VALID_TOOLS = new Set(['home', 'diff', 'json', 'expense', 'time', 'unknown']);
+  const VALID_TOOLS = new Set(['home', 'diff', 'json', 'expense', 'time', 'price', 'unknown']);
   const VALID_VIEWS = new Set(['home', 'main', 'add', 'dashboard', 'list', 'tags', 'settings', 'import']);
   const SAFE_FEATURE_PATTERN = /[^a-z0-9_]/g;
   const MAX_DURATION_SECONDS = 120;
