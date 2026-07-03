@@ -14,8 +14,24 @@ test('parseProductInput extracts a JD sku from a product page URL', () => {
   assert.equal(result.data.canonicalUrl, 'https://item.jd.com/100012043978.html');
 });
 
+test('parseProductInput trims sentence punctuation after a JD product URL', () => {
+  const result = parseProductInput('降价了：https://item.jd.com/100012043978.html.');
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'jd');
+  assert.equal(result.data.itemId, '100012043978');
+  assert.equal(result.data.canonicalUrl, 'https://item.jd.com/100012043978.html');
+});
+
 test('parseProductInput extracts a Taobao item id from share text', () => {
   const result = parseProductInput('看看这个 https://item.taobao.com/item.htm?id=726477321880&spm=a21 复制打开');
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'taobao');
+  assert.equal(result.data.itemId, '726477321880');
+  assert.equal(result.data.canonicalUrl, 'https://item.taobao.com/item.htm?id=726477321880');
+});
+
+test('parseProductInput trims sentence punctuation after a Taobao product URL', () => {
+  const result = parseProductInput('看看这个 https://item.taobao.com/item.htm?id=726477321880.');
   assert.equal(result.ok, true);
   assert.equal(result.data.platform, 'taobao');
   assert.equal(result.data.itemId, '726477321880');

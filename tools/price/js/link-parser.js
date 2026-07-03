@@ -7,10 +7,18 @@
 })(typeof self !== 'undefined' ? self : this, function() {
   var SHORT_LINK_HOSTS = ['m.tb.cn', 's.click.taobao.com', 'u.jd.com', '3.cn', 'p.pinduoduo.com'];
 
+  function stripTrailingPunctuation(url) {
+    var cleaned = String(url || '');
+    while (/[.,;!?，。；、)）\]]$/.test(cleaned)) {
+      cleaned = cleaned.slice(0, -1);
+    }
+    return cleaned;
+  }
+
   function extractFirstUrl(input) {
     var text = String(input || '').trim();
     var match = text.match(/https?:\/\/[^\s"'<>]+/i);
-    return match ? match[0].replace(/[，。；、)）\]]+$/, '') : '';
+    return match ? stripTrailingPunctuation(match[0]) : '';
   }
 
   function normalizePlatformLabel(platform) {

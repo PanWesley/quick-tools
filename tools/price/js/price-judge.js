@@ -34,6 +34,12 @@
     });
   }
 
+  function validPriceSnapshots(snapshots) {
+    return (snapshots || []).filter(function(snapshot) {
+      return toNumber(snapshot.finalPrice) > 0;
+    });
+  }
+
   function minPrice(snapshots) {
     var prices = pricesFromSnapshots(snapshots);
     return prices.length ? prices[0] : 0;
@@ -49,17 +55,21 @@
   function summarizeSnapshots(snapshots, nowIso) {
     var list = snapshots || [];
     var now = nowIso ? new Date(nowIso) : new Date();
-    var snapshots30d = list.filter(function(snapshot) {
+    var validSnapshots = validPriceSnapshots(list);
+    var snapshots30d = validSnapshots.filter(function(snapshot) {
       return isWithinDays(snapshot, now, 30);
     });
-    var snapshots90d = list.filter(function(snapshot) {
+    var snapshots90d = validSnapshots.filter(function(snapshot) {
       return isWithinDays(snapshot, now, 90);
     });
     var prices90d = pricesFromSnapshots(snapshots90d);
 
     return {
       snapshotCount: list.length,
-      historyMinPrice: minPrice(list),
+      validPriceCount: validSnapshots.length,
+      validPriceCount30d: snapshots30d.length,
+      validPriceCount90d: snapshots90d.length,
+      historyMinPrice: minPrice(validSnapshots),
       minPrice30d: minPrice(snapshots30d),
       minPrice90d: minPrice(snapshots90d),
       p20Price90d: calculatePercentile(prices90d, 20),
@@ -88,12 +98,24 @@
     var snapshots = options.snapshots || [];
     var summary = summarizeSnapshots(snapshots, options.nowIso);
 
-    if (summary.snapshotCount < 5 || current <= 0) {
+    if (current <= 0) {
+      return buildResult('insufficient', '数据不足', 45, '先记录有效的当前价格，再判断是否值得买。', ['当前价格无效'], summary);
+    }
+
+    if (summary.snapshotCount < 5) {
       return buildResult('insufficient', '数据不足', 45, '先记录几次价格，再判断是否值得买。', ['价格记录少于 5 条'], summary);
+    }
+
+    if (summary.validPriceCount < 5) {
+      return buildResult('insufficient', '数据不足', 45, '先记录几次有效价格，再判断是否值得买。', ['有效价格记录少于 5 条'], summary);
     }
 
     if (current <= summary.historyMinPrice) {
       return buildResult('history_low', '历史低价', 94, '当前价不高于已记录的历史最低价，刚需可以购买。', ['当前价不高于历史最低价', '已有足够本地价格记录'], summary);
+    }
+
+    if (summary.validPriceCount90d < 5) {
+      return buildResult('insufficient', '数据不足', 48, '近 90 天有效价格记录不足，先继续记录再判断近期高低。', ['近 90 天有效价格记录少于 5 条'], summary);
     }
 
     if (summary.p20Price90d && current <= summary.p20Price90d) {
