@@ -1,5 +1,5 @@
 /**
- * 真价助手 - Service Worker
+ * 买前省省 - Service Worker
  * Cache-first app shell for the standalone price tool.
  */
 

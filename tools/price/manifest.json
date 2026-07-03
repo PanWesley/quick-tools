@@ -1,6 +1,6 @@
 {
-  "name": "真价助手 - 买前查价",
-  "short_name": "真价助手",
+  "name": "买前省省 - 买前查价",
+  "short_name": "买前省省",
   "description": "本地优先的买前查价与真低价判断工具。",
   "start_url": "/tools/price/",
   "display": "standalone",

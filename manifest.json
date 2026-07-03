@@ -104,8 +104,8 @@
       "icons": [{ "src": "/icons/today-youxu-icon-96x96.png", "sizes": "96x96" }]
     },
     {
-      "name": "真价助手",
-      "short_name": "真价",
+      "name": "买前省省",
+      "short_name": "买前省省",
       "description": "买前查价与真低价判断",
       "url": "/tools/price/",
       "icons": [{ "src": "/icons/zhenjia-icon-96x96.png", "sizes": "96x96" }]

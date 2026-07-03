@@ -32,7 +32,7 @@
 
   function validateImportPayload(payload) {
     if (!payload || payload.app !== APP_ID) {
-      return fail('invalid_app', '导入文件不是真价助手的数据。');
+      return fail('invalid_app', '导入文件不是买前省省的数据。');
     }
     if (payload.version !== VERSION) {
       return fail('invalid_version', '导入文件版本不受支持。');

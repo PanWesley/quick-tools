@@ -433,7 +433,7 @@
     });
 
     $('#clear-button').addEventListener('click', function() {
-      if (confirm('确定清空真价助手的本地数据吗？')) {
+      if (confirm('确定清空买前省省的本地数据吗？')) {
         db.clearAll().then(loadAllData).then(function() {
           setMessage('data-message', '本地数据已清空。');
         });
