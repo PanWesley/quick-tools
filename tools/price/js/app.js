@@ -241,12 +241,46 @@
     });
   }
 
+  function sampleSnapshotsForSavedProduct(originalProductId, savedProductId) {
+    return sampleData.getSampleSnapshots(originalProductId).map(function(snapshot, index) {
+      return Object.assign({}, snapshot, {
+        id: 'sample_snap_' + savedProductId + '_' + index,
+        productId: savedProductId
+      });
+    });
+  }
+
+  function seedSampleSnapshots(product, originalProductId) {
+    var hasSampleSnapshots;
+    var writes;
+
+    if (!product || product.source !== 'sample') return Promise.resolve(product);
+
+    hasSampleSnapshots = state.snapshots.some(function(snapshot) {
+      return snapshot.productId === product.id && snapshot.source === 'sample';
+    });
+    if (hasSampleSnapshots) return Promise.resolve(product);
+
+    writes = sampleSnapshotsForSavedProduct(originalProductId || product.id, product.id);
+    if (!writes.length) return Promise.resolve(product);
+
+    return Promise.all(writes.map(function(snapshot) {
+      return db.addPriceSnapshot(snapshot);
+    })).then(loadAllData).then(function() {
+      state.activeProduct = state.products.find(function(item) {
+        return item.id === product.id;
+      }) || product;
+      return state.activeProduct;
+    });
+  }
+
   function ensureActiveProductSaved() {
     if (!state.activeProduct) return Promise.reject(new Error('missing active product'));
+    var originalProductId = state.activeProduct.id;
     var existing = state.products.find(function(product) {
       return product.id === state.activeProduct.id;
     });
-    if (existing) return Promise.resolve(existing);
+    if (existing) return seedSampleSnapshots(existing, originalProductId);
     return db.upsertProduct(Object.assign({}, state.activeProduct, {
       source: state.activeProduct.source === 'sample' ? 'sample' : state.activeProduct.source
     })).then(function(product) {
@@ -254,7 +288,7 @@
         state.activeProduct = state.products.find(function(item) {
           return item.id === product.id;
         }) || product;
-        return state.activeProduct;
+        return seedSampleSnapshots(state.activeProduct, originalProductId);
       });
     });
   }
