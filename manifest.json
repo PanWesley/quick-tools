@@ -101,14 +101,14 @@
       "short_name": "今日",
       "description": "日历、待办与习惯打卡，一起管理美好的今天",
       "url": "/tools/time/",
-      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/icons/today-youxu-icon-96x96.png", "sizes": "96x96" }]
     },
     {
       "name": "真价助手",
       "short_name": "真价",
       "description": "买前查价与真低价判断",
       "url": "/tools/price/",
-      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/icons/zhenjia-icon-96x96.png", "sizes": "96x96" }]
     }
   ],
   "related_applications": [],

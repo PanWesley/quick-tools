@@ -16,7 +16,10 @@ const APP_SHELL = [
   '/tools/time/js/db.js?v=102',
   '/tools/time/js/app.js?v=102',
   '/shared/css/pwa.css?v=2',
-  '/icons/icon-192x192.png'
+  '/icons/today-youxu-icon-96x96.png',
+  '/icons/today-youxu-icon-152x152.png',
+  '/icons/today-youxu-icon-192x192.png',
+  '/icons/today-youxu-icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {

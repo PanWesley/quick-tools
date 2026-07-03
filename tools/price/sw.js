@@ -3,7 +3,7 @@
  * Cache-first app shell for the standalone price tool.
  */
 
-const CACHE_NAME = 'zhenjia-assistant-v1';
+const CACHE_NAME = 'zhenjia-assistant-v2';
 const APP_SHELL = [
   '/tools/price/',
   '/tools/price/index.html',
@@ -19,7 +19,10 @@ const APP_SHELL = [
   '/shared/css/pwa.css?v=2',
   '/shared/js/site-analytics-utils.js?v=1',
   '/shared/js/site-analytics.js?v=1',
-  '/icons/icon-192x192.png'
+  '/icons/zhenjia-icon-96x96.png',
+  '/icons/zhenjia-icon-152x152.png',
+  '/icons/zhenjia-icon-192x192.png',
+  '/icons/zhenjia-icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {

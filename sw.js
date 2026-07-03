@@ -3,7 +3,7 @@
  * 提供离线缓存和 PWA 支持
  */
 
-const CACHE_NAME = 'quick-tools-v2';
+const CACHE_NAME = 'quick-tools-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -19,7 +19,11 @@ const STATIC_ASSETS = [
   '/tools/expense/',
   '/tools/time/',
   '/tools/price/',
-  '/manifest.json'
+  '/manifest.json',
+  '/icons/today-youxu-icon-96x96.png',
+  '/icons/today-youxu-icon-192x192.png',
+  '/icons/zhenjia-icon-96x96.png',
+  '/icons/zhenjia-icon-192x192.png'
 ];
 
 // 安装时缓存静态资源
