@@ -57,6 +57,29 @@
     return product;
   }
 
+  function backfillProductIdentities(store) {
+    var seen = {};
+    var request = store.openCursor();
+    request.onsuccess = function(event) {
+      var cursor = event.target.result;
+      var product;
+      var identity;
+
+      if (!cursor) return;
+
+      product = cursor.value || {};
+      identity = buildProductIdentity(product);
+      if (identity && !product.productIdentity && !seen[identity]) {
+        product.productIdentity = identity;
+        seen[identity] = true;
+        cursor.update(product);
+      } else if (identity && product.productIdentity) {
+        seen[product.productIdentity] = true;
+      }
+      cursor.continue();
+    };
+  }
+
   function assertStoreName(storeName) {
     if (STORE_NAMES.indexOf(storeName) === -1) {
       throw new Error('Unknown store: ' + storeName);
@@ -82,6 +105,7 @@
           products = db.createObjectStore('products', { keyPath: 'id' });
         } else {
           products = event.target.transaction.objectStore('products');
+          backfillProductIdentities(products);
         }
         ensureIndex(products, 'platformItem', ['platform', 'itemId'], { unique: false });
         ensureIndex(products, 'productIdentity', 'productIdentity', { unique: true });
@@ -209,11 +233,17 @@
       var store = transaction.objectStore('products');
 
       return requestToPromise(store.getAll()).then(function(products) {
+        var exactMatch;
+        var computedMatch;
+
         closeDatabase(db);
-        return products.find(function(product) {
-          return product.productIdentity === productIdentity ||
-            buildProductIdentity(product) === productIdentity;
-        }) || null;
+        exactMatch = products.find(function(product) {
+          return product.productIdentity === productIdentity;
+        });
+        computedMatch = products.find(function(product) {
+          return buildProductIdentity(product) === productIdentity;
+        });
+        return exactMatch || computedMatch || null;
       }, function(error) {
         closeDatabase(db);
         throw error;
@@ -241,13 +271,9 @@
       updatedAt: timestamp
     }));
 
-    if (incoming.id) {
-      return writeWithOp('products', incoming, 'upsert');
-    }
-
     return findExistingProduct(incoming.productIdentity).then(function(existing) {
       var product = withProductIdentity(Object.assign({}, existing || {}, incoming, {
-        id: existing && existing.id ? existing.id : createId('product'),
+        id: existing && existing.id ? existing.id : incoming.id || createId('product'),
         createdAt: existing && existing.createdAt ? existing.createdAt : incoming.createdAt,
         updatedAt: timestamp
       }));
