@@ -16,11 +16,23 @@
 
   function toNumber(value) {
     var number = Number(value);
-    return Number.isFinite(number) ? number : 0;
+    return Number.isFinite(number) ? number : NaN;
+  }
+
+  function isValidDate(value) {
+    return !Number.isNaN(new Date(value).getTime());
+  }
+
+  function isValidSnapshot(snapshot) {
+    return snapshot && Number.isFinite(toNumber(snapshot.finalPrice)) &&
+      toNumber(snapshot.finalPrice) > 0 &&
+      isValidDate(snapshot.capturedAt);
   }
 
   function formatPrice(price) {
-    return '￥' + toNumber(price).toFixed(0);
+    var number = toNumber(price);
+    if (!Number.isFinite(number)) number = 0;
+    return '￥' + (Number.isInteger(number) ? String(number) : number.toFixed(2));
   }
 
   function formatDateLabel(value) {
@@ -36,8 +48,8 @@
   function renderPriceChart(container, snapshots) {
     if (!container) return;
 
-    var list = (snapshots || []).slice().sort(function(a, b) {
-      return String(a.capturedAt || '').localeCompare(String(b.capturedAt || ''));
+    var list = (snapshots || []).filter(isValidSnapshot).sort(function(a, b) {
+      return new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime();
     });
     if (list.length < 2) {
       renderEmpty(container);

@@ -6,7 +6,7 @@
   }
 })(typeof self !== 'undefined' ? self : this, function() {
   var DB_NAME = 'zhenjiaAssistantDB';
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var STORE_NAMES = ['products', 'priceSnapshots', 'watches', 'opLogs'];
 
   function nowIso() {
@@ -23,6 +23,38 @@
     if (storeName === 'watches') return 'watch';
     if (storeName === 'opLogs') return 'opLog';
     return String(storeName || '').replace(/s$/, '');
+  }
+
+  function ensureIndex(store, name, keyPath, options) {
+    if (!store.indexNames.contains(name)) {
+      store.createIndex(name, keyPath, options || { unique: false });
+    }
+  }
+
+  function normalizeIdentityPart(value) {
+    return String(value || '').trim();
+  }
+
+  function buildProductIdentity(input) {
+    var product = input || {};
+    var platform = normalizeIdentityPart(product.platform || 'unknown').toLowerCase();
+    var itemId = normalizeIdentityPart(product.itemId);
+    var variantKey = normalizeIdentityPart(product.skuId) ||
+      normalizeIdentityPart(product.canonicalUrl) ||
+      normalizeIdentityPart(product.rawUrl);
+
+    if (!itemId && !variantKey) return '';
+    return [platform, itemId, variantKey].join('|');
+  }
+
+  function withProductIdentity(product) {
+    var identity = buildProductIdentity(product);
+    if (identity) {
+      product.productIdentity = identity;
+    } else {
+      delete product.productIdentity;
+    }
+    return product;
   }
 
   function assertStoreName(storeName) {
@@ -48,24 +80,33 @@
 
         if (!db.objectStoreNames.contains('products')) {
           products = db.createObjectStore('products', { keyPath: 'id' });
-          products.createIndex('platformItem', ['platform', 'itemId'], { unique: false });
-          products.createIndex('source', 'source', { unique: false });
+        } else {
+          products = event.target.transaction.objectStore('products');
         }
+        ensureIndex(products, 'platformItem', ['platform', 'itemId'], { unique: false });
+        ensureIndex(products, 'productIdentity', 'productIdentity', { unique: true });
+        ensureIndex(products, 'source', 'source', { unique: false });
         if (!db.objectStoreNames.contains('priceSnapshots')) {
           snapshots = db.createObjectStore('priceSnapshots', { keyPath: 'id' });
-          snapshots.createIndex('productId', 'productId', { unique: false });
-          snapshots.createIndex('capturedAt', 'capturedAt', { unique: false });
+        } else {
+          snapshots = event.target.transaction.objectStore('priceSnapshots');
         }
+        ensureIndex(snapshots, 'productId', 'productId', { unique: false });
+        ensureIndex(snapshots, 'capturedAt', 'capturedAt', { unique: false });
         if (!db.objectStoreNames.contains('watches')) {
           watches = db.createObjectStore('watches', { keyPath: 'id' });
-          watches.createIndex('productId', 'productId', { unique: false });
-          watches.createIndex('enabled', 'enabled', { unique: false });
+        } else {
+          watches = event.target.transaction.objectStore('watches');
         }
+        ensureIndex(watches, 'productId', 'productId', { unique: false });
+        ensureIndex(watches, 'enabled', 'enabled', { unique: false });
         if (!db.objectStoreNames.contains('opLogs')) {
           opLogs = db.createObjectStore('opLogs', { keyPath: 'id' });
-          opLogs.createIndex('entityType', 'entityType', { unique: false });
-          opLogs.createIndex('syncState', 'syncState', { unique: false });
+        } else {
+          opLogs = event.target.transaction.objectStore('opLogs');
         }
+        ensureIndex(opLogs, 'entityType', 'entityType', { unique: false });
+        ensureIndex(opLogs, 'syncState', 'syncState', { unique: false });
       };
       request.onsuccess = function(event) {
         resolve(event.target.result);
@@ -160,10 +201,29 @@
     });
   }
 
+  function findExistingProduct(productIdentity) {
+    if (!productIdentity) return Promise.resolve(null);
+
+    return openDatabase().then(function(db) {
+      var transaction = db.transaction('products', 'readonly');
+      var store = transaction.objectStore('products');
+
+      return requestToPromise(store.getAll()).then(function(products) {
+        closeDatabase(db);
+        return products.find(function(product) {
+          return product.productIdentity === productIdentity ||
+            buildProductIdentity(product) === productIdentity;
+        }) || null;
+      }, function(error) {
+        closeDatabase(db);
+        throw error;
+      });
+    });
+  }
+
   function upsertProduct(input) {
     var timestamp = nowIso();
-    var product = Object.assign({
-      id: createId('product'),
+    var defaults = {
       platform: 'unknown',
       itemId: '',
       skuId: '',
@@ -176,10 +236,23 @@
       source: '',
       createdAt: timestamp,
       updatedAt: timestamp
-    }, input || {}, {
+    };
+    var incoming = withProductIdentity(Object.assign({}, defaults, input || {}, {
       updatedAt: timestamp
+    }));
+
+    if (incoming.id) {
+      return writeWithOp('products', incoming, 'upsert');
+    }
+
+    return findExistingProduct(incoming.productIdentity).then(function(existing) {
+      var product = withProductIdentity(Object.assign({}, existing || {}, incoming, {
+        id: existing && existing.id ? existing.id : createId('product'),
+        createdAt: existing && existing.createdAt ? existing.createdAt : incoming.createdAt,
+        updatedAt: timestamp
+      }));
+      return writeWithOp('products', product, existing ? 'update' : 'create');
     });
-    return writeWithOp('products', product, 'upsert');
   }
 
   function addPriceSnapshot(input) {
