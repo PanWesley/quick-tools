@@ -1,4 +1,17 @@
 {
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.billnest.top"
+        }
+      ],
+      "destination": "/tools/expense/",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/shared/(.*)\\.(css|js)",
@@ -74,6 +87,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/quick-tools", "destination": "/index.html" },
+    { "source": "/quick-tools/", "destination": "/index.html" },
     { "source": "/tools/expense", "destination": "/tools/expense/" },
     { "source": "/tools/expense/", "destination": "/tools/expense/index.html" },
     { "source": "/tools/time", "destination": "/tools/time/" },

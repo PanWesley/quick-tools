@@ -108,6 +108,9 @@
 ### 在线使用
 直接访问 https://quick-tools-nine.vercel.app/ 即可使用
 
+- 生活账单独立入口：`https://www.billnest.top/` 会进入 `/tools/expense/`
+- 工具箱首页备用入口：`/quick-tools/`
+
 ### 本地运行
 ```bash
 # 克隆仓库
@@ -167,6 +170,7 @@ quick-tools/
 ## 📝 更新日志
 
 ### 2026-07
+- 🌐 新增 BillNest 域名入口，`www.billnest.top` 默认进入生活账单，工具箱首页可通过 `/quick-tools/` 访问。
 - 🧾 新增买前省省买前查价 PWA，支持商品链接解析、本地价格曲线、真低价判断、关注目标价和 JSON 备份。
 - ✨ 新增今日有序时间管理 PWA，支持今日待办、习惯打卡、日历和每日一句。
 - ♻️ 今日有序新增任务编辑、最近删除恢复和 JSON 合并导入。
