@@ -23,7 +23,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/expense-icon-192x192.png">
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
-<title>生活账单 - Expense Tracker</title>
+<title>BillNest - 隐私记账本</title>
 <link rel="stylesheet" href="/tools/expense/css/style.css?v=169">
 </head>
 <body>
@@ -31,7 +31,7 @@
 <header id="app-header" data-active-view="add">
   <a class="logo" href="." onclick="switchView('add'); return false;">
     <span style="width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, #2DBAA3 0%, #1a7f6b 100%); display: inline-flex; align-items: center; justify-content: center; font-size: 15px;" aria-hidden="true">💰</span>
-    <h1>Expense Tracker</h1>
+    <h1>BillNest</h1>
   </a>
   <div class="header-actions">
     <button class="theme-toggle" onclick="switchView('settings')" title="设置" aria-label="打开设置">
@@ -41,6 +41,108 @@
 </header>
 
 <main id="app">
+  <!-- Product Onboarding View -->
+  <section class="view-section" id="view-onboarding">
+    <div class="onboarding-shell">
+      <section class="onboarding-hero onboarding-panel">
+        <div class="onboarding-copy">
+          <div class="onboarding-eyebrow"><span></span>隐私优先的生活账本</div>
+          <h2>先记第一笔，再看懂每个月的钱去哪了。</h2>
+          <p>BillNest 把账单数据留在你的浏览器里，支持自然语言快速记账、Excel 导入、趋势分析和加密备份。</p>
+          <div class="onboarding-actions">
+            <button class="btn-primary" type="button" onclick="startFromOnboarding()">立即开始记账</button>
+            <button class="btn-secondary" type="button" onclick="importFromOnboarding()">导入 Excel / CSV</button>
+            <button class="btn-secondary" type="button" onclick="tryDemoFromOnboarding()">体验演示数据</button>
+          </div>
+          <div class="onboarding-demo-line">
+            <span class="onboarding-typing">午饭 32，咖啡 18，地铁 6</span>
+            <small>自动拆成 3 条账单，并按餐饮、交通归类</small>
+          </div>
+        </div>
+
+        <div class="onboarding-trust-grid">
+          <div class="onboarding-trust">
+            <span class="onboarding-icon">🔒</span>
+            <strong>账单不上云</strong>
+            <small>金额、备注、标签默认只存在当前设备浏览器。</small>
+          </div>
+          <div class="onboarding-trust">
+            <span class="onboarding-icon">📄</span>
+            <strong>Excel 用户友好</strong>
+            <small>先导入旧表，再慢慢用手机继续记录。</small>
+          </div>
+          <div class="onboarding-trust">
+            <span class="onboarding-icon">⬇</span>
+            <strong>像 App 一样用</strong>
+            <small>添加到主屏幕，离线也能打开记一笔。</small>
+          </div>
+        </div>
+      </section>
+
+      <aside class="onboarding-phone-panel onboarding-panel">
+        <div class="onboarding-orbit" aria-hidden="true"></div>
+        <div class="onboarding-phone">
+          <div class="onboarding-phone-status"></div>
+          <div class="onboarding-phone-body">
+            <div class="onboarding-phone-top">
+              <strong>BillNest</strong>
+              <span>本月</span>
+            </div>
+            <div class="onboarding-amount-card">
+              <small>本月支出</small>
+              <strong>¥3,286</strong>
+              <span>比上月少 12% · 86 笔</span>
+            </div>
+            <div class="onboarding-chart" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="onboarding-feed">
+              <div class="onboarding-feed-list">
+                <div><span>午饭 · 餐饮</span><strong>¥32</strong></div>
+                <div><span>咖啡 · 餐饮</span><strong>¥18</strong></div>
+                <div><span>地铁 · 交通</span><strong>¥6</strong></div>
+                <div><span>超市 · 日用</span><strong>¥128</strong></div>
+                <div><span>会员 · 订阅</span><strong>¥25</strong></div>
+                <div><span>药店 · 健康</span><strong>¥75</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="onboarding-install-tip">
+          <span>⬇</span>
+          <p><strong>添加到主屏幕</strong><br>完成第一笔后轻提示，不打断新手流程</p>
+        </div>
+      </aside>
+    </div>
+
+    <section class="onboarding-ai-preview">
+      <div class="onboarding-ai-copy">
+        <span class="onboarding-ai-kicker">智能分析预览</span>
+        <h3>不只记账，帮你看懂消费信号。</h3>
+        <p>本月钱花在哪、哪些支出异常、哪些订阅可以停、月底大概会花多少，都可以在后续高级分析里持续展开。</p>
+      </div>
+      <div class="onboarding-ai-cards">
+        <div class="onboarding-ai-card">
+          <small>预计月底支出</small>
+          <strong>¥4,920</strong>
+          <span>低于上月 8%</span>
+        </div>
+        <div class="onboarding-ai-card">
+          <small>异常消费</small>
+          <strong>3 项</strong>
+          <span>餐饮、订阅、交通</span>
+        </div>
+        <div class="onboarding-ai-card">
+          <small>可优化空间</small>
+          <strong>¥186</strong>
+          <span>来自低频订阅</span>
+        </div>
+      </div>
+    </section>
+
+    <button class="onboarding-skip" type="button" onclick="dismissOnboarding()">跳过，直接进入记账</button>
+  </section>
+
   <!-- Dashboard View -->
   <section class="view-section" id="view-dashboard">
     <div class="dashboard-header">
@@ -516,6 +618,23 @@
         </div>
         <button class="btn-secondary" onclick="showGuideAgain()">🚀 显示引导</button>
       </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">启动时显示欢迎页</span>
+          <span class="setting-desc">适合演示或重新体验产品首页；关闭后不会每次打扰老用户</span>
+        </div>
+        <label class="toggle-switch" aria-label="启动时显示欢迎页">
+          <input type="checkbox" id="onboarding-startup-toggle" onchange="handleOnboardingStartupToggle(this)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">查看欢迎页</span>
+          <span class="setting-desc">手动打开 BillNest 产品首页，不改变当前数据</span>
+        </div>
+        <button class="btn-secondary" onclick="showOnboardingFromSettings()">查看首页</button>
+      </div>
     </div>
     <div class="settings-group">
       <h3>隐私</h3>
@@ -723,6 +842,7 @@
 <script src="/tools/expense/js/import-export.js?v=169"></script>
 <script src="/tools/expense/js/guide.js?v=169"></script>
 <script src="/tools/expense/js/expense-list-utils.js?v=169"></script>
+<script src="/tools/expense/js/onboarding.js?v=169"></script>
 <script src="/tools/expense/js/app.js?v=169"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
@@ -818,6 +938,7 @@ function switchView(viewName, skipHistory) {
   if (navBtn) navBtn.classList.add('active');
   const header = document.getElementById('app-header');
   if (header) header.setAttribute('data-active-view', viewName);
+  document.body.setAttribute('data-active-view', viewName);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   // Push state for browser back button support

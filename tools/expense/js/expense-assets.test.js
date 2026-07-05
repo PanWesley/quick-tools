@@ -17,6 +17,10 @@ const requiredScripts = [
   '/tools/expense/js/backup-ui.js'
 ];
 
+const appDependencyScripts = [
+  '/tools/expense/js/onboarding.js'
+];
+
 const analyticsScripts = [
   '/shared/js/site-analytics-utils.js',
   '/shared/js/site-analytics.js'
@@ -61,6 +65,17 @@ analyticsScripts.forEach((source) => {
   assert.ok(
     scriptSources.indexOf(source) > appIndex,
     `${source} must load after app.js so it can wrap app navigation without blocking startup`
+  );
+  assert.match(
+    serviceWorker,
+    new RegExp(`['"]${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`),
+    `${source} must be cached by the service worker`
+  );
+});
+appDependencyScripts.forEach((source) => {
+  assert.ok(
+    scriptSources.indexOf(source) < appIndex,
+    `${source} must load before app.js`
   );
   assert.match(
     serviceWorker,
@@ -149,15 +164,25 @@ assert.doesNotMatch(
   'startup must not render list and dashboard before those views are opened'
 );
 const initialHashIndex = appSource.indexOf('const initialHash = window.location.hash;');
-const firstVisitIndex = appSource.indexOf('// First visit: use enableDemoMode()');
+const firstVisitIndex = appSource.indexOf('const expenses = await getExpenses();');
 assert.ok(
   initialHashIndex !== -1 && firstVisitIndex !== -1 && initialHashIndex < firstVisitIndex,
   'initial hash route should switch the visible shell before first-visit data work'
 );
 assert.match(
   appSource,
-  /if \(show && initialView === 'add'\)/,
+  /if \(show && initialView === 'add' && !shouldShowProductOnboarding\)/,
   'first-visit guide should not steal non-add hash routes during startup'
+);
+assert.match(
+  appSource,
+  /BillNestOnboarding/,
+  'startup should consult BillNest onboarding display policy'
+);
+assert.doesNotMatch(
+  appSource,
+  /await enableDemoMode\(\);\s*\/\/ Refresh in-memory tag state/,
+  'new users should choose demo mode from onboarding instead of getting demo data automatically'
 );
 
 console.log('expense asset loading tests passed');

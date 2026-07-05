@@ -114,20 +114,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.switchView(initialView, true);
   }
 
-  // First visit: use enableDemoMode() for consistent 20-sample data + proper backup
   const expenses = await getExpenses();
-  const hasSeenBefore = localStorage.getItem('expense_data_initialized');
-  if (expenses.length === 0 && !hasSeenBefore) {
+  const hasInitializedBefore = localStorage.getItem('expense_data_initialized');
+  if (!hasInitializedBefore) {
+    localStorage.setItem('expense_data_initialized', '1');
+  }
+
+  let shouldShowProductOnboarding = false;
+  try {
+    const onboarding = window.BillNestOnboarding;
+    if (onboarding && typeof onboarding.shouldShowOnboarding === 'function') {
+      const [seen, showOnStart] = await Promise.all([
+        getSettings(onboarding.SETTING_SEEN, false),
+        getSettings(onboarding.SETTING_SHOW_ON_START, false)
+      ]);
+      shouldShowProductOnboarding = onboarding.shouldShowOnboarding({
+        initialView,
+        expenseCount: expenses.length,
+        seen,
+        showOnStart
+      });
+      if (shouldShowProductOnboarding && typeof window.switchView === 'function') {
+        window.switchView('onboarding', true);
+      }
+    }
+  } catch (e) {
+    console.error('Onboarding init error:', e);
+  }
+
+  if (expenses.length === 0 && !hasInitializedBefore && !shouldShowProductOnboarding) {
     try {
-      await enableDemoMode();
-      // Refresh in-memory tag state (allTags/allTagGroups were loaded before enableDemoMode cleared+recreated DB)
-      await loadTags();
       localStorage.setItem('expense_data_initialized', '1');
     } catch (e) {
-      console.error('Enable demo mode failed:', e);
+      console.error('First-visit init failed:', e);
     }
-  } else {
-    localStorage.setItem('expense_data_initialized', '1');
   }
 
   if (window.ExpenseBackupUI) {
@@ -139,7 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize guide on first visit
   try {
     const show = await shouldShowGuide();
-    if (show && initialView === 'add') {
+    if (show && initialView === 'add' && !shouldShowProductOnboarding) {
       setTimeout(() => showGuide(), 600);
     }
   } catch (e) {
@@ -148,6 +168,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Update demo mode toggle state
   updateDemoToggleUI();
+  updateOnboardingSettingsUI();
 
   // Override switchView to trigger view-specific rendering
   // Must be done here (after index.html's inline script defines switchView)
@@ -162,6 +183,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderExpenseList();
     } else if (viewName === 'tags') {
       loadTags();
+    } else if (viewName === 'onboarding') {
+      if (window.ExpenseBackupUI) window.ExpenseBackupUI.refresh().catch(() => {});
     } else if (viewName === 'add' && _appReady) {
       setTimeout(() => {
         const amountInput = document.getElementById('exp-amount');
@@ -3482,3 +3505,78 @@ async function generateTestData() {
 
 // Expose for manual trigger
 window.generateTestData = generateTestData;
+
+// ============================================
+// Product Onboarding
+// ============================================
+
+async function markOnboardingSeen() {
+  const onboarding = window.BillNestOnboarding;
+  if (!onboarding || typeof setSettings !== 'function') return;
+  await setSettings(onboarding.SETTING_SEEN, true);
+  await updateOnboardingSettingsUI();
+}
+
+async function updateOnboardingSettingsUI() {
+  const onboarding = window.BillNestOnboarding;
+  if (!onboarding || typeof getSettings !== 'function') return;
+  const toggle = document.getElementById('onboarding-startup-toggle');
+  if (!toggle) return;
+  const [seen, showOnStart] = await Promise.all([
+    getSettings(onboarding.SETTING_SEEN, false),
+    getSettings(onboarding.SETTING_SHOW_ON_START, false)
+  ]);
+  const state = onboarding.buildOnboardingSettingsState({
+    seen,
+    showOnStart
+  });
+  toggle.checked = state.checked;
+}
+
+window.startFromOnboarding = async function() {
+  await markOnboardingSeen();
+  switchView('add');
+};
+
+window.importFromOnboarding = function() {
+  markOnboardingSeen().catch(() => {});
+  switchView('settings');
+  const input = document.getElementById('import-file-input');
+  if (input) input.click();
+};
+
+window.tryDemoFromOnboarding = async function() {
+  try {
+    await markOnboardingSeen();
+    await enableDemoMode();
+    await loadTags();
+    await renderExpenseList();
+    await refreshDashboard();
+    updateDemoToggleUI();
+    showToast('演示模式已开启');
+    switchView('dashboard');
+  } catch (error) {
+    showToast('演示模式开启失败: ' + error.message);
+  }
+};
+
+window.dismissOnboarding = async function() {
+  await markOnboardingSeen();
+  switchView('add');
+};
+
+window.handleOnboardingStartupToggle = async function(checkbox) {
+  const onboarding = window.BillNestOnboarding;
+  if (!onboarding) return;
+  await setSettings(onboarding.SETTING_SHOW_ON_START, Boolean(checkbox.checked));
+  if (checkbox.checked) {
+    await setSettings(onboarding.SETTING_SEEN, true);
+  }
+  await updateOnboardingSettingsUI();
+  showToast(checkbox.checked ? '启动时会显示欢迎页' : '启动时不再显示欢迎页');
+};
+
+window.showOnboardingFromSettings = async function() {
+  await markOnboardingSeen();
+  switchView('onboarding');
+};

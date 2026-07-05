@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
   '/tools/expense/js/import-export.js',
   '/tools/expense/js/guide.js',
   '/tools/expense/js/expense-list-utils.js',
+  '/tools/expense/js/onboarding.js',
   '/tools/expense/js/app.js',
   '/shared/css/pwa.css',
   '/shared/js/site-analytics-utils.js',
