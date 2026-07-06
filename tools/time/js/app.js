@@ -12,6 +12,7 @@
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth(),
     calendarCollapsed: false,
+    listFilter: 'inbox',
     search: '',
     editingTaskId: ''
   };
@@ -141,6 +142,19 @@
 
   function renderEmpty(text) {
     return '<p class="empty-state">' + escapeHtml(text) + '</p>';
+  }
+
+  function tomorrowKey() {
+    return DateUtils.toDateKey(DateUtils.addDays(DateUtils.fromDateKey(appState.todayKey), 1));
+  }
+
+  function listConfig(filter) {
+    return {
+      inbox: { title: '未安排', subtitle: '还没定日期的任务，适合先收集想法。', empty: '没有未安排任务。新增任务时选择“未安排”即可放到这里。' },
+      upcoming: { title: '之后要做', subtitle: '今天之后的任务，按日期从近到远排列。', empty: '还没有未来任务。' },
+      completed: { title: '已完成', subtitle: '最近完成的任务记录，最多显示 20 条。', empty: '还没有完成记录。' },
+      deleted: { title: '已删除', subtitle: '最近删除的任务，可以从这里恢复。', empty: '最近没有删除的任务。' }
+    }[filter] || { title: '未安排', subtitle: '还没定日期的任务，适合先收集想法。', empty: '没有未安排任务。' };
   }
 
   function renderTask(task, options) {
@@ -326,14 +340,35 @@
     var upcoming = State.getUpcomingTasks(tasks, appState.todayKey);
     var completed = State.getCompletedTasks(tasks).slice(0, 20);
     var deleted = State.getDeletedTasks(appState.data.tasks).slice(0, 20);
-    els.inboxList.innerHTML = inbox.length ? inbox.map(renderTask).join('') : renderEmpty('收集箱为空。');
-    els.upcomingList.innerHTML = upcoming.length ? upcoming.map(renderTask).join('') : renderEmpty('还没有未来任务。');
-    els.completedList.innerHTML = completed.length ? completed.map(function(task) {
-      return renderTask(task, { complete: false, delete: false });
-    }).join('') : renderEmpty('还没有完成记录。');
-    els.deletedList.innerHTML = deleted.length ? deleted.map(function(task) {
-      return renderTask(task, { complete: false, edit: false, restore: true });
-    }).join('') : renderEmpty('最近没有删除的任务。');
+    var groups = {
+      inbox: inbox,
+      upcoming: upcoming,
+      completed: completed,
+      deleted: deleted
+    };
+    var config = listConfig(appState.listFilter);
+    var current = groups[appState.listFilter] || inbox;
+    els.inboxCount.textContent = inbox.length;
+    els.upcomingCount.textContent = upcoming.length;
+    els.completedCount.textContent = completed.length;
+    els.deletedCount.textContent = deleted.length;
+    els.listCurrentTitle.textContent = config.title;
+    els.listCurrentSubtitle.textContent = config.subtitle;
+    els.listCurrentCount.textContent = current.length;
+    document.querySelectorAll('[data-list-filter]').forEach(function(button) {
+      button.classList.toggle('active', button.dataset.listFilter === appState.listFilter);
+    });
+    if (appState.listFilter === 'completed') {
+      els.taskList.innerHTML = current.length ? current.map(function(task) {
+        return renderTask(task, { complete: false, delete: false });
+      }).join('') : renderEmpty(config.empty);
+    } else if (appState.listFilter === 'deleted') {
+      els.taskList.innerHTML = current.length ? current.map(function(task) {
+        return renderTask(task, { complete: false, edit: false, restore: true });
+      }).join('') : renderEmpty(config.empty);
+    } else {
+      els.taskList.innerHTML = current.length ? current.map(renderTask).join('') : renderEmpty(config.empty);
+    }
   }
 
   function render() {
@@ -360,13 +395,36 @@
     }
   }
 
+  function setChoiceValue(targetId, value) {
+    var input = $(targetId);
+    if (!input) return;
+    input.value = value;
+    document.querySelectorAll('[data-choice-target="' + targetId + '"]').forEach(function(button) {
+      button.classList.toggle('active', button.dataset.choiceValue === value);
+    });
+    if (targetId === 'quick-type') {
+      document.body.classList.toggle('quick-is-habit', value === 'habit');
+    }
+  }
+
+  function setQuickDate(dateKey) {
+    els.quickDate.value = dateKey || '';
+    if (els.quickDatePicker) els.quickDatePicker.value = dateKey || '';
+    document.querySelectorAll('[data-date-preset]').forEach(function(button) {
+      var preset = button.dataset.datePreset;
+      var presetValue = preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : '';
+      button.classList.toggle('active', presetValue === (dateKey || ''));
+    });
+  }
+
   function openSheet() {
     appState.editingTaskId = '';
     $('quick-sheet-title').textContent = '快速新增';
     els.quickEditId.value = '';
     els.quickType.disabled = false;
-    els.quickDate.value = appState.todayKey;
-    els.quickPriority.value = 'medium';
+    setChoiceValue('quick-type', 'task');
+    setChoiceValue('quick-priority', 'medium');
+    setQuickDate('');
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     els.quickTitle.focus();
@@ -377,6 +435,9 @@
     els.quickSheet.hidden = true;
     els.quickForm.reset();
     els.quickType.disabled = false;
+    setChoiceValue('quick-type', 'task');
+    setChoiceValue('quick-priority', 'medium');
+    setQuickDate('');
     appState.editingTaskId = '';
   }
 
@@ -490,11 +551,11 @@
     appState.editingTaskId = id;
     $('quick-sheet-title').textContent = '编辑任务';
     els.quickEditId.value = id;
-    els.quickType.value = 'task';
+    setChoiceValue('quick-type', 'task');
     els.quickType.disabled = true;
     els.quickTitle.value = task.title || '';
-    els.quickDate.value = task.date || '';
-    els.quickPriority.value = task.priority || 'none';
+    setQuickDate(task.date || '');
+    setChoiceValue('quick-priority', normalizePriority(task.priority));
     els.quickNotes.value = task.notes || '';
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
@@ -583,12 +644,15 @@
     els.selectedDateSubtitle = $('selected-date-subtitle');
     els.selectedDateList = $('selected-date-list');
     els.taskSearch = $('task-search');
-    els.inboxList = $('inbox-list');
-    els.upcomingList = $('upcoming-list');
-    els.completedList = $('completed-list');
-    els.deletedList = $('deleted-list');
+    els.taskList = $('task-list');
+    els.inboxCount = $('inbox-count');
+    els.upcomingCount = $('upcoming-count');
+    els.completedCount = $('completed-count');
+    els.deletedCount = $('deleted-count');
+    els.listCurrentTitle = $('list-current-title');
+    els.listCurrentSubtitle = $('list-current-subtitle');
+    els.listCurrentCount = $('list-current-count');
     els.openAdd = $('open-add');
-    els.openAddInline = $('open-add-inline');
     els.closeAdd = $('close-add');
     els.cancelAdd = $('cancel-add');
     els.quickSheet = $('quick-sheet');
@@ -598,6 +662,7 @@
     els.quickType = $('quick-type');
     els.quickTitle = $('quick-title');
     els.quickDate = $('quick-date');
+    els.quickDatePicker = $('quick-date-picker');
     els.quickPriority = $('quick-priority');
     els.quickNotes = $('quick-notes');
     els.exportButton = $('export-button');
@@ -619,7 +684,6 @@
         switchView(link.dataset.viewLink);
       });
     });
-    $('settings-button').addEventListener('click', function() { switchView('profile'); });
     $('prev-month').addEventListener('click', function() { changeMonth(-1); });
     $('today-month').addEventListener('click', jumpToTodayMonth);
     $('next-month').addEventListener('click', function() { changeMonth(1); });
@@ -628,16 +692,36 @@
       renderCalendar();
     });
     els.openAdd.addEventListener('click', openSheet);
-    if (els.openAddInline) els.openAddInline.addEventListener('click', openSheet);
     els.closeAdd.addEventListener('click', closeSheet);
     els.cancelAdd.addEventListener('click', closeSheet);
     els.sheetBackdrop.addEventListener('click', closeSheet);
     els.quickForm.addEventListener('submit', handleQuickSubmit);
+    document.querySelectorAll('[data-choice-target]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        if (button.dataset.choiceTarget === 'quick-type' && appState.editingTaskId) return;
+        setChoiceValue(button.dataset.choiceTarget, button.dataset.choiceValue);
+      });
+    });
+    document.querySelectorAll('[data-date-preset]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var preset = button.dataset.datePreset;
+        setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : '');
+      });
+    });
+    els.quickDatePicker.addEventListener('change', function() {
+      setQuickDate(els.quickDatePicker.value);
+    });
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);
     els.taskSearch.addEventListener('input', function() {
       appState.search = els.taskSearch.value;
       renderLists();
+    });
+    document.querySelectorAll('[data-list-filter]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        appState.listFilter = button.dataset.listFilter;
+        renderLists();
+      });
     });
     els.exportButton.addEventListener('click', exportData);
     els.importButton.addEventListener('click', handleImportClick);
