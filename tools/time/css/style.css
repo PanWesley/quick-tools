@@ -19,6 +19,30 @@
   --radius: 8px;
 }
 
+[data-palette="sky"] {
+  --primary: #4aa3ff;
+  --primary-strong: #1f6fb8;
+  --primary-soft: #eaf5ff;
+  --accent: #78c6ff;
+  --mint: #62c7d9;
+  --mint-soft: #e8f8fb;
+  --bg: #f3f9ff;
+  --border: #d8e9f7;
+  --shadow: 0 14px 34px rgba(74, 139, 202, 0.12);
+}
+
+[data-palette="mint"] {
+  --primary: #42b883;
+  --primary-strong: #1f7d5a;
+  --primary-soft: #e8f8f1;
+  --accent: #78d9af;
+  --mint: #42b883;
+  --mint-soft: #e3f7ee;
+  --bg: #f3fbf6;
+  --border: #d7ebdf;
+  --shadow: 0 14px 34px rgba(66, 160, 120, 0.12);
+}
+
 [data-theme="dark"] {
   --bg: #21161b;
   --surface: #2a1d23;
@@ -876,6 +900,67 @@ textarea {
   border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
 }
 
+.settings-card {
+  display: grid;
+  gap: 12px;
+}
+
+.theme-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-preset {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 70px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.theme-preset.active {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.theme-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 18px rgba(90, 58, 36, 0.14);
+}
+
+.theme-swatch.orange { background: linear-gradient(135deg, #ff7a8a, #ff8a2a); }
+.theme-swatch.sky { background: linear-gradient(135deg, #78c6ff, #4aa3ff); }
+.theme-swatch.mint { background: linear-gradient(135deg, #78d9af, #42b883); }
+.theme-swatch.dark { background: linear-gradient(135deg, #3a2b33, #161116); }
+
+.feedback-setting {
+  align-items: center;
+}
+
+.feedback-email-text {
+  color: var(--primary-strong);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.feedback-mail-btn {
+  white-space: nowrap;
+}
+
 .compact-panel {
   padding: 13px;
 }
@@ -962,10 +1047,10 @@ textarea {
   top: 50%;
   z-index: 45;
   width: min(540px, calc(100% - 32px));
-  max-height: min(86vh, 720px);
+  max-height: min(90vh, 680px);
   transform: translate(-50%, -50%);
   overflow: auto;
-  padding: 18px;
+  padding: 14px;
   background:
     radial-gradient(circle at 100% 0%, rgba(255, 138, 42, 0.14), transparent 28%),
     var(--surface);
@@ -987,7 +1072,7 @@ textarea {
 
 #quick-form {
   display: grid;
-  gap: 13px;
+  gap: 10px;
 }
 
 #quick-form label,
@@ -1003,58 +1088,94 @@ textarea {
   font-weight: 700;
 }
 
-.choice-grid {
-  display: grid;
+.compact-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.custom-select {
+  position: relative;
+}
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-}
-
-.choice-grid.two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.priority-choice-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.choice-card {
-  display: grid;
-  gap: 3px;
-  min-height: 58px;
-  padding: 10px;
+  min-height: 46px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--surface) 92%, var(--primary-soft));
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   text-align: left;
 }
 
-.choice-card strong {
+.select-trigger strong,
+.select-trigger small {
+  display: block;
+}
+
+.select-trigger strong {
   font-size: 14px;
   font-weight: 650;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
-.choice-card span {
+.select-trigger small {
+  margin-top: 2px;
   color: var(--text-muted);
   font-size: 11px;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
-.choice-card.active {
-  border-color: color-mix(in srgb, var(--primary) 46%, var(--border));
+.select-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 70;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 16px 36px rgba(92, 54, 36, 0.18);
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.select-option span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.select-option.active {
   background: var(--primary-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent);
+  color: var(--primary-strong);
 }
-
-.priority-choice.high.active { background: #ffe3dd; }
-.priority-choice.medium.active { background: #fff0c8; }
-.priority-choice.low.active { background: #e7f4ff; }
-.priority-choice.none.active { background: #f0ebff; }
 
 .date-choice-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1075,6 +1196,7 @@ textarea {
 }
 
 .date-picker-label {
+  display: none !important;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   min-height: 42px;
@@ -1082,6 +1204,10 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.quick-field.is-custom-date .date-picker-label {
+  display: grid !important;
 }
 
 .date-picker-label input {
@@ -1232,6 +1358,10 @@ body.quick-is-habit #quick-priority-field {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .theme-preset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .task-row,
   .date-row {
     grid-template-columns: 28px minmax(0, 1fr);
@@ -1286,14 +1416,23 @@ body.quick-is-habit #quick-priority-field {
 
   .quick-sheet {
     width: calc(100% - 20px);
-    max-height: min(86vh, 760px);
-    padding: 14px;
+    max-height: min(88vh, 740px);
+    padding: 12px;
     border-radius: 16px;
   }
 
-  .choice-grid.two,
-  .priority-choice-grid {
+  .compact-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .date-choice-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .date-choice {
+    min-height: 34px;
+    font-size: 12px;
   }
 
   .date-picker-label {

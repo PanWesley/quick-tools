@@ -148,6 +148,25 @@
     return DateUtils.toDateKey(DateUtils.addDays(DateUtils.fromDateKey(appState.todayKey), 1));
   }
 
+  function themeColorForPreset(preset) {
+    return {
+      orange: '#FF8A2A',
+      sky: '#4AA3FF',
+      mint: '#42B883',
+      dark: '#21161B'
+    }[preset] || '#FF8A2A';
+  }
+
+  function closeSelectMenus(exceptMenu) {
+    document.querySelectorAll('.select-menu').forEach(function(menu) {
+      if (menu !== exceptMenu) menu.hidden = true;
+    });
+    document.querySelectorAll('[data-select-target]').forEach(function(trigger) {
+      var menu = $(trigger.dataset.selectTarget + '-menu');
+      trigger.setAttribute('aria-expanded', String(menu && !menu.hidden));
+    });
+  }
+
   function listConfig(filter) {
     return {
       inbox: { title: '未安排', subtitle: '还没定日期的任务，适合先收集想法。', empty: '没有未安排任务。新增任务时选择“未安排”即可放到这里。' },
@@ -383,6 +402,8 @@
   }
 
   function switchView(view) {
+    if (els.quickSheet && !els.quickSheet.hidden) closeSheet();
+    closeSelectMenus();
     appState.view = view;
     document.querySelectorAll('.view').forEach(function(section) {
       section.classList.toggle('active', section.id === 'view-' + view);
@@ -402,19 +423,51 @@
     document.querySelectorAll('[data-choice-target="' + targetId + '"]').forEach(function(button) {
       button.classList.toggle('active', button.dataset.choiceValue === value);
     });
+    var selected = document.querySelector('[data-choice-target="' + targetId + '"][data-choice-value="' + value + '"]');
+    var label = $(targetId + '-label');
+    var desc = $(targetId + '-desc');
+    if (selected && label) label.textContent = selected.dataset.choiceLabel || selected.textContent.trim();
+    if (selected && desc) desc.textContent = selected.dataset.choiceDesc || '';
     if (targetId === 'quick-type') {
       document.body.classList.toggle('quick-is-habit', value === 'habit');
     }
+    closeSelectMenus();
   }
 
-  function setQuickDate(dateKey) {
+  function setQuickDate(dateKey, mode) {
+    var normalizedDate = dateKey || '';
+    var activeMode = mode;
+    if (!activeMode) {
+      activeMode = !normalizedDate ? 'pending' : normalizedDate === appState.todayKey ? 'today' : normalizedDate === tomorrowKey() ? 'tomorrow' : 'custom';
+    }
     els.quickDate.value = dateKey || '';
-    if (els.quickDatePicker) els.quickDatePicker.value = dateKey || '';
+    if (els.quickDatePicker) els.quickDatePicker.value = activeMode === 'custom' ? normalizedDate : '';
+    if (els.quickDateField) els.quickDateField.classList.toggle('is-custom-date', activeMode === 'custom');
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
-      var preset = button.dataset.datePreset;
-      var presetValue = preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : '';
-      button.classList.toggle('active', presetValue === (dateKey || ''));
+      button.classList.toggle('active', button.dataset.datePreset === activeMode);
     });
+  }
+
+  function applyThemePreset(preset) {
+    var nextPreset = ['orange', 'sky', 'mint', 'dark'].includes(preset) ? preset : 'orange';
+    var html = document.documentElement;
+    html.setAttribute('data-palette', nextPreset === 'dark' ? 'orange' : nextPreset);
+    html.setAttribute('data-theme', nextPreset === 'dark' ? 'dark' : 'light');
+    localStorage.setItem('today-youxu-palette', nextPreset);
+    localStorage.setItem('quick-tools-theme', nextPreset === 'dark' ? 'dark' : 'light');
+    var themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute('content', themeColorForPreset(nextPreset));
+    document.querySelectorAll('[data-theme-preset]').forEach(function(button) {
+      var active = button.dataset.themePreset === nextPreset;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  function initThemePreset() {
+    var saved = localStorage.getItem('today-youxu-palette') ||
+      (localStorage.getItem('quick-tools-theme') === 'dark' ? 'dark' : 'orange');
+    applyThemePreset(saved);
   }
 
   function openSheet() {
@@ -424,7 +477,7 @@
     els.quickType.disabled = false;
     setChoiceValue('quick-type', 'task');
     setChoiceValue('quick-priority', 'medium');
-    setQuickDate('');
+    setQuickDate('', 'pending');
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     els.quickTitle.focus();
@@ -437,7 +490,7 @@
     els.quickType.disabled = false;
     setChoiceValue('quick-type', 'task');
     setChoiceValue('quick-priority', 'medium');
-    setQuickDate('');
+    setQuickDate('', 'pending');
     appState.editingTaskId = '';
   }
 
@@ -592,6 +645,37 @@
     });
   }
 
+  function copyFeedbackEmail() {
+    var email = 'billnest_feedback@outlook.com';
+    var fallback = function() {
+      var textarea = document.createElement('textarea');
+      textarea.value = email;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('邮箱地址已复制');
+      } catch (error) {
+        showToast('复制失败，请手动复制');
+      }
+      document.body.removeChild(textarea);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(email).then(function() {
+        showToast('邮箱地址已复制');
+      }).catch(fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function openFeedbackMail() {
+    window.open('mailto:billnest_feedback@outlook.com?subject=' + encodeURIComponent('今日有序问题反馈'), '_blank', 'noopener,noreferrer');
+  }
+
   function handleImportClick() {
     els.importFile.value = '';
     els.importFile.click();
@@ -662,6 +746,7 @@
     els.quickType = $('quick-type');
     els.quickTitle = $('quick-title');
     els.quickDate = $('quick-date');
+    els.quickDateField = $('quick-date-field');
     els.quickDatePicker = $('quick-date-picker');
     els.quickPriority = $('quick-priority');
     els.quickNotes = $('quick-notes');
@@ -669,6 +754,8 @@
     els.importButton = $('import-button');
     els.importFile = $('import-file');
     els.clearButton = $('clear-button');
+    els.feedbackEmail = $('feedback-email-text');
+    els.feedbackMailButton = $('feedback-mail-button');
     els.toast = $('toast');
   }
 
@@ -696,8 +783,21 @@
     els.cancelAdd.addEventListener('click', closeSheet);
     els.sheetBackdrop.addEventListener('click', closeSheet);
     els.quickForm.addEventListener('submit', handleQuickSubmit);
+    document.querySelectorAll('[data-select-target]').forEach(function(trigger) {
+      trigger.addEventListener('click', function(event) {
+        event.stopPropagation();
+        if (trigger.dataset.selectTarget === 'quick-type' && appState.editingTaskId) return;
+        var menu = $(trigger.dataset.selectTarget + '-menu');
+        if (!menu) return;
+        var willOpen = menu.hidden;
+        closeSelectMenus(menu);
+        menu.hidden = !willOpen;
+        trigger.setAttribute('aria-expanded', String(willOpen));
+      });
+    });
     document.querySelectorAll('[data-choice-target]').forEach(function(button) {
-      button.addEventListener('click', function() {
+      button.addEventListener('click', function(event) {
+        event.stopPropagation();
         if (button.dataset.choiceTarget === 'quick-type' && appState.editingTaskId) return;
         setChoiceValue(button.dataset.choiceTarget, button.dataset.choiceValue);
       });
@@ -705,11 +805,14 @@
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
       button.addEventListener('click', function() {
         var preset = button.dataset.datePreset;
-        setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : '');
+        setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : '', preset);
       });
     });
     els.quickDatePicker.addEventListener('change', function() {
-      setQuickDate(els.quickDatePicker.value);
+      setQuickDate(els.quickDatePicker.value, 'custom');
+    });
+    document.addEventListener('click', function(event) {
+      if (!event.target.closest('.custom-select')) closeSelectMenus();
     });
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);
@@ -727,6 +830,13 @@
     els.importButton.addEventListener('click', handleImportClick);
     els.importFile.addEventListener('change', handleImportFile);
     els.clearButton.addEventListener('click', clearData);
+    document.querySelectorAll('[data-theme-preset]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        applyThemePreset(button.dataset.themePreset);
+      });
+    });
+    if (els.feedbackEmail) els.feedbackEmail.addEventListener('click', copyFeedbackEmail);
+    if (els.feedbackMailButton) els.feedbackMailButton.addEventListener('click', openFeedbackMail);
     document.addEventListener('click', handleAction);
     document.addEventListener('click', function(event) {
       var row = event.target.closest('.task-row');
@@ -752,6 +862,7 @@
 
   function init() {
     cacheElements();
+    initThemePreset();
     bindEvents();
     switchView(viewFromHash());
     loadData();
