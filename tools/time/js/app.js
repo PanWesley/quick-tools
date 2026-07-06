@@ -18,6 +18,7 @@
 
   var els = {};
   var journalSaveTimer = null;
+  var swipeState = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -41,13 +42,82 @@
     }, 2200);
   }
 
+  function normalizePriority(priority) {
+    return ['high', 'medium', 'low', 'none'].includes(priority) ? priority : 'none';
+  }
+
   function priorityLabel(priority) {
     return {
-      none: '无',
-      low: '低',
-      medium: '中',
-      high: '高'
-    }[priority || 'none'] || '无';
+      none: '不重要不紧急',
+      low: '不重要但紧急',
+      medium: '重要不紧急',
+      high: '重要且紧急'
+    }[normalizePriority(priority)];
+  }
+
+  function closeSwipeRows(exceptRow) {
+    document.querySelectorAll('.task-row.actions-open').forEach(function(row) {
+      if (row !== exceptRow) closeSwipeRow(row);
+    });
+  }
+
+  function openSwipeRow(row) {
+    var content = row.querySelector('.task-content');
+    var actions = row.querySelector('.task-swipe-actions');
+    var width = actions ? Math.round(actions.getBoundingClientRect().width) : 104;
+    closeSwipeRows(row);
+    row.classList.add('actions-open');
+    if (content) {
+      content.style.marginLeft = '-' + width + 'px';
+      content.style.marginRight = width + 'px';
+    }
+  }
+
+  function closeSwipeRow(row) {
+    var content = row.querySelector('.task-content');
+    row.classList.remove('actions-open');
+    if (content) {
+      content.style.marginLeft = '';
+      content.style.marginRight = '';
+    }
+  }
+
+  function handleSwipeStart(event) {
+    var row = event.target.closest('.task-row.has-swipe-actions');
+    if (!row || !event.touches || event.touches.length !== 1) return;
+    var touch = event.touches[0];
+    swipeState = {
+      row: row,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      currentX: touch.clientX,
+      currentY: touch.clientY
+    };
+  }
+
+  function handleSwipeMove(event) {
+    if (!swipeState || !event.touches || event.touches.length !== 1) return;
+    var touch = event.touches[0];
+    swipeState.currentX = touch.clientX;
+    swipeState.currentY = touch.clientY;
+    var dx = swipeState.currentX - swipeState.startX;
+    var dy = swipeState.currentY - swipeState.startY;
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) && dx < 0) {
+      event.preventDefault();
+    }
+  }
+
+  function handleSwipeEnd(event) {
+    if (!swipeState) return;
+    var touch = event.changedTouches && event.changedTouches[0];
+    var endX = touch ? touch.clientX : swipeState.currentX;
+    var dx = endX - swipeState.startX;
+    if (dx < -42) {
+      openSwipeRow(swipeState.row);
+    } else if (dx > 32) {
+      closeSwipeRow(swipeState.row);
+    }
+    swipeState = null;
   }
 
   function priorityTone(priority) {
@@ -56,7 +126,11 @@
       medium: 'sun',
       low: 'mint',
       none: 'sky'
-    }[priority || 'none'] || 'sky';
+    }[normalizePriority(priority)];
+  }
+
+  function priorityRowClass(priority) {
+    return ' priority-' + normalizePriority(priority);
   }
 
   function formatDateMeta(task) {
@@ -77,23 +151,25 @@
       : '<button class="task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var actions = [];
     if (opts.edit !== false && task.status !== 'completed' && task.status !== 'deleted') {
-      actions.push('<button class="btn ghost" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button>');
+      actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button>');
     }
     if (opts.restore === true) {
-      actions.push('<button class="btn secondary" type="button" data-action="restore-task" data-id="' + escapeHtml(task.id) + '">恢复</button>');
+      actions.push('<button class="swipe-action restore" type="button" data-action="restore-task" data-id="' + escapeHtml(task.id) + '">恢复</button>');
     } else if (opts.delete !== false && task.status !== 'deleted') {
-      actions.push('<button class="btn ghost" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
+      actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
     }
 
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + '">',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row>',
+      actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
+      '<div class="task-content">',
       completeButton,
-      '<div>',
+      '<div class="task-main">',
       '<div class="task-title">' + escapeHtml(title) + '</div>',
       '<div class="task-meta">' + escapeHtml(formatDateMeta(task)) + '</div>',
       '</div>',
-      '<div class="priority-tag ' + escapeHtml(task.priority || 'none') + '">' + escapeHtml(priorityLabel(task.priority)) + '</div>',
-      actions.length ? '<div class="task-actions">' + actions.join('') + '</div>' : '',
+      '<div class="priority-tag ' + normalizePriority(task.priority) + '">' + escapeHtml(priorityLabel(task.priority)) + '</div>',
+      '</div>',
       '</article>'
     ].join('');
   }
@@ -112,7 +188,7 @@
       '<div class="task-title">' + escapeHtml(State.getTaskDisplayTitle(task)) + '</div>',
       '<div class="task-meta">' + escapeHtml(formatDateMeta(task)) + '</div>',
       '</div>',
-      '<span class="priority-tag ' + escapeHtml(task.priority || 'none') + '">' + escapeHtml(priorityLabel(task.priority)) + '</span>',
+      '<span class="priority-tag ' + normalizePriority(task.priority) + '">' + escapeHtml(priorityLabel(task.priority)) + '</span>',
       actions,
       '</article>'
     ].join('');
@@ -290,6 +366,7 @@
     els.quickEditId.value = '';
     els.quickType.disabled = false;
     els.quickDate.value = appState.todayKey;
+    els.quickPriority.value = 'medium';
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     els.quickTitle.focus();
@@ -381,6 +458,7 @@
     if (!target) return;
     var action = target.dataset.action;
     var id = target.dataset.id;
+    closeSwipeRows();
 
     if (action === 'save-journal') {
       event.preventDefault();
@@ -566,6 +644,13 @@
     els.importFile.addEventListener('change', handleImportFile);
     els.clearButton.addEventListener('click', clearData);
     document.addEventListener('click', handleAction);
+    document.addEventListener('click', function(event) {
+      var row = event.target.closest('.task-row');
+      closeSwipeRows(row);
+    });
+    document.addEventListener('touchstart', handleSwipeStart, { passive: true });
+    document.addEventListener('touchmove', handleSwipeMove, { passive: false });
+    document.addEventListener('touchend', handleSwipeEnd);
     window.addEventListener('hashchange', function() {
       var nextView = viewFromHash();
       if (nextView !== appState.view) {
