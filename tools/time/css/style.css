@@ -441,15 +441,18 @@ textarea {
 }
 
 .day-cell {
+  display: grid;
+  grid-template-rows: 30px minmax(0, 1fr);
+  gap: 4px;
   min-height: 78px;
   padding: 6px 4px 5px;
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   overflow: hidden;
 }
 
@@ -483,25 +486,45 @@ textarea {
 }
 
 .day-cell.selected {
-  background: #fff5ec;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 42%, transparent);
+  background: linear-gradient(180deg, rgba(255, 240, 223, 0.92), rgba(255, 248, 241, 0.78));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 34%, transparent);
 }
 
 .day-cell.today {
-  background: linear-gradient(180deg, #fff4e8, #ffffff);
+  background: rgba(255, 250, 245, 0.9);
 }
 
-.day-top {
+.day-cell.selected.today {
+  background: linear-gradient(180deg, rgba(255, 240, 223, 0.92), rgba(255, 248, 241, 0.78));
+}
+
+.day-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 30px;
+  line-height: 1;
+}
+
+.day-date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 3px;
+  max-width: 100%;
   min-width: 0;
 }
 
 .day-number {
-  display: inline-block;
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 22px;
   font-weight: 650;
   font-size: 15px;
+  line-height: 1;
+  border-radius: 999px;
 }
 
 .day-lunar {
@@ -509,13 +532,27 @@ textarea {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.day-cell.today .day-number,
+.day-cell.selected .day-number {
+  min-width: 26px;
+  height: 26px;
+  background: linear-gradient(135deg, var(--primary), #ff6f52);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(255, 122, 42, 0.25);
 }
 
 .calendar-strips {
   display: grid;
   gap: 3px;
-  margin-top: 6px;
+  align-content: start;
+  min-height: 0;
+  margin-top: 0;
+  overflow: hidden;
 }
 
 .calendar-strip,
@@ -869,8 +906,22 @@ textarea {
   }
 
   .day-cell {
-    min-height: 66px;
-    padding: 6px 3px 5px;
+    grid-template-rows: 28px minmax(0, 1fr);
+    min-height: 72px;
+    padding: 5px 3px 5px;
+  }
+
+  .day-head {
+    height: 28px;
+  }
+
+  .day-date {
+    gap: 2px;
+  }
+
+  .day-cell.today .day-number {
+    min-width: 24px;
+    height: 24px;
   }
 
   .calendar-strip,
