@@ -6,6 +6,8 @@ const {
   getUpcomingTasks,
   getDeletedTasks,
   getTaskDisplayTitle,
+  filterTasksByArea,
+  normalizeArea,
   getCalendarEntries,
   getCalendarMarks,
   habitDueOn,
@@ -47,10 +49,31 @@ test('getTaskDisplayTitle falls back when imported task title is missing', () =>
   assert.equal(getTaskDisplayTitle({ title: '整理行程' }), '整理行程');
 });
 
+test('normalizeArea defaults unknown values to life', () => {
+  assert.equal(normalizeArea('study'), 'study');
+  assert.equal(normalizeArea(''), 'life');
+  assert.equal(normalizeArea('unknown'), 'life');
+});
+
+test('filterTasksByArea narrows tasks by normalized area', () => {
+  const tasks = [
+    { id: 'a', area: 'life' },
+    { id: 'b', area: 'study' },
+    { id: 'c', area: '' }
+  ];
+  assert.deepEqual(filterTasksByArea(tasks, 'all').map((task) => task.id), ['a', 'b', 'c']);
+  assert.deepEqual(filterTasksByArea(tasks, 'life').map((task) => task.id), ['a', 'c']);
+  assert.deepEqual(filterTasksByArea(tasks, 'study').map((task) => task.id), ['b']);
+});
+
 test('habitDueOn supports daily weekdays and weekly schedules', () => {
   assert.equal(habitDueOn({ schedule: 'daily' }, '2026-07-04'), true);
+  assert.equal(habitDueOn({ schedule: 'daily', startDate: '2026-07-05' }, '2026-07-04'), false);
+  assert.equal(habitDueOn({ schedule: 'daily', startDate: '2026-07-05' }, '2026-07-05'), true);
   assert.equal(habitDueOn({ schedule: 'weekdays' }, '2026-07-04'), false);
   assert.equal(habitDueOn({ schedule: 'weekdays' }, '2026-07-03'), true);
+  assert.equal(habitDueOn({ schedule: 'weekends' }, '2026-07-04'), true);
+  assert.equal(habitDueOn({ schedule: 'weekends' }, '2026-07-03'), false);
   assert.equal(habitDueOn({ schedule: 'weekly', weekday: 4 }, '2026-07-02'), true);
 });
 

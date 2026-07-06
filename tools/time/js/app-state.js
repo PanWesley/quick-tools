@@ -5,6 +5,34 @@
     root.TodayYouxuState = factory();
   }
 })(typeof self !== 'undefined' ? self : this, function() {
+  var AREA_OPTIONS = [
+    { value: 'life', label: '生活' },
+    { value: 'study', label: '学习' },
+    { value: 'work', label: '工作' },
+    { value: 'health', label: '健康' },
+    { value: 'housework', label: '家务' },
+    { value: 'memory', label: '纪念' },
+    { value: 'other', label: '其他' }
+  ];
+
+  function normalizeArea(area) {
+    var value = String(area || '').trim();
+    return AREA_OPTIONS.some(function(option) { return option.value === value; }) ? value : 'life';
+  }
+
+  function areaLabel(area) {
+    var normalized = normalizeArea(area);
+    var option = AREA_OPTIONS.find(function(item) { return item.value === normalized; });
+    return option ? option.label : '生活';
+  }
+
+  function filterTasksByArea(tasks, area) {
+    if (!area || area === 'all') return tasks || [];
+    return (tasks || []).filter(function(task) {
+      return normalizeArea(task && task.area) === area;
+    });
+  }
+
   function activeOnly(item) {
     return item && item.status !== 'completed' && item.status !== 'deleted' && item.status !== 'archived';
   }
@@ -68,8 +96,10 @@
 
   function habitDueOn(habit, dateKey) {
     if (!habit || habit.status === 'archived') return false;
+    if (habit.startDate && dateKey < habit.startDate) return false;
     var weekday = weekdayFromDateKey(dateKey);
     if (habit.schedule === 'weekdays') return weekday >= 1 && weekday <= 5;
+    if (habit.schedule === 'weekends') return weekday === 0 || weekday === 6;
     if (habit.schedule === 'weekly') return Number(habit.weekday) === weekday;
     return true;
   }
@@ -151,6 +181,10 @@
   }
 
   return {
+    AREA_OPTIONS: AREA_OPTIONS,
+    normalizeArea: normalizeArea,
+    areaLabel: areaLabel,
+    filterTasksByArea: filterTasksByArea,
     getTodayTasks: getTodayTasks,
     getInboxTasks: getInboxTasks,
     getUpcomingTasks: getUpcomingTasks,

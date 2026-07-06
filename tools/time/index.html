@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=110">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=114">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -132,6 +132,16 @@
         <button class="list-filter" type="button" data-list-filter="completed">完成 <span id="completed-count">0</span></button>
         <button class="list-filter" type="button" data-list-filter="deleted">删除 <span id="deleted-count">0</span></button>
       </div>
+      <div class="area-filter-row" aria-label="归属筛选">
+        <button class="area-filter active" type="button" data-area-filter="all">全部</button>
+        <button class="area-filter" type="button" data-area-filter="life">生活</button>
+        <button class="area-filter" type="button" data-area-filter="study">学习</button>
+        <button class="area-filter" type="button" data-area-filter="work">工作</button>
+        <button class="area-filter" type="button" data-area-filter="health">健康</button>
+        <button class="area-filter" type="button" data-area-filter="housework">家务</button>
+        <button class="area-filter" type="button" data-area-filter="memory">纪念</button>
+        <button class="area-filter" type="button" data-area-filter="other">其他</button>
+      </div>
       <div class="panel-head list-current-head">
         <div>
           <h2 id="list-current-title">未安排</h2>
@@ -230,13 +240,13 @@
           <h2>关于</h2>
           <p>今日有序是轻量时间管理 PWA，专注今天、日历、清单和习惯打卡。</p>
         </div>
-        <span class="muted-pill">v0.3.7</span>
+        <span class="muted-pill">v0.3.13</span>
       </section>
     </div>
   </section>
 </main>
 
-<button class="fab" id="open-add" type="button" aria-label="快速新增">+</button>
+<button class="fab" id="open-add" type="button" aria-label="新增事项">+</button>
 
 <nav class="bottom-nav" aria-label="主导航">
   <button class="nav-item active" type="button" data-view="today">今日</button>
@@ -250,62 +260,108 @@
   <div class="sheet-head">
     <div>
       <p class="eyebrow">记录一件事</p>
-      <h2 id="quick-sheet-title">快速新增</h2>
+      <h2 id="quick-sheet-title">新增事项</h2>
     </div>
     <button class="icon-button" id="close-add" type="button" aria-label="关闭">×</button>
   </div>
   <form id="quick-form">
     <input id="quick-edit-id" type="hidden">
-    <input id="quick-type" type="hidden" value="task">
     <input id="quick-priority" type="hidden" value="medium">
     <input id="quick-date" type="hidden">
-    <div class="form-grid compact-form-grid">
-      <div class="quick-field custom-select" data-select-field="quick-type">
-        <span class="field-label">类型</span>
-        <button class="select-trigger" type="button" data-select-target="quick-type" aria-expanded="false">
-          <span><strong id="quick-type-label">任务</strong><small id="quick-type-desc">需要完成的一件事</small></span>
-          <span aria-hidden="true">⌄</span>
-        </button>
-        <div class="select-menu" id="quick-type-menu" hidden>
-          <button class="select-option active" type="button" data-choice-target="quick-type" data-choice-value="task" data-choice-label="任务" data-choice-desc="需要完成的一件事">任务<span>需要完成的一件事</span></button>
-          <button class="select-option" type="button" data-choice-target="quick-type" data-choice-value="habit" data-choice-label="习惯" data-choice-desc="每天或每周重复打卡">习惯<span>每天或每周重复打卡</span></button>
-        </div>
-      </div>
-      <div class="quick-field custom-select" id="quick-priority-field" data-select-field="quick-priority">
-        <span class="field-label">优先级</span>
-        <button class="select-trigger" type="button" data-select-target="quick-priority" aria-expanded="false">
-          <span><strong id="quick-priority-label">重要不紧急</strong><small id="quick-priority-desc">计划推进</small></span>
-          <span aria-hidden="true">⌄</span>
-        </button>
-        <div class="select-menu priority-menu" id="quick-priority-menu" hidden>
-          <button class="select-option high" type="button" data-choice-target="quick-priority" data-choice-value="high" data-choice-label="重要且紧急" data-choice-desc="现在处理">重要且紧急<span>现在处理</span></button>
-          <button class="select-option medium active" type="button" data-choice-target="quick-priority" data-choice-value="medium" data-choice-label="重要不紧急" data-choice-desc="计划推进">重要不紧急<span>计划推进</span></button>
-          <button class="select-option low" type="button" data-choice-target="quick-priority" data-choice-value="low" data-choice-label="不重要但紧急" data-choice-desc="尽快顺手做">不重要但紧急<span>尽快顺手做</span></button>
-          <button class="select-option none" type="button" data-choice-target="quick-priority" data-choice-value="none" data-choice-label="不重要不紧急" data-choice-desc="有空再看">不重要不紧急<span>有空再看</span></button>
-        </div>
-      </div>
-    </div>
+    <input id="quick-repeat" type="hidden" value="none">
+    <input id="quick-time-mode" type="hidden" value="all-day">
+    <input id="quick-reminder" type="hidden" value="none">
+    <input id="quick-area" type="hidden" value="life">
     <label>
       标题
-      <input id="quick-title" type="text" autocomplete="off" placeholder="例如：整理本周计划" required>
+      <input id="quick-title" type="text" autocomplete="off" placeholder="例如：吃早餐" required>
     </label>
     <div class="quick-field" id="quick-date-field">
-      <span class="field-label">日期</span>
+      <span class="field-label">安排</span>
       <div class="date-choice-row">
+        <button class="date-choice active" type="button" data-date-preset="pending">待定</button>
         <button class="date-choice" type="button" data-date-preset="today">今天</button>
         <button class="date-choice" type="button" data-date-preset="tomorrow">明天</button>
-        <button class="date-choice active" type="button" data-date-preset="pending">待定</button>
-        <button class="date-choice" type="button" data-date-preset="custom">指定日期</button>
+        <button class="date-choice" type="button" data-date-preset="weekend">周末</button>
+        <button class="date-choice" type="button" data-date-preset="custom">指定</button>
       </div>
       <label class="date-picker-label">
         <span>指定日期</span>
         <input id="quick-date-picker" type="date">
       </label>
     </div>
-    <label>
-      备注
-      <textarea id="quick-notes" rows="2" placeholder="可选"></textarea>
-    </label>
+    <div class="quick-field" id="quick-time-field">
+      <span class="field-label">时间</span>
+      <div class="date-choice-row three">
+        <button class="date-choice active" type="button" data-choice-target="quick-time-mode" data-choice-value="all-day" data-choice-label="全天">全天</button>
+        <button class="date-choice" type="button" data-choice-target="quick-time-mode" data-choice-value="point" data-choice-label="时间点">时间点</button>
+        <button class="date-choice" type="button" data-choice-target="quick-time-mode" data-choice-value="range" data-choice-label="时间段">时间段</button>
+      </div>
+      <div class="time-input-row" id="quick-time-inputs" hidden>
+        <input id="quick-start-time" type="time" aria-label="开始时间">
+        <input id="quick-end-time" type="time" aria-label="结束时间" hidden>
+      </div>
+      <p class="field-hint" id="quick-time-hint">全天事项只显示在当天，不设置具体时刻。</p>
+    </div>
+    <div class="quick-field" id="quick-repeat-field">
+      <span class="field-label">重复</span>
+      <div class="chip-row">
+        <button class="choice-chip active" type="button" data-choice-target="quick-repeat" data-choice-value="none" data-choice-label="不重复">不重复</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="daily" data-choice-label="每天">每天</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekdays" data-choice-label="工作日">工作日</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekends" data-choice-label="周末">周末</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekly" data-choice-label="每周">每周</button>
+      </div>
+    </div>
+    <div class="quick-field" id="quick-reminder-field">
+      <span class="field-label">提醒</span>
+      <div class="chip-row">
+        <button class="choice-chip active" type="button" data-choice-target="quick-reminder" data-choice-value="none" data-choice-label="不提醒">不提醒</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="at-time" data-choice-label="准时">准时</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="5" data-choice-label="5分钟前">5分钟前</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="15" data-choice-label="15分钟前">15分钟前</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="30" data-choice-label="30分钟前">30分钟前</button>
+      </div>
+      <p class="field-hint" id="quick-reminder-hint">全天事项会先记录提醒偏好，具体通知能力后续接入。</p>
+    </div>
+    <details class="more-settings" id="quick-more-settings">
+      <summary>更多设置 <span>归属、优先级、备注</span></summary>
+      <div class="more-settings-grid">
+        <div class="quick-field custom-select" data-select-field="quick-area">
+          <span class="field-label">归属</span>
+          <button class="select-trigger area-trigger" type="button" data-select-target="quick-area" aria-expanded="false">
+            <span><strong id="quick-area-label">生活</strong><small id="quick-area-desc">日常安排</small></span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+          <div class="select-menu" id="quick-area-menu" hidden>
+            <button class="select-option active" type="button" data-choice-target="quick-area" data-choice-value="life" data-choice-label="生活" data-choice-desc="日常安排">生活<span>日常安排</span></button>
+            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="study" data-choice-label="学习" data-choice-desc="课程、阅读、复习">学习<span>课程、阅读、复习</span></button>
+            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="work" data-choice-label="工作" data-choice-desc="工作任务和会议">工作<span>工作任务和会议</span></button>
+            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="health" data-choice-label="健康" data-choice-desc="运动、睡眠、饮食">健康<span>运动、睡眠、饮食</span></button>
+            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="housework" data-choice-label="家务" data-choice-desc="整理、清洁、采购">家务<span>整理、清洁、采购</span></button>
+            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="memory" data-choice-label="纪念" data-choice-desc="生日、纪念日">纪念<span>生日、纪念日</span></button>
+            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="other" data-choice-label="其他" data-choice-desc="暂时无法归类">其他<span>暂时无法归类</span></button>
+          </div>
+        </div>
+        <div class="quick-field custom-select" id="quick-priority-field" data-select-field="quick-priority">
+          <span class="field-label">优先级</span>
+          <button class="select-trigger" type="button" data-select-target="quick-priority" aria-expanded="false">
+            <span><strong id="quick-priority-label">重要不紧急</strong><small id="quick-priority-desc">计划推进</small></span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+          <div class="select-menu priority-menu" id="quick-priority-menu" hidden>
+            <button class="select-option high" type="button" data-choice-target="quick-priority" data-choice-value="high" data-choice-label="重要且紧急" data-choice-desc="现在处理">重要且紧急<span>现在处理</span></button>
+            <button class="select-option medium active" type="button" data-choice-target="quick-priority" data-choice-value="medium" data-choice-label="重要不紧急" data-choice-desc="计划推进">重要不紧急<span>计划推进</span></button>
+            <button class="select-option low" type="button" data-choice-target="quick-priority" data-choice-value="low" data-choice-label="不重要但紧急" data-choice-desc="尽快顺手做">不重要但紧急<span>尽快顺手做</span></button>
+            <button class="select-option none" type="button" data-choice-target="quick-priority" data-choice-value="none" data-choice-label="不重要不紧急" data-choice-desc="有空再看">不重要不紧急<span>有空再看</span></button>
+          </div>
+        </div>
+      </div>
+      <label>
+        备注
+        <textarea id="quick-notes" rows="2" placeholder="可选"></textarea>
+      </label>
+    </details>
     <div class="button-row">
       <button class="btn secondary" id="cancel-add" type="button">取消</button>
       <button class="btn primary" type="submit">保存</button>
@@ -315,12 +371,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=110"></script>
-<script src="/tools/time/js/app-state.js?v=110"></script>
-<script src="/tools/time/js/export.js?v=110"></script>
-<script src="/tools/time/js/import-utils.js?v=110"></script>
-<script src="/tools/time/js/db.js?v=110"></script>
-<script src="/tools/time/js/app.js?v=110"></script>
+<script src="/tools/time/js/date-utils.js?v=114"></script>
+<script src="/tools/time/js/app-state.js?v=114"></script>
+<script src="/tools/time/js/export.js?v=114"></script>
+<script src="/tools/time/js/import-utils.js?v=114"></script>
+<script src="/tools/time/js/db.js?v=114"></script>
+<script src="/tools/time/js/app.js?v=114"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 </body>
