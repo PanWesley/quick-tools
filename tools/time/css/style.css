@@ -482,7 +482,12 @@ textarea {
 }
 
 .day-cell.outside {
-  opacity: 0.48;
+  opacity: 0.34;
+}
+
+.empty-month-cell {
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .day-cell.selected {
@@ -529,8 +534,9 @@ textarea {
 
 .day-lunar {
   min-width: 0;
-  color: var(--text-muted);
-  font-size: 11px;
+  color: color-mix(in srgb, var(--text-muted) 76%, transparent);
+  font-size: 10px;
+  font-weight: 400;
   line-height: 1.1;
   overflow: hidden;
   text-overflow: ellipsis;

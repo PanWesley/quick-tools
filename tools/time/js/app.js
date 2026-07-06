@@ -166,12 +166,29 @@
   }
 
   function renderCalendar() {
-    var grid = DateUtils.buildMonthGrid(appState.calendarYear, appState.calendarMonth);
+    var grid = DateUtils.buildMonthGrid(appState.calendarYear, appState.calendarMonth)
+      .reduce(function(weeks, cell, index) {
+        if (index % 7 === 0) weeks.push([]);
+        weeks[weeks.length - 1].push(cell);
+        return weeks;
+      }, [])
+      .filter(function(week) {
+        return week.some(function(cell) { return cell.isCurrentMonth; });
+      })
+      .flat();
     els.calendarLabel.textContent = DateUtils.formatMonthLabel(appState.calendarYear, appState.calendarMonth);
     els.calendarCard.classList.toggle('is-collapsed', appState.calendarCollapsed);
     els.calendarToggle.textContent = appState.calendarCollapsed ? '展开' : '收起';
     els.calendarToggle.setAttribute('aria-expanded', String(!appState.calendarCollapsed));
     els.calendarGrid.innerHTML = grid.map(function(cell) {
+      if (!cell.isCurrentMonth) {
+        return [
+          '<span class="day-cell outside empty-month-cell" aria-hidden="true">',
+          '<span class="day-head"></span>',
+          '<span class="calendar-strips"></span>',
+          '</span>'
+        ].join('');
+      }
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
       var strips = entries.slice(0, 2).map(function(entry) {
         return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(entry.label) + '</span>';
