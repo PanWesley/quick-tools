@@ -19,7 +19,7 @@
 <link rel="manifest" href="/tools/time/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=108">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=109">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -182,13 +182,36 @@
         </div>
         <span class="mode-pill">本地优先</span>
       </section>
-      <section class="panel actions-panel">
-        <h2>本地数据</h2>
-        <div class="button-row">
-          <button class="btn secondary" id="export-button" type="button">导出 JSON</button>
-          <button class="btn secondary" id="import-button" type="button">导入 JSON</button>
-          <input id="import-file" type="file" accept="application/json,.json" hidden>
-          <button class="btn danger" id="clear-button" type="button">清空本地数据</button>
+      <section class="panel settings-card data-settings-card">
+        <div class="panel-head">
+          <div>
+            <h2>本地数据</h2>
+            <p>备份、恢复和清空都只处理本机数据。</p>
+          </div>
+        </div>
+        <div class="data-setting-list">
+          <div class="setting-row data-setting-item">
+            <div>
+              <h3>导出 JSON</h3>
+              <p>保存一份完整备份，包含任务、习惯、打卡、每日一句和操作记录。</p>
+            </div>
+            <button class="btn secondary" id="export-button" type="button">导出</button>
+          </div>
+          <div class="setting-row data-setting-item">
+            <div>
+              <h3>导入恢复</h3>
+              <p>从今日有序备份文件恢复数据；导入会按记录合并，不会先清空本地。</p>
+            </div>
+            <button class="btn secondary" id="import-button" type="button">导入</button>
+            <input id="import-file" type="file" accept="application/json,.json" hidden>
+          </div>
+          <div class="setting-row data-setting-item danger">
+            <div>
+              <h3>清空本地数据</h3>
+              <p>删除本机所有任务、习惯、打卡和每日一句。此操作不可撤销。</p>
+            </div>
+            <button class="btn danger" id="clear-button" type="button">清空</button>
+          </div>
         </div>
         <p class="fine-print">今日有序不接广告 SDK；导出文件会包含 tasks、habits、habitLogs、journals、opLogs。</p>
       </section>
@@ -289,12 +312,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=108"></script>
-<script src="/tools/time/js/app-state.js?v=108"></script>
-<script src="/tools/time/js/export.js?v=108"></script>
-<script src="/tools/time/js/import-utils.js?v=108"></script>
-<script src="/tools/time/js/db.js?v=108"></script>
-<script src="/tools/time/js/app.js?v=108"></script>
+<script src="/tools/time/js/date-utils.js?v=109"></script>
+<script src="/tools/time/js/app-state.js?v=109"></script>
+<script src="/tools/time/js/export.js?v=109"></script>
+<script src="/tools/time/js/import-utils.js?v=109"></script>
+<script src="/tools/time/js/db.js?v=109"></script>
+<script src="/tools/time/js/app.js?v=109"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 </body>
