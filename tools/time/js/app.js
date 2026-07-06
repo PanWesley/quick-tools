@@ -475,6 +475,20 @@
     }
   }
 
+  function updateScheduledOptionFields() {
+    var isScheduled = Boolean(els.quickDate && els.quickDate.value);
+    if (els.quickTimeField) els.quickTimeField.hidden = !isScheduled;
+    if (els.quickRepeatField) els.quickRepeatField.hidden = !isScheduled || Boolean(appState.editingTaskId);
+    if (els.quickReminderField) els.quickReminderField.hidden = !isScheduled;
+    if (!isScheduled) {
+      if (els.quickTimeMode) setChoiceValue('quick-time-mode', 'all-day');
+      if (els.quickRepeat) setChoiceValue('quick-repeat', 'none');
+      if (els.quickReminder) setChoiceValue('quick-reminder', 'none');
+      if (els.quickStartTime) els.quickStartTime.value = '';
+      if (els.quickEndTime) els.quickEndTime.value = '';
+    }
+  }
+
   function setQuickDate(dateKey, mode) {
     var normalizedDate = dateKey || '';
     var activeMode = mode;
@@ -487,6 +501,7 @@
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
       button.classList.toggle('active', button.dataset.datePreset === activeMode);
     });
+    updateScheduledOptionFields();
   }
 
   function applyThemePreset(preset) {
@@ -520,10 +535,9 @@
     setChoiceValue('quick-repeat', 'none');
     setChoiceValue('quick-time-mode', 'all-day');
     setChoiceValue('quick-reminder', 'none');
-    setQuickDate('', 'pending');
     els.quickStartTime.value = '';
     els.quickEndTime.value = '';
-    if (els.quickRepeatField) els.quickRepeatField.hidden = false;
+    setQuickDate('', 'pending');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
@@ -539,10 +553,9 @@
     setChoiceValue('quick-repeat', 'none');
     setChoiceValue('quick-time-mode', 'all-day');
     setChoiceValue('quick-reminder', 'none');
-    setQuickDate('', 'pending');
     els.quickStartTime.value = '';
     els.quickEndTime.value = '';
-    if (els.quickRepeatField) els.quickRepeatField.hidden = false;
+    setQuickDate('', 'pending');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     appState.editingTaskId = '';
   }
@@ -663,7 +676,6 @@
     $('quick-sheet-title').textContent = '编辑事项';
     els.quickEditId.value = id;
     els.quickTitle.value = task.title || '';
-    setQuickDate(task.date || '');
     setChoiceValue('quick-priority', normalizePriority(task.priority));
     setChoiceValue('quick-area', State.normalizeArea ? State.normalizeArea(task.area) : 'life');
     setChoiceValue('quick-repeat', 'none');
@@ -672,7 +684,7 @@
     els.quickStartTime.value = task.startTime || '';
     els.quickEndTime.value = task.endTime || '';
     els.quickNotes.value = task.notes || '';
-    if (els.quickRepeatField) els.quickRepeatField.hidden = true;
+    setQuickDate(task.date || '');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
@@ -815,11 +827,13 @@
     els.quickArea = $('quick-area');
     els.quickRepeat = $('quick-repeat');
     els.quickRepeatField = $('quick-repeat-field');
+    els.quickTimeField = $('quick-time-field');
     els.quickTimeMode = $('quick-time-mode');
     els.quickTimeInputs = $('quick-time-inputs');
     els.quickStartTime = $('quick-start-time');
     els.quickEndTime = $('quick-end-time');
     els.quickReminder = $('quick-reminder');
+    els.quickReminderField = $('quick-reminder-field');
     els.quickTimeHint = $('quick-time-hint');
     els.quickReminderHint = $('quick-reminder-hint');
     els.quickMoreSettings = $('quick-more-settings');
