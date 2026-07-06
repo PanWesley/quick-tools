@@ -4,6 +4,7 @@ const {
   toDateKey,
   addDays,
   buildMonthGrid,
+  formatLunarDay,
   isSameOrBefore,
   isSameOrAfter
 } = require('./date-utils.js');
@@ -24,6 +25,14 @@ test('buildMonthGrid returns 42 cells with leading and trailing days', () => {
   assert.equal(grid[0].dateKey, '2026-06-29');
   assert.equal(grid[3].dateKey, '2026-07-02');
   assert.equal(grid[3].isCurrentMonth, true);
+});
+
+test('formatLunarDay returns lunar day month starts and solar terms', () => {
+  assert.equal(formatLunarDay('2026-07-06'), '廿二');
+  assert.equal(formatLunarDay('2026-07-07'), '小暑');
+  assert.equal(formatLunarDay('2026-07-14'), '六月');
+  assert.equal(formatLunarDay('2026-07-15'), '初二');
+  assert.equal(formatLunarDay('2026-07-23'), '大暑');
 });
 
 test('date comparison helpers compare YYYY-MM-DD keys', () => {

@@ -183,7 +183,7 @@
         cell.isToday ? ' today' : '',
         cell.dateKey === appState.selectedDateKey ? ' selected' : '',
         '" type="button" data-action="select-date" data-date="' + escapeHtml(cell.dateKey) + '">',
-        '<span class="day-top"><span class="day-number">' + cell.day + '</span><span class="day-lunar">' + DateUtils.formatWeekday(cell.dateKey).replace('周', '') + '</span></span>',
+        '<span class="day-top"><span class="day-number">' + cell.day + '</span><span class="day-lunar">' + DateUtils.formatLunarDay(cell.dateKey) + '</span></span>',
         '<span class="calendar-strips">' + strips + overflow + '</span>',
         '</button>'
       ].join('');
