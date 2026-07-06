@@ -4,10 +4,12 @@
 <script>
   (function() {
     var preference = localStorage.getItem('quick-tools-theme') || 'light';
-    var theme = preference === 'system'
+    var palette = localStorage.getItem('today-youxu-palette') || (preference === 'dark' ? 'dark' : 'orange');
+    var theme = palette === 'dark' ? 'dark' : preference === 'system'
       ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : preference;
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-palette', palette === 'dark' ? 'orange' : palette);
   })();
 </script>
 <meta charset="UTF-8">
@@ -20,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=2">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=106">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=110">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -32,9 +34,6 @@
       <small>日历、待办与习惯打卡，一起管理美好的今天。</small>
     </span>
   </a>
-  <button class="icon-button" id="settings-button" type="button" title="我的" aria-label="打开我的">
-    <span aria-hidden="true">⚙</span>
-  </button>
 </header>
 
 <main class="app-shell">
@@ -119,30 +118,29 @@
     <div class="section-head">
       <div>
         <p class="eyebrow">清单</p>
-        <h1 id="list-title">任务清单</h1>
+        <h1 id="list-title">整理任务</h1>
+        <p>把未安排、之后要做和历史记录放在同一个工作台里。</p>
       </div>
     </div>
-    <input class="search-input" id="task-search" type="search" placeholder="搜索任务标题或备注">
-    <div class="list-columns">
-      <section class="panel compact-panel">
-        <h2>未安排</h2>
-        <p>还没定日期的任务</p>
-        <div class="stack-list" id="inbox-list"></div>
-      </section>
-      <section class="panel compact-panel">
-        <h2>之后要做</h2>
-        <p>今天之后的任务</p>
-        <div class="stack-list" id="upcoming-list"></div>
-      </section>
-      <section class="panel compact-panel">
-        <h2>已完成</h2>
-        <div class="stack-list" id="completed-list"></div>
-      </section>
-      <section class="panel compact-panel deleted-panel">
-        <h2>已删除</h2>
-        <div class="stack-list" id="deleted-list"></div>
-      </section>
-    </div>
+    <section class="panel list-workbench">
+      <div class="list-search-row">
+        <input class="search-input" id="task-search" type="search" placeholder="搜索任务标题或备注">
+      </div>
+      <div class="list-filter-group" aria-label="清单筛选">
+        <button class="list-filter active" type="button" data-list-filter="inbox">未安排 <span id="inbox-count">0</span></button>
+        <button class="list-filter" type="button" data-list-filter="upcoming">之后 <span id="upcoming-count">0</span></button>
+        <button class="list-filter" type="button" data-list-filter="completed">完成 <span id="completed-count">0</span></button>
+        <button class="list-filter" type="button" data-list-filter="deleted">删除 <span id="deleted-count">0</span></button>
+      </div>
+      <div class="panel-head list-current-head">
+        <div>
+          <h2 id="list-current-title">未安排</h2>
+          <p id="list-current-subtitle">还没定日期的任务，适合先收集想法。</p>
+        </div>
+        <span class="count-badge" id="list-current-count">0</span>
+      </div>
+      <div class="stack-list" id="task-list"></div>
+    </section>
   </section>
 
   <section class="view" id="view-profile" aria-labelledby="profile-title">
@@ -150,39 +148,89 @@
       <div>
         <p class="eyebrow">我的</p>
         <h1 id="profile-title">设置</h1>
+        <p>外观、隐私、本地数据和帮助都放在这里。</p>
       </div>
     </div>
     <div class="settings-list">
-      <section class="panel setting-row">
-        <div>
-          <h2>本地模式</h2>
-          <p>数据默认保存在本机 IndexedDB，不需要登录。</p>
+      <section class="panel settings-card theme-card">
+        <div class="panel-head">
+          <div>
+            <h2>外观</h2>
+            <p>选择今日有序自己的配色预设。</p>
+          </div>
         </div>
-        <span class="mode-pill">已开启</span>
+        <div class="theme-preset-grid" role="radiogroup" aria-label="主题预设">
+          <button class="theme-preset active" type="button" data-theme-preset="orange" aria-pressed="true">
+            <span class="theme-swatch orange"></span>
+            <strong>晨光橙</strong>
+          </button>
+          <button class="theme-preset" type="button" data-theme-preset="sky" aria-pressed="false">
+            <span class="theme-swatch sky"></span>
+            <strong>浅蓝</strong>
+          </button>
+          <button class="theme-preset" type="button" data-theme-preset="mint" aria-pressed="false">
+            <span class="theme-swatch mint"></span>
+            <strong>浅绿</strong>
+          </button>
+          <button class="theme-preset" type="button" data-theme-preset="dark" aria-pressed="false">
+            <span class="theme-swatch dark"></span>
+            <strong>深色</strong>
+          </button>
+        </div>
       </section>
       <section class="panel setting-row">
         <div>
-          <h2>登录同步</h2>
-          <p>后续支持账号、多端同步和冲突处理。</p>
+          <h2>隐私</h2>
+          <p>任务、习惯和每日一句默认只保存在本机；匿名统计不记录输入内容。</p>
         </div>
-        <span class="muted-pill">后续支持</span>
+        <span class="mode-pill">本地优先</span>
       </section>
-      <section class="panel setting-row">
-        <div>
-          <h2>提醒</h2>
-          <p>首版不承诺离线精确提醒，后续接入 Web Push。</p>
+      <section class="panel settings-card data-settings-card">
+        <div class="panel-head">
+          <div>
+            <h2>本地数据</h2>
+            <p>备份、恢复和清空都只处理本机数据。</p>
+          </div>
         </div>
-        <span class="muted-pill">未开启</span>
-      </section>
-      <section class="panel actions-panel">
-        <h2>本地数据</h2>
-        <div class="button-row">
-          <button class="btn secondary" id="export-button" type="button">导出 JSON</button>
-          <button class="btn secondary" id="import-button" type="button">导入 JSON</button>
-          <input id="import-file" type="file" accept="application/json,.json" hidden>
-          <button class="btn danger" id="clear-button" type="button">清空本地数据</button>
+        <div class="data-setting-list">
+          <div class="setting-row data-setting-item">
+            <div>
+              <h3>导出 JSON</h3>
+              <p>保存一份完整备份，包含任务、习惯、打卡、每日一句和操作记录。</p>
+            </div>
+            <button class="btn secondary" id="export-button" type="button">导出</button>
+          </div>
+          <div class="setting-row data-setting-item">
+            <div>
+              <h3>导入恢复</h3>
+              <p>从今日有序备份文件恢复数据；导入会按记录合并，不会先清空本地。</p>
+            </div>
+            <button class="btn secondary" id="import-button" type="button">导入</button>
+            <input id="import-file" type="file" accept="application/json,.json" hidden>
+          </div>
+          <div class="setting-row data-setting-item danger">
+            <div>
+              <h3>清空本地数据</h3>
+              <p>删除本机所有任务、习惯、打卡和每日一句。此操作不可撤销。</p>
+            </div>
+            <button class="btn danger" id="clear-button" type="button">清空</button>
+          </div>
         </div>
         <p class="fine-print">今日有序不接广告 SDK；导出文件会包含 tasks、habits、habitLogs、journals、opLogs。</p>
+      </section>
+      <section class="panel setting-row feedback-setting">
+        <div>
+          <h2>问题反馈</h2>
+          <p>遇到问题或建议？发送邮件至 <span class="feedback-email-text" id="feedback-email-text" title="点击复制邮箱">billnest_feedback@outlook.com</span></p>
+        </div>
+        <button class="btn secondary feedback-mail-btn" id="feedback-mail-button" type="button">发送邮件</button>
+      </section>
+      <section class="panel setting-row">
+        <div>
+          <h2>关于</h2>
+          <p>今日有序是轻量时间管理 PWA，专注今天、日历、清单和习惯打卡。</p>
+        </div>
+        <span class="muted-pill">v0.3.7</span>
       </section>
     </div>
   </section>
@@ -199,42 +247,64 @@
 
 <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
 <section class="quick-sheet" id="quick-sheet" aria-labelledby="quick-sheet-title" aria-modal="true" role="dialog" hidden>
-  <div class="sheet-handle" aria-hidden="true"></div>
   <div class="sheet-head">
-    <h2 id="quick-sheet-title">快速新增</h2>
+    <div>
+      <p class="eyebrow">记录一件事</p>
+      <h2 id="quick-sheet-title">快速新增</h2>
+    </div>
     <button class="icon-button" id="close-add" type="button" aria-label="关闭">×</button>
   </div>
   <form id="quick-form">
     <input id="quick-edit-id" type="hidden">
-    <label>
-      类型
-      <select id="quick-type">
-        <option value="task">任务</option>
-        <option value="habit">习惯</option>
-      </select>
-    </label>
+    <input id="quick-type" type="hidden" value="task">
+    <input id="quick-priority" type="hidden" value="medium">
+    <input id="quick-date" type="hidden">
+    <div class="form-grid compact-form-grid">
+      <div class="quick-field custom-select" data-select-field="quick-type">
+        <span class="field-label">类型</span>
+        <button class="select-trigger" type="button" data-select-target="quick-type" aria-expanded="false">
+          <span><strong id="quick-type-label">任务</strong><small id="quick-type-desc">需要完成的一件事</small></span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+        <div class="select-menu" id="quick-type-menu" hidden>
+          <button class="select-option active" type="button" data-choice-target="quick-type" data-choice-value="task" data-choice-label="任务" data-choice-desc="需要完成的一件事">任务<span>需要完成的一件事</span></button>
+          <button class="select-option" type="button" data-choice-target="quick-type" data-choice-value="habit" data-choice-label="习惯" data-choice-desc="每天或每周重复打卡">习惯<span>每天或每周重复打卡</span></button>
+        </div>
+      </div>
+      <div class="quick-field custom-select" id="quick-priority-field" data-select-field="quick-priority">
+        <span class="field-label">优先级</span>
+        <button class="select-trigger" type="button" data-select-target="quick-priority" aria-expanded="false">
+          <span><strong id="quick-priority-label">重要不紧急</strong><small id="quick-priority-desc">计划推进</small></span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+        <div class="select-menu priority-menu" id="quick-priority-menu" hidden>
+          <button class="select-option high" type="button" data-choice-target="quick-priority" data-choice-value="high" data-choice-label="重要且紧急" data-choice-desc="现在处理">重要且紧急<span>现在处理</span></button>
+          <button class="select-option medium active" type="button" data-choice-target="quick-priority" data-choice-value="medium" data-choice-label="重要不紧急" data-choice-desc="计划推进">重要不紧急<span>计划推进</span></button>
+          <button class="select-option low" type="button" data-choice-target="quick-priority" data-choice-value="low" data-choice-label="不重要但紧急" data-choice-desc="尽快顺手做">不重要但紧急<span>尽快顺手做</span></button>
+          <button class="select-option none" type="button" data-choice-target="quick-priority" data-choice-value="none" data-choice-label="不重要不紧急" data-choice-desc="有空再看">不重要不紧急<span>有空再看</span></button>
+        </div>
+      </div>
+    </div>
     <label>
       标题
       <input id="quick-title" type="text" autocomplete="off" placeholder="例如：整理本周计划" required>
     </label>
-    <div class="form-grid">
-      <label>
-        日期
-        <input id="quick-date" type="date">
-      </label>
-      <label>
-        优先级
-        <select id="quick-priority">
-          <option value="high">重要且紧急</option>
-          <option value="medium">重要不紧急</option>
-          <option value="low">不重要但紧急</option>
-          <option value="none">不重要不紧急</option>
-        </select>
+    <div class="quick-field" id="quick-date-field">
+      <span class="field-label">日期</span>
+      <div class="date-choice-row">
+        <button class="date-choice" type="button" data-date-preset="today">今天</button>
+        <button class="date-choice" type="button" data-date-preset="tomorrow">明天</button>
+        <button class="date-choice active" type="button" data-date-preset="pending">待定</button>
+        <button class="date-choice" type="button" data-date-preset="custom">指定日期</button>
+      </div>
+      <label class="date-picker-label">
+        <span>指定日期</span>
+        <input id="quick-date-picker" type="date">
       </label>
     </div>
     <label>
       备注
-      <textarea id="quick-notes" rows="3" placeholder="可选"></textarea>
+      <textarea id="quick-notes" rows="2" placeholder="可选"></textarea>
     </label>
     <div class="button-row">
       <button class="btn secondary" id="cancel-add" type="button">取消</button>
@@ -245,12 +315,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=106"></script>
-<script src="/tools/time/js/app-state.js?v=106"></script>
-<script src="/tools/time/js/export.js?v=106"></script>
-<script src="/tools/time/js/import-utils.js?v=106"></script>
-<script src="/tools/time/js/db.js?v=106"></script>
-<script src="/tools/time/js/app.js?v=106"></script>
+<script src="/tools/time/js/date-utils.js?v=110"></script>
+<script src="/tools/time/js/app-state.js?v=110"></script>
+<script src="/tools/time/js/export.js?v=110"></script>
+<script src="/tools/time/js/import-utils.js?v=110"></script>
+<script src="/tools/time/js/db.js?v=110"></script>
+<script src="/tools/time/js/app.js?v=110"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 </body>
