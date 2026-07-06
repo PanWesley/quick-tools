@@ -854,32 +854,13 @@ textarea {
 }
 
 .date-task-row {
-  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  margin-bottom: 0;
 }
 
-.date-row-main {
-  min-width: 0;
-}
-
-.date-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.text-action {
-  min-height: 30px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--primary-strong);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.danger-text {
-  color: var(--danger);
+.date-task-row .task-content {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  min-height: 54px;
+  padding: 9px 10px 9px 14px;
 }
 
 .date-note-row {
@@ -1527,19 +1508,10 @@ body.quick-is-habit #quick-priority-field {
     align-self: center;
   }
 
-  .date-task-row {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-  }
-
   .date-task-row .priority-tag {
     grid-column: 3;
     grid-row: 1;
     align-self: start;
-  }
-
-  .date-actions {
-    grid-column: 2 / -1;
-    justify-content: flex-start;
   }
 
   .quick-sheet {

@@ -208,21 +208,25 @@
   }
 
   function renderDateTask(task) {
-    var actions = task.status === 'completed'
-      ? ''
-      : '<div class="date-actions"><button class="text-action" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button><button class="text-action danger-text" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button></div>';
+    var actions = [];
+    if (task.status !== 'completed' && task.status !== 'deleted') {
+      actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button>');
+      actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
+    }
     var completeButton = task.status === 'completed'
       ? '<span class="date-icon done-icon">✓</span>'
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     return [
-      '<article class="date-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + '">',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + '>',
+      actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
+      '<div class="task-content">',
       completeButton,
-      '<div class="date-row-main">',
+      '<div class="task-main">',
       '<div class="task-title">' + escapeHtml(State.getTaskDisplayTitle(task)) + '</div>',
       '<div class="task-meta">' + escapeHtml(formatDateMeta(task)) + '</div>',
       '</div>',
-      '<span class="priority-tag ' + normalizePriority(task.priority) + '">' + escapeHtml(priorityLabel(task.priority)) + '</span>',
-      actions,
+      '<div class="priority-tag ' + normalizePriority(task.priority) + '">' + escapeHtml(priorityLabel(task.priority)) + '</div>',
+      '</div>',
       '</article>'
     ].join('');
   }

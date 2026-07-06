@@ -3,18 +3,18 @@
  * Cache-first app shell for the standalone time tool.
  */
 
-const CACHE_NAME = 'today-youxu-v11';
+const CACHE_NAME = 'today-youxu-v12';
 const APP_SHELL = [
   '/tools/time/',
   '/tools/time/index.html',
   '/tools/time/manifest.json',
-  '/tools/time/css/style.css?v=110',
-  '/tools/time/js/date-utils.js?v=110',
-  '/tools/time/js/app-state.js?v=110',
-  '/tools/time/js/export.js?v=110',
-  '/tools/time/js/import-utils.js?v=110',
-  '/tools/time/js/db.js?v=110',
-  '/tools/time/js/app.js?v=110',
+  '/tools/time/css/style.css?v=111',
+  '/tools/time/js/date-utils.js?v=111',
+  '/tools/time/js/app-state.js?v=111',
+  '/tools/time/js/export.js?v=111',
+  '/tools/time/js/import-utils.js?v=111',
+  '/tools/time/js/db.js?v=111',
+  '/tools/time/js/app.js?v=111',
   '/shared/css/pwa.css?v=2',
   '/icons/icon-192x192.png'
 ];
