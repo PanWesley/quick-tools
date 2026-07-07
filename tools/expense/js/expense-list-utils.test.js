@@ -9,6 +9,8 @@ const {
   selectPrimaryExpenseTag,
   expenseMatchesCategoryFilter,
   expenseMatchesCategoryFilters,
+  createListTransferFilters,
+  formatSelectedTagGroups,
   formatCategoryFilterLabel,
   getExpenseGestureResult,
   shouldSuppressExpenseClick
@@ -46,6 +48,7 @@ assert.deepStrictEqual(
 const detailTags = [
   { id: 'wechat', name: '微信', color: '#2ecc71', parentId: 'group-payment' },
   { id: 'food', name: '餐饮', color: '#e74c3c', parentId: 'group-category' },
+  { id: 'snack', name: '零食', color: '#f39c12', parentId: 'group-category' },
   { id: 'family', name: '家庭', color: '#3498db', parentId: 'group-person' }
 ];
 const detailGroups = [
@@ -91,8 +94,17 @@ assert.strictEqual(
     ['tag:family', 'tag:food'],
     detailTags
   ),
+  false,
+  'multi-group filter should require a match from every selected group'
+);
+assert.strictEqual(
+  expenseMatchesCategoryFilters(
+    { category: '餐饮', tags: ['wechat'] },
+    ['tag:food', 'tag:snack'],
+    detailTags
+  ),
   true,
-  'multi-select filter should match when any selected tag matches'
+  'same-group filter should match when any selected tag in that group matches'
 );
 assert.strictEqual(
   expenseMatchesCategoryFilters(
@@ -114,6 +126,40 @@ assert.strictEqual(
 assert.strictEqual(formatCategoryFilterLabel([], detailTags), '全部分类');
 assert.strictEqual(formatCategoryFilterLabel(['wechat'], detailTags), '微信');
 assert.strictEqual(formatCategoryFilterLabel(['wechat', 'food', 'family'], detailTags), '已选 3 个分类');
+
+assert.deepStrictEqual(
+  createListTransferFilters({
+    search: '2026-07-04',
+    tags: ['food', 'snack', 'missing-tag']
+  }, detailTags),
+  {
+    search: '2026-07-04',
+    tagIds: ['food', 'snack']
+  },
+  'dashboard-to-list transfer should carry the selected date and all valid dashboard tags'
+);
+
+assert.deepStrictEqual(
+  formatSelectedTagGroups(['food', 'wechat', 'snack', 'missing-tag'], detailTags, detailGroups),
+  [
+    {
+      id: 'group-payment',
+      name: '支付方式',
+      color: '#2ecc71',
+      tags: [{ id: 'wechat', name: '微信', color: '#2ecc71' }]
+    },
+    {
+      id: 'group-category',
+      name: '消费类型',
+      color: '#e74c3c',
+      tags: [
+        { id: 'food', name: '餐饮', color: '#e74c3c' },
+        { id: 'snack', name: '零食', color: '#f39c12' }
+      ]
+    }
+  ],
+  'selected tags should be grouped for compact filter display'
+);
 
 assert.deepStrictEqual(
   createExpenseDetailView(

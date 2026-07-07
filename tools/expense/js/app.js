@@ -660,34 +660,7 @@ function renderSelectedFilterTags() {
     return;
   }
 
-  const renderedTagIds = new Set();
-  const chips = [];
-
-  for (const group of allTagGroups) {
-    const tagsInGroup = allTags.filter(tag => (tag.parentId || 'group-uncategorized') === group.id);
-    if (tagsInGroup.length === 0) continue;
-
-    const allSelected = tagsInGroup.every(tag => selectedTagIds.includes(tag.id));
-    if (!allSelected) continue;
-
-    tagsInGroup.forEach(tag => renderedTagIds.add(tag.id));
-    const style = `background:${group.color}22;color:${group.color};border-color:${group.color}`;
-    chips.push(
-      `<span class="selected-tag-chip" style="${style}">${escapeHTML(group.name)} · 全部<button class="remove" onclick="removeFilterGroup('${escapeJSAttr(group.id)}')" aria-label="移除${escapeAttr(group.name)}分组"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`
-    );
-  }
-
-  chips.push(...selectedTagIds.map(id => {
-    if (renderedTagIds.has(id)) return '';
-    const tag = allTags.find(t => t.id === id);
-    if (!tag) return '';
-    const group = allTagGroups.find(g => g.id === (tag.parentId || 'group-uncategorized'));
-    const groupName = group ? group.name : '';
-    const style = `background:${tag.color}22;color:${tag.color};border-color:${tag.color}`;
-    return `<span class="selected-tag-chip" style="${style}">${groupName ? groupName + ' · ' : ''}${escapeHTML(tag.name)}<button class="remove" onclick="removeFilterTag('${escapeJSAttr(tag.id)}')" aria-label="移除"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></span>`;
-  }));
-
-  container.innerHTML = chips.join('');
+  container.innerHTML = renderSelectedTagGroupChips(selectedTagIds, 'dashboard');
 }
 
 window.removeFilterTag = function(tagId) {
@@ -729,24 +702,36 @@ window.goToListFromDashboard = function() {
   applyListViewFilters();
 };
 
-window.goToListForDate = function(date) {
-  _originalSwitchView('list');
+function applyTransferredListFilters(filters) {
+  const transfer = ExpenseListUtils.createListTransferFilters(filters, allTags);
   const listSearch = document.getElementById('list-search');
   if (listSearch) {
-    listSearch.value = date;
+    listSearch.value = transfer.search;
   }
+
+  selectedListCategoryTagIds = transfer.tagIds;
+  draftListCategoryTagIds = transfer.tagIds.slice();
+  renderListCategoryTrigger();
+  renderListCategoryPicker();
+
   listViewCurrentOffset = 0;
   renderExpenseList();
+}
+
+window.goToListForDate = function(date) {
+  _originalSwitchView('list');
+  applyTransferredListFilters({
+    search: date,
+    tags: (window._dashboardFilters && window._dashboardFilters.tags) || selectedTagIds
+  });
 };
 
 window.goToListForMonth = function(month) {
   _originalSwitchView('list');
-  const listSearch = document.getElementById('list-search');
-  if (listSearch) {
-    listSearch.value = month;
-  }
-  listViewCurrentOffset = 0;
-  renderExpenseList();
+  applyTransferredListFilters({
+    search: month,
+    tags: (window._dashboardFilters && window._dashboardFilters.tags) || selectedTagIds
+  });
 };
 
 function applyListViewFilters() {
@@ -754,26 +739,10 @@ function applyListViewFilters() {
 
   const filters = window._listViewFilters;
 
-  // Apply search filter
-  const listSearch = document.getElementById('list-search');
-  if (listSearch && filters.search) {
-    listSearch.value = filters.search;
-  }
-
-  // Apply category filter if single tag selected
-  if (filters.tags && filters.tags.length === 1) {
-    const tag = allTags.find(t => t.id === filters.tags[0]);
-    if (tag) {
-      selectedListCategoryTagIds = [tag.id];
-      draftListCategoryTagIds = [tag.id];
-      renderListCategoryTrigger();
-      renderListCategoryPicker();
-    }
-  }
-
-  // Re-render list with filters
-  listViewCurrentOffset = 0;
-  renderExpenseList();
+  applyTransferredListFilters({
+    search: filters.search || '',
+    tags: filters.tags || []
+  });
 }
 
 function renderTagCloud() {
@@ -884,13 +853,40 @@ function syncListCategorySelectionWithTags() {
 function renderListCategoryTrigger() {
   const labelEl = document.getElementById('list-category-trigger-label');
   const countEl = document.getElementById('list-category-trigger-count');
+  const trigger = document.getElementById('list-category-trigger');
   if (!labelEl) return;
 
-  labelEl.textContent = ExpenseListUtils.formatCategoryFilterLabel(selectedListCategoryTagIds, allTags);
-  if (countEl) {
-    countEl.textContent = String(selectedListCategoryTagIds.length);
-    countEl.hidden = selectedListCategoryTagIds.length === 0;
+  if (selectedListCategoryTagIds.length === 0) {
+    labelEl.textContent = ExpenseListUtils.formatCategoryFilterLabel(selectedListCategoryTagIds, allTags);
+  } else {
+    labelEl.innerHTML = renderSelectedTagGroupChips(selectedListCategoryTagIds, 'list');
   }
+  if (trigger) {
+    trigger.classList.toggle('has-selection', selectedListCategoryTagIds.length > 0);
+  }
+  if (countEl) {
+    countEl.textContent = '';
+    countEl.hidden = true;
+  }
+}
+
+function renderSelectedTagGroupChips(tagIds, scope) {
+  const groups = ExpenseListUtils.formatSelectedTagGroups(tagIds, allTags, allTagGroups);
+  if (groups.length === 0) return '';
+
+  return groups.map(group => {
+    const color = group.color || '#2DBAA3';
+    const style = `--group-color:${escapeAttr(color)}`;
+    const tags = group.tags.map(tag => (
+      `<span class="selected-filter-tag">${escapeHTML(tag.name)}</span>`
+    )).join('');
+    return `
+      <span class="selected-filter-group ${escapeAttr(scope || '')}" style="${style}">
+        <span class="selected-filter-group-name">${escapeHTML(group.name)}</span>
+        <span class="selected-filter-group-tags">${tags}</span>
+      </span>
+    `;
+  }).join('');
 }
 
 function renderListCategoryPicker() {

@@ -86,12 +86,35 @@
     });
   }
 
+  function getCategoryFilterGroupId(filterValue, tags) {
+    const value = String(filterValue || '');
+    if (value.startsWith('tag:')) {
+      const tagId = value.slice(4);
+      const tag = (tags || []).find(item => item.id === tagId);
+      return tag ? (tag.parentId || 'group-uncategorized') : `missing-tag:${tagId}`;
+    }
+    return 'group-category';
+  }
+
+  function groupCategoryFilterValues(filterValues, tags) {
+    const groups = new Map();
+    filterValues.forEach(value => {
+      const groupId = getCategoryFilterGroupId(value, tags);
+      if (!groups.has(groupId)) groups.set(groupId, []);
+      groups.get(groupId).push(value);
+    });
+    return groups;
+  }
+
   function expenseMatchesCategoryFilters(expense, filterValues, tags) {
     const values = Array.isArray(filterValues)
       ? filterValues.filter(Boolean)
       : (filterValues ? [filterValues] : []);
     if (values.length === 0) return true;
-    return values.some(value => expenseMatchesCategoryFilter(expense, value, tags));
+    const groups = groupCategoryFilterValues(values, tags);
+    return Array.from(groups.values()).every(groupValues => (
+      groupValues.some(value => expenseMatchesCategoryFilter(expense, value, tags))
+    ));
   }
 
   function formatCategoryFilterLabel(selectedTagIds, tags) {
@@ -102,6 +125,50 @@
       return tag ? tag.name : '已选 1 个分类';
     }
     return `已选 ${ids.length} 个分类`;
+  }
+
+  function createListTransferFilters(filters, tags) {
+    const source = filters || {};
+    const validTagIds = new Set((tags || []).map(tag => tag.id));
+    const tagIds = Array.isArray(source.tags)
+      ? source.tags.filter(id => validTagIds.has(id))
+      : [];
+    return {
+      search: source.search ? String(source.search) : '',
+      tagIds
+    };
+  }
+
+  function formatSelectedTagGroups(selectedTagIds, tags, groups) {
+    const tagMap = new Map((tags || []).map(tag => [tag.id, tag]));
+    const groupMap = new Map((groups || []).map(group => [group.id, group]));
+    const buckets = new Map();
+
+    for (const id of selectedTagIds || []) {
+      const tag = tagMap.get(id);
+      if (!tag) continue;
+      const groupId = tag.parentId || 'group-uncategorized';
+      const group = groupMap.get(groupId);
+      const bucketId = group ? group.id : groupId;
+      if (!buckets.has(bucketId)) {
+        buckets.set(bucketId, {
+          id: bucketId,
+          name: group ? group.name : '未分类',
+          color: group && group.color ? group.color : (tag.color || '#2DBAA3'),
+          order: group ? (group.order || 0) : 999,
+          tags: []
+        });
+      }
+      buckets.get(bucketId).tags.push({
+        id: tag.id,
+        name: tag.name,
+        color: tag.color || buckets.get(bucketId).color
+      });
+    }
+
+    return Array.from(buckets.values())
+      .sort((a, b) => a.order - b.order)
+      .map(({ order, ...group }) => group);
   }
 
   function groupExpenseTags(tagIds, tags, groups) {
@@ -177,6 +244,8 @@
     expenseMatchesCategoryFilter,
     expenseMatchesCategoryFilters,
     formatCategoryFilterLabel,
+    createListTransferFilters,
+    formatSelectedTagGroups,
     groupExpenseTags,
     createExpenseDetailView,
     getExpenseGestureResult,

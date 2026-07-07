@@ -3,7 +3,7 @@
  * Provides offline caching and installed PWA startup support.
  */
 
-const CACHE_NAME = 'expense-tracker-v1.6.9';
+const CACHE_NAME = 'expense-tracker-v1.6.10';
 const STATIC_ASSETS = [
   '/tools/expense/',
   '/tools/expense/index.html',

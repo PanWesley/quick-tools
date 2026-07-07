@@ -1,6 +1,6 @@
 ﻿/* ============================================
    Expense Tracker - Stylesheet
-   Theme: Forest Canopy (温润的日式账本) v1.6.9
+   Theme: Forest Canopy (温润的日式账本) v1.6.10
    ============================================ */
 
 /* CSS Variables */
@@ -1308,6 +1308,48 @@ h1, h2 {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
+}
+
+.selected-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--group-color, var(--primary)) 48%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--group-color, var(--primary)) 10%, var(--card-bg));
+  color: var(--text);
+}
+
+.selected-filter-group-name {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--group-color, var(--primary)) 42%, var(--text));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.selected-filter-group-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.selected-filter-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: color-mix(in srgb, var(--group-color, var(--primary)) 72%, var(--text));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tag-chip {
@@ -1406,6 +1448,38 @@ h1, h2 {
   text-align: left;
 }
 
+#list-category-trigger-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-category-trigger.has-selection {
+  min-height: 48px;
+  align-items: center;
+}
+
+.list-category-trigger.has-selection #list-category-trigger-label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.list-category-trigger .selected-filter-group {
+  min-height: 30px;
+  padding: 4px 7px 4px 9px;
+}
+
+.list-category-trigger .selected-filter-group-name {
+  font-size: 12px;
+}
+
+.list-category-trigger .selected-filter-tag {
+  min-height: 20px;
+  padding: 2px 7px;
+  font-size: 12px;
+}
+
 .list-category-trigger:focus {
   border-color: var(--primary);
 }
@@ -1421,6 +1495,10 @@ h1, h2 {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
+}
+
+.list-category-trigger-count[hidden] {
+  display: none;
 }
 
 .list-category-trigger-chevron {

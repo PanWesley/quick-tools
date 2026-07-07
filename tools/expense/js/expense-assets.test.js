@@ -91,11 +91,11 @@ assert.ok(
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.9';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.10';/
 );
 assert.match(
   html,
-  /\/tools\/expense\/css\/style\.css\?v=169/,
+  /\/tools\/expense\/css\/style\.css\?v=170/,
   'main expense stylesheet must use the current asset version'
 );
 assert.match(
@@ -143,6 +143,11 @@ assert.match(html, /<h3>表格导入<\/h3>/);
 assert.match(
   stylesheet,
   /\.safety-more\[hidden\]\s*\{\s*display:\s*none/
+);
+assert.match(
+  stylesheet,
+  /\.list-category-trigger-count\[hidden\]\s*\{\s*display:\s*none/,
+  'hidden list category count badge must not leave an empty green dot'
 );
 assert.doesNotMatch(
   stylesheet,
