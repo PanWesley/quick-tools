@@ -55,6 +55,26 @@ function findTag(tags, tagId) {
   return (tags || []).find(tag => tag.id === tagId);
 }
 
+function groupSelectedTagIdsByParent(tagIds, tags) {
+  const groups = new Map();
+  (tagIds || []).filter(Boolean).forEach(tagId => {
+    const tag = findTag(tags, tagId);
+    const groupId = tag ? getTagGroupId(tag) : `missing-tag:${tagId}`;
+    if (!groups.has(groupId)) groups.set(groupId, []);
+    groups.get(groupId).push(tagId);
+  });
+  return groups;
+}
+
+function expenseMatchesGroupedTagIds(expense, tagIds, tags) {
+  const groups = groupSelectedTagIdsByParent(tagIds, tags);
+  if (groups.size === 0) return true;
+  const expenseTags = expense.tags || [];
+  return Array.from(groups.values()).every(groupTagIds => (
+    groupTagIds.some(tagId => expenseTags.includes(tagId))
+  ));
+}
+
 function findGroup(groups, groupId) {
   return (groups || []).find(group => group.id === groupId)
     || (groupId === FALLBACK_UNCATEGORIZED_GROUP.id ? FALLBACK_UNCATEGORIZED_GROUP : null);
@@ -187,8 +207,7 @@ function filterDashboardExpenses(expenses, filters = {}, context = {}) {
     if (endDate && expense.date > endDate) return false;
 
     if (selectedTags && Array.isArray(selectedTags) && selectedTags.length > 0) {
-      const expenseTags = expense.tags || [];
-      if (!selectedTags.some(tagId => expenseTags.includes(tagId))) return false;
+      if (!expenseMatchesGroupedTagIds(expense, selectedTags, knownTags)) return false;
     }
 
     if (minAmount !== null && minAmount !== '') {

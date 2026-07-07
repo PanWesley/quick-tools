@@ -13,7 +13,8 @@ const {
 const tags = [
   { id: 'food', name: '餐饮', color: '#f39c12', parentId: 'group-category' },
   { id: 'snack', name: '零食', color: '#e67e22', parentId: 'group-category' },
-  { id: 'wechat', name: '微信', color: '#2ecc71', parentId: 'group-payment' }
+  { id: 'wechat', name: '微信', color: '#2ecc71', parentId: 'group-payment' },
+  { id: 'family', name: '家庭', color: '#3498db', parentId: 'group-person' }
 ];
 
 const groups = [
@@ -39,6 +40,20 @@ assert.deepStrictEqual(
   filtered.map(expense => expense.amount),
   [60],
   'global filters should combine date, selected tags, and search before charts aggregate'
+);
+
+const groupedTagFiltered = filterDashboardExpenses([
+  { id: 'food-wechat', amount: 12, date: '2026-06-03', tags: ['food', 'wechat'] },
+  { id: 'snack-family', amount: 18, date: '2026-06-04', tags: ['snack', 'family'] },
+  { id: 'food-only', amount: 22, date: '2026-06-05', tags: ['food'] }
+], {
+  tags: ['food', 'snack', 'family']
+}, { tags });
+
+assert.deepStrictEqual(
+  groupedTagFiltered.map(expense => expense.id),
+  ['snack-family'],
+  'dashboard tag filters should OR tags inside a group and AND across groups'
 );
 
 const categoryBreakdown = aggregateDashboardBreakdown(expenses.slice(0, 2), {
