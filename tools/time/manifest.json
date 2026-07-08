@@ -2,6 +2,7 @@
   "name": "今日有序 - 时间管理",
   "short_name": "今日有序",
   "description": "日历、待办与习惯打卡，一起管理美好的今天。",
+  "version": "0.5.0",
   "start_url": "/tools/time/",
   "display": "standalone",
   "background_color": "#FFF7F1",
