@@ -774,6 +774,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-direction: row-reverse;
   gap: 12px;
   min-height: 44px;
   padding: 0 4px;

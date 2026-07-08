@@ -981,6 +981,7 @@
 
     container.addEventListener('touchmove', function(e) {
       if (!isDragging) return;
+      e.stopPropagation();
       var deltaY = e.touches[0].clientY - startY;
       var newOffset = startOffset + deltaY;
       var minOffset = -(options.length - 1) * itemHeight;
@@ -1453,7 +1454,7 @@
     });
     document.querySelectorAll('[data-choice-target]').forEach(function(button) {
       button.addEventListener('click', function(event) {
-        event.stopPropagation();
+        if (!button.dataset.action) event.stopPropagation();
         setChoiceValue(button.dataset.choiceTarget, button.dataset.choiceValue);
       });
     });
