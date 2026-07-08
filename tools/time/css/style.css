@@ -1341,10 +1341,12 @@ textarea {
 .list-panel {
   overflow: visible;
   position: relative;
+  margin: 12px 16px 0;
+  padding: 0;
 }
 
 .list-search-row {
-  padding: 14px 16px 10px;
+  padding: 10px 12px 8px;
   min-width: 0;
 }
 
@@ -1366,8 +1368,8 @@ textarea {
 .list-tab-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 16px 12px;
+  gap: 6px;
+  padding: 2px 12px 8px;
   position: relative;
 }
 
@@ -1401,17 +1403,17 @@ textarea {
 
 .list-tab {
   flex-shrink: 0;
-  padding: 8px 14px;
-  border-radius: 20px;
+  padding: 6px 10px;
+  border-radius: 16px;
   border: 1.5px solid var(--border);
   background: var(--surface);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: var(--weight-medium, 500);
   color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   transition: all 160ms ease;
   white-space: nowrap;
   font-family: inherit;
@@ -1428,11 +1430,11 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  font-size: 12px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 11px;
   font-weight: var(--weight-semibold, 560);
   background: rgba(0,0,0,0.05);
   color: var(--text-muted);
@@ -1463,9 +1465,9 @@ textarea {
 .list-filter-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px 12px;
-  border-radius: 18px;
+  gap: 3px;
+  padding: 6px 10px;
+  border-radius: 16px;
   border: 1.5px solid var(--border);
   background: var(--surface);
   font-size: 13px;
@@ -1474,6 +1476,7 @@ textarea {
   white-space: nowrap;
   font-weight: var(--weight-medium, 500);
   font-family: inherit;
+  flex-shrink: 0;
 }
 
 .list-filter-btn.active {
