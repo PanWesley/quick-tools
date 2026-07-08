@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=118">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=122">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -119,37 +119,47 @@
       <div>
         <p class="eyebrow">清单</p>
         <h1 id="list-title">整理任务</h1>
-        <p>把未安排、之后要做和历史记录放在同一个工作台里。</p>
+        <p>统一管理全部任务、未安排、即将到来、已过期和历史记录。</p>
       </div>
     </div>
-    <section class="panel list-workbench">
+    <section class="panel list-panel">
       <div class="list-search-row">
         <input class="search-input" id="task-search" type="search" placeholder="搜索任务标题或备注">
       </div>
-      <div class="list-filter-group" aria-label="清单筛选">
-        <button class="list-filter active" type="button" data-list-filter="inbox">未安排 <span id="inbox-count">0</span></button>
-        <button class="list-filter" type="button" data-list-filter="upcoming">之后 <span id="upcoming-count">0</span></button>
-        <button class="list-filter" type="button" data-list-filter="completed">完成 <span id="completed-count">0</span></button>
-        <button class="list-filter" type="button" data-list-filter="deleted">删除 <span id="deleted-count">0</span></button>
-      </div>
-      <div class="area-filter-row" aria-label="归属筛选">
-        <button class="area-filter active" type="button" data-area-filter="all">全部</button>
-        <button class="area-filter" type="button" data-area-filter="life">生活</button>
-        <button class="area-filter" type="button" data-area-filter="study">学习</button>
-        <button class="area-filter" type="button" data-area-filter="work">工作</button>
-        <button class="area-filter" type="button" data-area-filter="health">健康</button>
-        <button class="area-filter" type="button" data-area-filter="housework">家务</button>
-        <button class="area-filter" type="button" data-area-filter="memory">纪念</button>
-        <button class="area-filter" type="button" data-area-filter="other">其他</button>
-      </div>
-      <div class="panel-head list-current-head">
-        <div>
-          <h2 id="list-current-title">未安排</h2>
-          <p id="list-current-subtitle">还没定日期的任务，适合先收集想法。</p>
+      <div class="list-tab-row">
+        <div class="list-tab-scroll-wrap">
+          <div class="list-tab-scroll" id="list-tab-scroll">
+            <button class="list-tab active" type="button" data-list-filter="all">全部 <span class="list-tab-count" id="all-count">0</span></button>
+            <button class="list-tab" type="button" data-list-filter="inbox">未安排 <span class="list-tab-count" id="inbox-count">0</span></button>
+            <button class="list-tab" type="button" data-list-filter="upcoming">即将到来 <span class="list-tab-count" id="upcoming-count">0</span></button>
+            <button class="list-tab list-tab-overdue" type="button" data-list-filter="overdue">已过期 <span class="list-tab-count" id="overdue-count">0</span></button>
+            <button class="list-tab" type="button" data-list-filter="completed">已完成 <span class="list-tab-count" id="completed-count">0</span></button>
+            <button class="list-tab" type="button" data-list-filter="deleted">已删除 <span class="list-tab-count" id="deleted-count">0</span></button>
+          </div>
         </div>
-        <span class="count-badge" id="list-current-count">0</span>
+        <div class="list-filter-dropdown" id="list-area-filter">
+          <button class="list-filter-btn" type="button" id="list-area-btn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+            <span id="list-area-label">全部</span>
+            <span class="list-filter-arrow">&#9662;</span>
+          </button>
+          <div class="list-filter-menu" id="list-area-menu" hidden>
+            <button class="list-filter-option selected" type="button" data-area-filter="all">全部</button>
+            <button class="list-filter-option" type="button" data-area-filter="life">生活</button>
+            <button class="list-filter-option" type="button" data-area-filter="study">学习</button>
+            <button class="list-filter-option" type="button" data-area-filter="work">工作</button>
+            <button class="list-filter-option" type="button" data-area-filter="health">健康</button>
+            <button class="list-filter-option" type="button" data-area-filter="housework">家务</button>
+            <button class="list-filter-option" type="button" data-area-filter="memory">纪念</button>
+            <button class="list-filter-option" type="button" data-area-filter="other">其他</button>
+          </div>
+        </div>
       </div>
-      <div class="stack-list" id="task-list"></div>
+      <div class="list-divider"></div>
+      <div class="list-container" id="list-container"></div>
+      <div class="list-load-more" id="list-load-more" hidden>
+        <button class="list-load-more-btn" type="button" id="list-load-more-btn">加载更多 &#9662;</button>
+      </div>
     </section>
   </section>
 
@@ -415,12 +425,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=118"></script>
-<script src="/tools/time/js/app-state.js?v=118"></script>
-<script src="/tools/time/js/export.js?v=118"></script>
-<script src="/tools/time/js/import-utils.js?v=118"></script>
-<script src="/tools/time/js/db.js?v=118"></script>
-<script src="/tools/time/js/app.js?v=118"></script>
+<script src="/tools/time/js/date-utils.js?v=121"></script>
+<script src="/tools/time/js/app-state.js?v=121"></script>
+<script src="/tools/time/js/export.js?v=121"></script>
+<script src="/tools/time/js/import-utils.js?v=121"></script>
+<script src="/tools/time/js/db.js?v=121"></script>
+<script src="/tools/time/js/app.js?v=121"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>

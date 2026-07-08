@@ -83,6 +83,64 @@
       });
   }
 
+  function getOverdueTasks(tasks, todayKey) {
+    return (tasks || [])
+      .filter(function(task) {
+        return activeOnly(task) && task.date && task.date < todayKey;
+      })
+      .sort(function(a, b) {
+        return String(a.date).localeCompare(String(b.date));
+      });
+  }
+
+  function getAllActiveItems(tasks, habits, todayKey) {
+    var items = [];
+    (tasks || []).filter(activeOnly).forEach(function(task) {
+      items.push({ type: 'task', data: task });
+    });
+    (habits || []).forEach(function(habit) {
+      if (habit.status !== 'archived') {
+        items.push({ type: 'habit', data: habit });
+      }
+    });
+    return items;
+  }
+
+  function calculateHabitStreak(logs, habitId, todayKey) {
+    var streak = 0;
+    var dateParts = String(todayKey).split('-').map(Number);
+    var checkDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    for (var i = 0; i < 365; i++) {
+      var y = checkDate.getFullYear();
+      var m = String(checkDate.getMonth() + 1).padStart(2, '0');
+      var d = String(checkDate.getDate()).padStart(2, '0');
+      var key = y + '-' + m + '-' + d;
+      var log = getHabitLogForDate(logs, habitId, key);
+      if (log && log.state === 'done') {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  function getRepeatLabel(habit) {
+    var schedule = habit.schedule || 'daily';
+    if (schedule === 'daily') return '每天';
+    if (schedule === 'weekdays') return '工作日';
+    if (schedule === 'weekends') return '周末';
+    if (schedule === 'weekly') return '每周';
+    if (schedule === 'monthly') return '每月';
+    if (schedule === 'custom' && habit.customRepeat) {
+      var cr = habit.customRepeat;
+      var unit = cr.unit === 'week' ? '周' : cr.unit === 'month' ? '月' : '天';
+      return '每' + (cr.interval || 1) + unit;
+    }
+    return '';
+  }
+
   function getTaskDisplayTitle(task) {
     var title = task && task.title;
     title = title == null ? '' : String(title).trim();
@@ -226,8 +284,12 @@
     getTodayTasks: getTodayTasks,
     getInboxTasks: getInboxTasks,
     getUpcomingTasks: getUpcomingTasks,
+    getOverdueTasks: getOverdueTasks,
     getCompletedTasks: getCompletedTasks,
     getDeletedTasks: getDeletedTasks,
+    getAllActiveItems: getAllActiveItems,
+    calculateHabitStreak: calculateHabitStreak,
+    getRepeatLabel: getRepeatLabel,
     getTaskDisplayTitle: getTaskDisplayTitle,
     getCalendarEntries: getCalendarEntries,
     habitDueOn: habitDueOn,

@@ -12,9 +12,11 @@
     calendarYear: new Date().getFullYear(),
     calendarMonth: new Date().getMonth(),
     calendarCollapsed: false,
-    listFilter: 'inbox',
+    listFilter: 'all',
     areaFilter: 'all',
     search: '',
+    listPageSize: 20,
+    listDisplayCount: 20,
     editingTaskId: '',
     customRepeat: null,
     customReminder: null,
@@ -68,6 +70,9 @@
     document.querySelectorAll('.task-row.actions-open').forEach(function(row) {
       if (row !== exceptRow) closeSwipeRow(row);
     });
+    document.querySelectorAll('.list-swipe-row.list-open').forEach(function(row) {
+      if (row !== exceptRow) closeListSwipeRow(row);
+    });
   }
 
   function openSwipeRow(row) {
@@ -91,12 +96,27 @@
     }
   }
 
+  function openListSwipeRow(row) {
+    closeSwipeRows(row);
+    row.classList.add('list-open');
+  }
+
+  function closeListSwipeRow(row) {
+    row.classList.remove('list-open');
+  }
+
+  function closeListFilterMenu() {
+    if (els.listAreaFilter) els.listAreaFilter.classList.remove('open');
+    if (els.listAreaMenu) els.listAreaMenu.hidden = true;
+  }
+
   function handleSwipeStart(event) {
-    var row = event.target.closest('.task-row.has-swipe-actions');
+    var row = event.target.closest('.task-row.has-swipe-actions') || event.target.closest('.list-swipe-row');
     if (!row || !event.touches || event.touches.length !== 1) return;
     var touch = event.touches[0];
     swipeState = {
       row: row,
+      isListSwipe: row.classList.contains('list-swipe-row'),
       startX: touch.clientX,
       startY: touch.clientY,
       currentX: touch.clientX,
@@ -121,10 +141,18 @@
     var touch = event.changedTouches && event.changedTouches[0];
     var endX = touch ? touch.clientX : swipeState.currentX;
     var dx = endX - swipeState.startX;
-    if (dx < -42) {
-      openSwipeRow(swipeState.row);
-    } else if (dx > 32) {
-      closeSwipeRow(swipeState.row);
+    if (swipeState.isListSwipe) {
+      if (dx < -42) {
+        openListSwipeRow(swipeState.row);
+      } else if (dx > 32) {
+        closeListSwipeRow(swipeState.row);
+      }
+    } else {
+      if (dx < -42) {
+        openSwipeRow(swipeState.row);
+      } else if (dx > 32) {
+        closeSwipeRow(swipeState.row);
+      }
     }
     swipeState = null;
   }
@@ -386,43 +414,343 @@
       String(task.notes || '').toLowerCase().includes(query);
   }
 
-  function renderLists() {
-    var tasks = State.filterTasksByArea(appState.data.tasks, appState.areaFilter).filter(matchesSearch);
-    var inbox = State.getInboxTasks(tasks);
-    var upcoming = State.getUpcomingTasks(tasks, appState.todayKey);
-    var completed = State.getCompletedTasks(tasks).slice(0, 20);
-    var deleted = State.getDeletedTasks(tasks).slice(0, 20);
-    var groups = {
-      inbox: inbox,
-      upcoming: upcoming,
-      completed: completed,
-      deleted: deleted
+  function matchesSearchHabit(habit) {
+    var query = appState.search.trim().toLowerCase();
+    if (!query) return true;
+    return String(habit.title || '').toLowerCase().includes(query) ||
+      areaLabel(habit.area).toLowerCase().includes(query);
+  }
+
+  function listConfig(filter) {
+    return {
+      all: { title: '全部', subtitle: '所有未完成的任务和习惯', empty: '还没有任何事项。点击右下角 + 开始记录吧。' },
+      inbox: { title: '未安排', subtitle: '还没定日期的事项', empty: '没有未安排事项。新增事项时选择"待定"即可放到这里。' },
+      upcoming: { title: '即将到来', subtitle: '今天之后的任务，按日期排列', empty: '还没有未来任务。' },
+      overdue: { title: '已过期', subtitle: '超过截止日期未完成的任务', empty: '没有过期任务，保持得不错！' },
+      completed: { title: '已完成', subtitle: '最近完成的记录', empty: '还没有完成记录。' },
+      deleted: { title: '已删除', subtitle: '最近删除的任务，可以恢复', empty: '最近没有删除的任务。' }
+    }[filter] || { title: '全部', subtitle: '所有未完成的任务和习惯', empty: '还没有任何事项。' };
+  }
+
+  function formatDateLabel(dateKey) {
+    if (!dateKey) return '';
+    if (dateKey === appState.todayKey) return '今天';
+    var tomorrow = DateUtils.toDateKey(DateUtils.addDays(DateUtils.fromDateKey(appState.todayKey), 1));
+    if (dateKey === tomorrow) return '明天';
+    var parts = String(dateKey).split('-').map(Number);
+    return (parts[1]) + '月' + parts[2] + '日';
+  }
+
+  function formatListMeta(item) {
+    var parts = [];
+    if (item.type === 'task') {
+      var task = item.data;
+      if (!task.date) {
+        parts.push('想法收集');
+      } else {
+        var dateLabel = formatDateLabel(task.date);
+        if (task.date < appState.todayKey) {
+          parts.push(dateLabel);
+        } else if (task.date === appState.todayKey) {
+          if (task.startTime) {
+            parts.push(task.startTime);
+          } else {
+            parts.push('今天');
+          }
+        } else {
+          if (task.startTime) {
+            parts.push(dateLabel + ' ' + task.startTime);
+          } else {
+            parts.push(dateLabel);
+          }
+        }
+      }
+    } else {
+      var habit = item.data;
+      parts.push(State.getRepeatLabel(habit));
+      var streak = State.calculateHabitStreak(appState.data.habitLogs, habit.id, appState.todayKey);
+      if (streak > 0) {
+        parts.push('连续' + streak + '天');
+      }
+    }
+    return parts.join('  ');
+  }
+
+  function getListItemDateGroup(item) {
+    if (item.type === 'task') {
+      var task = item.data;
+      if (!task.date) return 'inbox';
+      if (task.date < appState.todayKey) return 'overdue';
+      if (task.date === appState.todayKey) return 'today';
+      var tomorrow = DateUtils.toDateKey(DateUtils.addDays(DateUtils.fromDateKey(appState.todayKey), 1));
+      if (task.date === tomorrow) return 'tomorrow';
+      return 'later';
+    } else {
+      var habit = item.data;
+      var todayDue = State.habitDueOn(habit, appState.todayKey);
+      if (todayDue) return 'today';
+      return 'habits';
+    }
+  }
+
+  function isItemCompleted(item) {
+    if (item.type === 'task') return item.data.status === 'completed';
+    return false;
+  }
+
+  function isItemDeleted(item) {
+    if (item.type === 'task') return item.data.status === 'deleted';
+    return false;
+  }
+
+  function isItemOverdue(item) {
+    if (item.type === 'task') {
+      return item.data.status !== 'completed' && item.data.status !== 'deleted' && item.data.date && item.data.date < appState.todayKey;
+    }
+    return false;
+  }
+
+  function renderListItem(item) {
+    var priority = item.data.priority || 'none';
+    var isHabit = item.type === 'habit';
+    var isCompleted = isItemCompleted(item);
+    var isDeleted = isItemDeleted(item);
+    var title = State.getTaskDisplayTitle(item.data);
+    var meta = formatListMeta(item);
+    var actions = [];
+    var checkButton = '';
+    var marker = '';
+
+    if (isDeleted) {
+      actions.push('<button class="list-swipe-btn list-restore" type="button" data-action="restore-task" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18z"/></svg>恢复</button>');
+      actions.push('<button class="list-swipe-btn list-purge" type="button" data-action="purge-task" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>彻底删除</button>');
+      checkButton = '<span class="list-task-check"></span>';
+    } else if (isCompleted) {
+      checkButton = '<button class="list-task-check checked" type="button" data-action="uncomplete-task" data-id="' + escapeHtml(item.data.id) + '"></button>';
+      actions.push('<button class="list-swipe-btn list-edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>编辑</button>');
+      actions.push('<button class="list-swipe-btn list-delete" type="button" data-action="delete-task" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>删除</button>');
+    } else if (isHabit) {
+      var log = State.getHabitLogForDate(appState.data.habitLogs, item.data.id, appState.todayKey);
+      var done = log && log.state === 'done';
+      var skipped = log && log.state === 'skipped';
+      checkButton = '<button class="list-task-check' + (done ? ' checked' : '') + '" type="button" data-action="' + (done ? '' : 'check-habit') + '" data-id="' + escapeHtml(item.data.id) + '"' + (done ? ' disabled' : '') + '>' + (done ? '✓' : '') + '</button>';
+      actions.push('<button class="list-swipe-btn list-edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>编辑</button>');
+      actions.push('<button class="list-swipe-btn list-skip" type="button" data-action="skip-habit" data-id="' + escapeHtml(item.data.id) + '"' + (skipped ? ' disabled' : '') + '>' +
+        '<svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>' + (skipped ? '已跳过' : '跳过') + '</button>');
+    } else {
+      checkButton = '<button class="list-task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(item.data.id) + '"></button>';
+      actions.push('<button class="list-swipe-btn list-edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>编辑</button>');
+      actions.push('<button class="list-swipe-btn list-delete" type="button" data-action="delete-task" data-id="' + escapeHtml(item.data.id) + '">' +
+        '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>删除</button>');
+    }
+
+    if (isHabit) {
+      marker = '<span class="list-priority-marker priority-' + normalizePriority(priority) + '">' +
+        '<svg class="list-repeat-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></span>';
+    } else {
+      marker = '<span class="list-priority-marker priority-' + normalizePriority(priority) + '"><span class="list-priority-dot"></span></span>';
+    }
+
+    var overdueClass = isItemOverdue(item) ? ' is-overdue' : '';
+    var completedClass = isCompleted ? ' completed' : '';
+
+    return [
+      '<div class="list-swipe-row' + overdueClass + completedClass + '" data-list-item data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '">',
+      '<div class="list-swipe-actions">' + actions.join('') + '</div>',
+      '<div class="list-swipe-content">',
+      checkButton,
+      marker,
+      '<div class="list-task-body">',
+      '<div class="list-task-title">' + escapeHtml(title) + '</div>',
+      '<div class="list-task-meta">' + escapeHtml(meta) + '</div>',
+      '</div>',
+      '</div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderDateGroupHeader(groupKey, count) {
+    var labels = {
+      overdue: '已过期',
+      inbox: '未安排',
+      today: '今天',
+      tomorrow: '明天',
+      later: '以后',
+      habits: '循环习惯'
     };
-    var config = listConfig(appState.listFilter);
-    var current = groups[appState.listFilter] || inbox;
+    var classes = {
+      overdue: 'overdue',
+      today: 'today'
+    };
+    return '<div class="list-date-group-header ' + (classes[groupKey] || '') + '">' + (labels[groupKey] || groupKey) + ' · ' + count + '</div>';
+  }
+
+  function renderLists() {
+    var filter = appState.listFilter;
+    var allTasks = State.filterTasksByArea(appState.data.tasks, appState.areaFilter);
+    var filteredTasks = allTasks.filter(matchesSearch);
+    var filteredHabits = appState.areaFilter === 'all'
+      ? appState.data.habits.filter(function(h) { return h.status !== 'archived'; }).filter(matchesSearchHabit)
+      : appState.data.habits.filter(function(h) { return h.area === appState.areaFilter && h.status !== 'archived'; }).filter(matchesSearchHabit);
+
+    var allItems = [];
+    var overdue = [];
+    var inbox = [];
+    var upcoming = [];
+    var completed = State.getCompletedTasks(filteredTasks);
+    var deleted = State.getDeletedTasks(filteredTasks);
+
+    filteredTasks.forEach(function(task) {
+      if (task.status === 'completed' || task.status === 'deleted') return;
+      var item = { type: 'task', data: task };
+      allItems.push(item);
+      if (!task.date) {
+        inbox.push(item);
+      } else if (task.date < appState.todayKey) {
+        overdue.push(item);
+      } else if (task.date > appState.todayKey) {
+        upcoming.push(item);
+      }
+    });
+
+    filteredHabits.forEach(function(habit) {
+      var item = { type: 'habit', data: habit };
+      allItems.push(item);
+    });
+
+    var upcomingSorted = upcoming.slice().sort(function(a, b) {
+      return String(a.data.date).localeCompare(String(b.data.date)) || String(a.data.createdAt || '').localeCompare(String(b.data.createdAt || ''));
+    });
+
+    var overdueSorted = overdue.slice().sort(function(a, b) {
+      return String(a.data.date).localeCompare(String(b.data.date));
+    });
+
+    var groups = {
+      all: allItems,
+      inbox: inbox,
+      upcoming: upcomingSorted,
+      overdue: overdueSorted,
+      completed: completed.map(function(t) { return { type: 'task', data: t }; }),
+      deleted: deleted.map(function(t) { return { type: 'task', data: t }; })
+    };
+
+    var config = listConfig(filter);
+    var currentGroup = groups[filter] || [];
+
+    els.allCount.textContent = allItems.length;
     els.inboxCount.textContent = inbox.length;
-    els.upcomingCount.textContent = upcoming.length;
+    els.upcomingCount.textContent = upcomingSorted.length;
+    els.overdueCount.textContent = overdueSorted.length;
     els.completedCount.textContent = completed.length;
     els.deletedCount.textContent = deleted.length;
-    els.listCurrentTitle.textContent = config.title;
-    els.listCurrentSubtitle.textContent = config.subtitle;
-    els.listCurrentCount.textContent = current.length;
+
     document.querySelectorAll('[data-list-filter]').forEach(function(button) {
-      button.classList.toggle('active', button.dataset.listFilter === appState.listFilter);
+      button.classList.toggle('active', button.dataset.listFilter === filter);
     });
+
+    var areaLabelText = appState.areaFilter === 'all' ? '全部' : State.areaLabel(appState.areaFilter);
+    els.listAreaLabel.textContent = areaLabelText;
     document.querySelectorAll('[data-area-filter]').forEach(function(button) {
-      button.classList.toggle('active', button.dataset.areaFilter === appState.areaFilter);
+      button.classList.toggle('selected', button.dataset.areaFilter === appState.areaFilter);
     });
-    if (appState.listFilter === 'completed') {
-      els.taskList.innerHTML = current.length ? current.map(function(task) {
-        return renderTask(task, { complete: false, delete: false });
-      }).join('') : renderEmpty(config.empty);
-    } else if (appState.listFilter === 'deleted') {
-      els.taskList.innerHTML = current.length ? current.map(function(task) {
-        return renderTask(task, { complete: false, edit: false, restore: true });
-      }).join('') : renderEmpty(config.empty);
+
+    if (filter === 'all') {
+      var grouped = {
+        overdue: [],
+        inbox: [],
+        today: [],
+        tomorrow: [],
+        later: [],
+        habits: []
+      };
+      currentGroup.forEach(function(item) {
+        var g = getListItemDateGroup(item);
+        grouped[g].push(item);
+      });
+
+      var html = [];
+      var order = ['overdue', 'inbox', 'today', 'tomorrow', 'later', 'habits'];
+      var totalCount = 0;
+      var displayed = 0;
+      var displayLimit = appState.listDisplayCount;
+
+      order.forEach(function(gKey) {
+        var items = grouped[gKey];
+        if (!items.length) return;
+        totalCount += items.length;
+        if (displayed >= displayLimit) return;
+        var toShow = Math.min(items.length, displayLimit - displayed);
+        var showItems = items.slice(0, toShow);
+        displayed += toShow;
+        html.push(renderDateGroupHeader(gKey, items.length));
+        html.push('<div class="list-task-list">');
+        showItems.forEach(function(item) {
+          html.push(renderListItem(item));
+        });
+        html.push('</div>');
+      });
+
+      if (html.length === 0) {
+        els.listContainer.innerHTML = renderEmpty(config.empty);
+      } else {
+        els.listContainer.innerHTML = html.join('');
+      }
+      els.listLoadMore.hidden = totalCount <= displayed;
     } else {
-      els.taskList.innerHTML = current.length ? current.map(renderTask).join('') : renderEmpty(config.empty);
+      var displayItems = currentGroup.slice(0, appState.listDisplayCount);
+      if (displayItems.length === 0) {
+        els.listContainer.innerHTML = renderEmpty(config.empty);
+      } else {
+        if (filter === 'overdue') {
+          var groupedOverdue = {};
+          displayItems.forEach(function(item) {
+            var dk = item.data.date;
+            if (!groupedOverdue[dk]) groupedOverdue[dk] = [];
+            groupedOverdue[dk].push(item);
+          });
+          var oHtml = [];
+          Object.keys(groupedOverdue).sort().forEach(function(dk) {
+            oHtml.push(renderDateGroupHeader('overdue', groupedOverdue[dk].length));
+            oHtml.push('<div class="list-task-list">');
+            groupedOverdue[dk].forEach(function(item) { oHtml.push(renderListItem(item)); });
+            oHtml.push('</div>');
+          });
+          els.listContainer.innerHTML = oHtml.join('');
+        } else if (filter === 'upcoming') {
+          var groupedUpcoming = {};
+          displayItems.forEach(function(item) {
+            var dk = item.data.date;
+            if (!groupedUpcoming[dk]) groupedUpcoming[dk] = [];
+            groupedUpcoming[dk].push(item);
+          });
+          var uHtml = [];
+          Object.keys(groupedUpcoming).sort().forEach(function(dk) {
+            var key = dk === appState.todayKey ? 'today' : DateUtils.toDateKey(DateUtils.addDays(DateUtils.fromDateKey(appState.todayKey), 1)) === dk ? 'tomorrow' : 'later';
+            uHtml.push(renderDateGroupHeader(key, groupedUpcoming[dk].length));
+            uHtml.push('<div class="list-task-list">');
+            groupedUpcoming[dk].forEach(function(item) { uHtml.push(renderListItem(item)); });
+            uHtml.push('</div>');
+          });
+          els.listContainer.innerHTML = uHtml.join('');
+        } else if (filter === 'inbox') {
+          var iHtml = [];
+          iHtml.push(renderDateGroupHeader('inbox', displayItems.length));
+          iHtml.push('<div class="list-task-list">');
+          displayItems.forEach(function(item) { iHtml.push(renderListItem(item)); });
+          iHtml.push('</div>');
+          els.listContainer.innerHTML = iHtml.join('');
+        } else {
+          els.listContainer.innerHTML = '<div class="list-task-list">' + displayItems.map(renderListItem).join('') + '</div>';
+        }
+      }
+      els.listLoadMore.hidden = currentGroup.length <= displayItems.length;
     }
   }
 
@@ -718,18 +1046,29 @@
     var action = target.dataset.action;
     var id = target.dataset.id;
     closeSwipeRows();
+    closeListFilterMenu();
 
     if (action === 'save-journal') {
       event.preventDefault();
       saveJournal();
     } else if (action === 'edit-task') {
       openEditTask(id);
+    } else if (action === 'edit-habit') {
+      showToast('习惯编辑功能开发中');
     } else if (action === 'complete-task') {
       DB.completeTask(id).then(loadData).then(function() { showToast('任务已完成'); });
+    } else if (action === 'uncomplete-task') {
+      DB.uncompleteTask(id).then(loadData).then(function() { showToast('已恢复为待办'); });
     } else if (action === 'delete-task') {
-      DB.deleteTask(id).then(loadData).then(function() { showToast('任务已删除'); });
+      if (window.confirm('确定删除此任务吗？')) {
+        DB.deleteTask(id).then(loadData).then(function() { showToast('任务已删除'); });
+      }
     } else if (action === 'restore-task') {
       DB.restoreTask(id).then(loadData).then(function() { showToast('任务已恢复'); });
+    } else if (action === 'purge-task') {
+      if (window.confirm('彻底删除后无法恢复，确定吗？')) {
+        DB.purgeTask(id).then(loadData).then(function() { showToast('已彻底删除'); });
+      }
     } else if (action === 'check-habit') {
       DB.upsertHabitLog(id, appState.todayKey, 'done').then(loadData).then(function() { showToast('打卡完成'); });
     } else if (action === 'skip-habit') {
@@ -1360,14 +1699,18 @@
     els.selectedDateSubtitle = $('selected-date-subtitle');
     els.selectedDateList = $('selected-date-list');
     els.taskSearch = $('task-search');
-    els.taskList = $('task-list');
+    els.listContainer = $('list-container');
+    els.listLoadMore = $('list-load-more');
+    els.listLoadMoreBtn = $('list-load-more-btn');
+    els.allCount = $('all-count');
     els.inboxCount = $('inbox-count');
     els.upcomingCount = $('upcoming-count');
+    els.overdueCount = $('overdue-count');
     els.completedCount = $('completed-count');
     els.deletedCount = $('deleted-count');
-    els.listCurrentTitle = $('list-current-title');
-    els.listCurrentSubtitle = $('list-current-subtitle');
-    els.listCurrentCount = $('list-current-count');
+    els.listAreaFilter = $('list-area-filter');
+    els.listAreaLabel = $('list-area-label');
+    els.listAreaMenu = $('list-area-menu');
     els.openAdd = $('open-add');
     els.closeAdd = $('close-add');
     els.cancelAdd = $('cancel-add');
@@ -1477,20 +1820,42 @@
     els.journalContent.addEventListener('input', scheduleJournalSave);
     els.taskSearch.addEventListener('input', function() {
       appState.search = els.taskSearch.value;
+      appState.listDisplayCount = appState.listPageSize;
       renderLists();
     });
     document.querySelectorAll('[data-list-filter]').forEach(function(button) {
       button.addEventListener('click', function() {
         appState.listFilter = button.dataset.listFilter;
+        appState.listDisplayCount = appState.listPageSize;
+        closeListFilterMenu();
         renderLists();
       });
     });
     document.querySelectorAll('[data-area-filter]').forEach(function(button) {
       button.addEventListener('click', function() {
         appState.areaFilter = button.dataset.areaFilter;
+        appState.listDisplayCount = appState.listPageSize;
+        closeListFilterMenu();
         renderLists();
       });
     });
+    if (els.listAreaFilter) {
+      els.listAreaFilter.addEventListener('click', function(event) {
+        event.stopPropagation();
+        var isOpen = els.listAreaFilter.classList.contains('open');
+        closeListFilterMenu();
+        if (!isOpen) {
+          els.listAreaFilter.classList.add('open');
+          els.listAreaMenu.hidden = false;
+        }
+      });
+    }
+    if (els.listLoadMoreBtn) {
+      els.listLoadMoreBtn.addEventListener('click', function() {
+        appState.listDisplayCount += appState.listPageSize;
+        renderLists();
+      });
+    }
     els.exportButton.addEventListener('click', exportData);
     els.importButton.addEventListener('click', handleImportClick);
     els.importFile.addEventListener('change', handleImportFile);
@@ -1504,8 +1869,10 @@
     if (els.feedbackMailButton) els.feedbackMailButton.addEventListener('click', openFeedbackMail);
     document.addEventListener('click', handleAction);
     document.addEventListener('click', function(event) {
-      var row = event.target.closest('.task-row');
-      closeSwipeRows(row);
+      var taskRow = event.target.closest('.task-row');
+      var listRow = event.target.closest('.list-swipe-row');
+      if (!event.target.closest('.list-filter-dropdown')) closeListFilterMenu();
+      closeSwipeRows(taskRow || listRow);
     });
     document.addEventListener('touchstart', handleSwipeStart, { passive: true });
     document.addEventListener('touchmove', handleSwipeMove, { passive: false });

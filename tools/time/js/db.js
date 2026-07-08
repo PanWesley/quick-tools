@@ -172,6 +172,39 @@
     });
   }
 
+  function uncompleteTask(id) {
+    return getOne('tasks', id).then(function(task) {
+      var next = Object.assign({}, task, {
+        status: 'active',
+        completedAt: '',
+        updatedAt: nowIso()
+      });
+      return writeWithOp('tasks', next, 'uncomplete', { status: 'active', completedAt: '' });
+    });
+  }
+
+  function purgeTask(id) {
+    return getOne('tasks', id).then(function(task) {
+      if (!task) return null;
+      return openDatabase().then(function(db) {
+        var transaction = db.transaction(['tasks', 'opLogs'], 'readwrite');
+        transaction.objectStore('tasks').delete(id);
+        transaction.objectStore('opLogs').put({
+          id: createId('op'),
+          entityType: 'task',
+          entityId: id,
+          action: 'purge',
+          payload: { title: task.title },
+          clientTs: nowIso(),
+          syncState: 'local'
+        });
+        return transactionDone(transaction).then(function() {
+          db.close();
+        });
+      });
+    });
+  }
+
   function createHabit(input) {
     var timestamp = nowIso();
     var habit = {
@@ -297,8 +330,10 @@
     createTask: createTask,
     updateTask: updateTask,
     completeTask: completeTask,
+    uncompleteTask: uncompleteTask,
     deleteTask: deleteTask,
     restoreTask: restoreTask,
+    purgeTask: purgeTask,
     createHabit: createHabit,
     updateHabit: updateHabit,
     upsertHabitLog: upsertHabitLog,
