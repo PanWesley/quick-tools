@@ -19,7 +19,7 @@
 <link rel="apple-touch-icon" href="/icons/zhenjia-icon-192x192.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/zhenjia-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/zhenjia-icon-192x192.png">
-<link rel="stylesheet" href="/shared/css/pwa.css?v=2">
+<link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <link rel="stylesheet" href="/tools/price/css/style.css?v=100">
 <title>买前省省 - 买前查价</title>
 </head>
@@ -147,6 +147,12 @@
       </div>
       <p class="form-message" id="data-message" role="status"></p>
     </section>
+    <section class="panel data-panel">
+      <p data-app-update-status role="status">从服务器检查更新并刷新当前应用。</p>
+      <div class="button-row">
+        <button class="btn secondary" type="button" data-app-update-button>检查更新</button>
+      </div>
+    </section>
   </section>
 </main>
 
@@ -165,5 +171,6 @@
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 <script src="/tools/price/js/app.js?v=100"></script>
+<script src="/shared/js/app-update.js?v=1"></script>
 </body>
 </html>

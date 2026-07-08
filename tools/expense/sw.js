@@ -23,6 +23,7 @@ const STATIC_ASSETS = [
   '/tools/expense/js/expense-list-utils.js',
   '/tools/expense/js/onboarding.js',
   '/tools/expense/js/app.js',
+  '/shared/js/app-update.js',
   '/shared/css/pwa.css',
   '/shared/js/site-analytics-utils.js',
   '/shared/js/site-analytics.js',
@@ -57,6 +58,12 @@ self.addEventListener('activate', (event) => {
     ))
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 function shouldCacheResponse(response) {

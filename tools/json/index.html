@@ -10,6 +10,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JSON 工具 - Quick Tools</title>
+<link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <style>
   :root {
     --primary: #2DBAA3;
@@ -283,6 +284,8 @@
   </a>
   <div class="header-actions">
     <a class="back-btn" href="../../">← 返回首页</a>
+    <button class="back-btn" type="button" data-app-update-button>检查更新</button>
+    <span class="app-update-status" data-app-update-status role="status"></span>
     <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
       <span id="theme-icon">🌙</span>
     </button>
@@ -692,6 +695,7 @@ document.getElementById('input').addEventListener('paste', function() {
 document.addEventListener('DOMContentLoaded', initTheme);
 </script>
 
+<script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 </body>

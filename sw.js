@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
   '/analytics/css/style.css',
   '/analytics/js/dashboard-utils.js',
   '/analytics/js/dashboard.js',
+  '/shared/js/app-update.js',
   '/shared/js/site-analytics-utils.js',
   '/shared/js/site-analytics.js',
   '/tools/json/',
@@ -61,6 +62,12 @@ self.addEventListener('activate', (event) => {
 });
 
 // 拦截请求并提供缓存
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);

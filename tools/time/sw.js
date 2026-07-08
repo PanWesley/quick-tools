@@ -15,7 +15,8 @@ const APP_SHELL = [
   '/tools/time/js/import-utils.js?v=114',
   '/tools/time/js/db.js?v=114',
   '/tools/time/js/app.js?v=114',
-  '/shared/css/pwa.css?v=2',
+  '/shared/css/pwa.css?v=3',
+  '/shared/js/app-update.js?v=1',
   '/icons/today-youxu-icon-96x96.png',
   '/icons/today-youxu-icon-152x152.png',
   '/icons/today-youxu-icon-192x192.png',
@@ -39,6 +40,12 @@ self.addEventListener('activate', (event) => {
     ))
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {

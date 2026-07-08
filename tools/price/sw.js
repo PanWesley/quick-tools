@@ -16,7 +16,8 @@ const APP_SHELL = [
   '/tools/price/js/db.js?v=100',
   '/tools/price/js/chart.js?v=100',
   '/tools/price/js/app.js?v=100',
-  '/shared/css/pwa.css?v=2',
+  '/shared/css/pwa.css?v=3',
+  '/shared/js/app-update.js?v=1',
   '/shared/js/site-analytics-utils.js?v=1',
   '/shared/js/site-analytics.js?v=1',
   '/icons/zhenjia-icon-96x96.png',
@@ -42,6 +43,12 @@ self.addEventListener('activate', (event) => {
     ))
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {

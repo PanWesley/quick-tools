@@ -21,7 +21,7 @@
 <link rel="apple-touch-icon" href="/icons/today-youxu-icon-192x192.png">
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
-<link rel="stylesheet" href="/shared/css/pwa.css?v=2">
+<link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <link rel="stylesheet" href="/tools/time/css/style.css?v=114">
 <title>今日有序 - 今日时间管理</title>
 </head>
@@ -194,6 +194,13 @@
           <p>任务、习惯和每日一句默认只保存在本机；匿名统计不记录输入内容。</p>
         </div>
         <span class="mode-pill">本地优先</span>
+      </section>
+      <section class="panel setting-row">
+        <div>
+          <h2>应用更新</h2>
+          <p data-app-update-status role="status">从服务器检查更新并刷新当前应用。</p>
+        </div>
+        <button class="btn secondary" type="button" data-app-update-button>检查更新</button>
       </section>
       <section class="panel settings-card data-settings-card">
         <div class="panel-head">
@@ -377,6 +384,7 @@
 <script src="/tools/time/js/import-utils.js?v=114"></script>
 <script src="/tools/time/js/db.js?v=114"></script>
 <script src="/tools/time/js/app.js?v=114"></script>
+<script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 </body>

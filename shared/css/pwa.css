@@ -262,6 +262,19 @@
    移动端优化样式
    ============================================ */
 
+html,
+body {
+  touch-action: manipulation;
+}
+
+.app-update-status {
+  display: block;
+  min-height: 1.4em;
+  margin-top: 6px;
+  color: var(--text-secondary, var(--color-muted, #667085));
+  font-size: 13px;
+}
+
 /* 触摸反馈 */
 @media (hover: none) {
   .btn:active,

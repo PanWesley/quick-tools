@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/expense-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/expense-icon-192x192.png">
 <!-- PWA Styles -->
-<link rel="stylesheet" href="/shared/css/pwa.css?v=2">
+<link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <title>BillNest - 隐私记账本</title>
 <link rel="stylesheet" href="/tools/expense/css/style.css?v=170">
 </head>
@@ -670,6 +670,16 @@
       </div>
     </div>
     <div class="settings-group">
+      <h3>应用更新</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">拉取最新版本</span>
+          <span class="setting-desc" data-app-update-status role="status">从服务器检查更新并刷新当前应用</span>
+        </div>
+        <button class="btn-secondary" type="button" data-app-update-button>检查更新</button>
+      </div>
+    </div>
+    <div class="settings-group">
       <h3>关于</h3>
       <div class="setting-item">
         <div class="setting-info">
@@ -844,6 +854,7 @@
 <script src="/tools/expense/js/expense-list-utils.js?v=170"></script>
 <script src="/tools/expense/js/onboarding.js?v=170"></script>
 <script src="/tools/expense/js/app.js?v=170"></script>
+<script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 <!-- PWA Scripts -->

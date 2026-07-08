@@ -19,6 +19,7 @@
 <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-java.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-css.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-markup.min.js"></script>
+<link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <style>
   :root {
     --primary: #2DBAA3;
@@ -731,6 +732,8 @@
   </a>
   <div class="header-actions">
     <a class="back-btn" href="../../">← 返回首页</a>
+    <button class="back-btn" type="button" data-app-update-button>检查更新</button>
+    <span class="app-update-status" data-app-update-status role="status"></span>
     <div class="history-dropdown">
       <button class="history-btn" onclick="toggleHistoryMenu()">📜 历史记录</button>
       <div class="history-menu" id="historyMenu">
@@ -1503,6 +1506,7 @@ function loadSample() {
 document.addEventListener('DOMContentLoaded', initTheme);
 </script>
 
+<script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 </body>
