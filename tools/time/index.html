@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=114">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=117">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -247,7 +247,7 @@
           <h2>关于</h2>
           <p>今日有序是轻量时间管理 PWA，专注今天、日历、清单和习惯打卡。</p>
         </div>
-        <span class="muted-pill">v0.3.13</span>
+        <span class="muted-pill">v0.4.0</span>
       </section>
     </div>
   </section>
@@ -284,18 +284,15 @@
       <input id="quick-title" type="text" autocomplete="off" placeholder="例如：吃早餐" required>
     </label>
     <div class="quick-field" id="quick-date-field">
-      <span class="field-label">安排</span>
+      <span class="field-label">日期</span>
       <div class="date-choice-row">
-        <button class="date-choice active" type="button" data-date-preset="pending">待定</button>
-        <button class="date-choice" type="button" data-date-preset="today">今天</button>
+        <button class="date-choice active" type="button" data-date-preset="today">今天</button>
         <button class="date-choice" type="button" data-date-preset="tomorrow">明天</button>
         <button class="date-choice" type="button" data-date-preset="weekend">周末</button>
-        <button class="date-choice" type="button" data-date-preset="custom">指定</button>
+        <button class="date-choice" type="button" data-date-preset="custom" id="quick-custom-date-btn">自定义</button>
+        <button class="date-choice" type="button" data-date-preset="pending">待定</button>
       </div>
-      <label class="date-picker-label">
-        <span>指定日期</span>
-        <input id="quick-date-picker" type="date">
-      </label>
+      <input id="quick-date-picker" type="hidden">
     </div>
     <div class="quick-field" id="quick-time-field">
       <span class="field-label">时间</span>
@@ -305,8 +302,16 @@
         <button class="date-choice" type="button" data-choice-target="quick-time-mode" data-choice-value="range" data-choice-label="时间段">时间段</button>
       </div>
       <div class="time-input-row" id="quick-time-inputs" hidden>
-        <input id="quick-start-time" type="time" aria-label="开始时间">
-        <input id="quick-end-time" type="time" aria-label="结束时间" hidden>
+        <button class="time-display-btn" type="button" id="quick-start-time-btn" data-action="open-time-picker" data-time-target="start">
+          <span class="time-display-text" id="quick-start-time-text">--:--</span>
+          <span class="time-display-icon">◷</span>
+        </button>
+        <button class="time-display-btn" type="button" id="quick-end-time-btn" data-action="open-time-picker" data-time-target="end" hidden>
+          <span class="time-display-text" id="quick-end-time-text">--:--</span>
+          <span class="time-display-icon">◷</span>
+        </button>
+        <input id="quick-start-time" type="hidden">
+        <input id="quick-end-time" type="hidden">
       </div>
       <p class="field-hint" id="quick-time-hint">全天事项只显示在当天，不设置具体时刻。</p>
     </div>
@@ -318,7 +323,10 @@
         <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekdays" data-choice-label="工作日">工作日</button>
         <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekends" data-choice-label="周末">周末</button>
         <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekly" data-choice-label="每周">每周</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="monthly" data-choice-label="每月">每月</button>
+        <button class="choice-chip" type="button" data-action="open-custom-repeat">自定义</button>
       </div>
+      <p class="field-hint" id="quick-repeat-custom-hint" hidden></p>
     </div>
     <div class="quick-field" id="quick-reminder-field">
       <span class="field-label">提醒</span>
@@ -328,6 +336,8 @@
         <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="5" data-choice-label="5分钟前">5分钟前</button>
         <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="15" data-choice-label="15分钟前">15分钟前</button>
         <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="30" data-choice-label="30分钟前">30分钟前</button>
+        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="60" data-choice-label="1小时前">1小时前</button>
+        <button class="choice-chip" type="button" data-action="open-custom-reminder">自定义</button>
       </div>
       <p class="field-hint" id="quick-reminder-hint">全天事项会先记录提醒偏好，具体通知能力后续接入。</p>
     </div>
@@ -376,14 +386,47 @@
   </form>
 </section>
 
+<div class="picker-backdrop" id="picker-backdrop" hidden></div>
+<section class="picker-sheet" id="picker-sheet" aria-modal="true" role="dialog" hidden>
+  <div class="picker-head">
+    <button class="picker-btn" type="button" data-action="picker-cancel">取消</button>
+    <h3 id="picker-title">自定义</h3>
+    <button class="picker-btn primary" type="button" data-action="picker-confirm">确定</button>
+  </div>
+  <div class="picker-body" id="picker-body"></div>
+  <div class="picker-footer-hint" id="picker-footer-hint" hidden></div>
+</section>
+
+<section class="picker-sheet calendar-picker-sheet" id="calendar-picker-sheet" aria-modal="true" role="dialog" hidden>
+  <div class="picker-head">
+    <button class="picker-btn" type="button" data-action="cal-picker-cancel">取消</button>
+    <h3 id="cal-picker-title">选择日期</h3>
+    <button class="picker-btn primary" type="button" data-action="cal-picker-confirm">确定</button>
+  </div>
+  <div class="cal-picker-body">
+    <div class="cal-picker-toolbar">
+      <button class="cal-nav-btn" type="button" data-action="cal-prev-month" aria-label="上个月">‹</button>
+      <span class="cal-month-label" id="cal-picker-month-label"></span>
+      <button class="cal-nav-btn" type="button" data-action="cal-next-month" aria-label="下个月">›</button>
+    </div>
+    <div class="cal-weekday-row">
+      <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+    </div>
+    <div class="cal-picker-grid" id="cal-picker-grid"></div>
+    <div class="cal-picker-footer">
+      <button class="cal-today-btn" type="button" data-action="cal-goto-today">回到今天</button>
+    </div>
+  </div>
+</section>
+
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=114"></script>
-<script src="/tools/time/js/app-state.js?v=114"></script>
-<script src="/tools/time/js/export.js?v=114"></script>
-<script src="/tools/time/js/import-utils.js?v=114"></script>
-<script src="/tools/time/js/db.js?v=114"></script>
-<script src="/tools/time/js/app.js?v=114"></script>
+<script src="/tools/time/js/date-utils.js?v=117"></script>
+<script src="/tools/time/js/app-state.js?v=117"></script>
+<script src="/tools/time/js/export.js?v=117"></script>
+<script src="/tools/time/js/import-utils.js?v=117"></script>
+<script src="/tools/time/js/db.js?v=117"></script>
+<script src="/tools/time/js/app.js?v=117"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>

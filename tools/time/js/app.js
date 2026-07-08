@@ -15,7 +15,10 @@
     listFilter: 'inbox',
     areaFilter: 'all',
     search: '',
-    editingTaskId: ''
+    editingTaskId: '',
+    customRepeat: null,
+    customReminder: null,
+    pickerState: null
   };
 
   var els = {};
@@ -267,13 +270,17 @@
     var done = log && log.state === 'done';
     var skipped = log && log.state === 'skipped';
     var status = done ? '已打卡' : skipped ? '已跳过' : '待完成';
+    var statusClass = done ? 'is-done' : skipped ? 'is-skipped' : '';
     return [
-      '<article class="habit-card">',
-      '<strong>' + escapeHtml(habit.title) + '</strong>',
-      '<p>' + escapeHtml(areaLabel(habit.area) + ' · ' + status) + '</p>',
+      '<article class="habit-card ' + statusClass + '">',
+      '<button class="habit-check' + (done ? ' checked' : '') + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡" ' + (done ? 'disabled' : '') + '>' + (done ? '✓' : '') + '</button>',
+      '<div class="habit-main">',
+      '<div class="habit-title">' + escapeHtml(habit.title) + '</div>',
+      '<div class="habit-meta">' + escapeHtml(areaLabel(habit.area) + ' · ' + status) + '</div>',
+      '</div>',
       '<div class="habit-actions">',
-      '<button class="btn primary" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '"' + (done ? ' disabled' : '') + '>打卡</button>',
-      '<button class="btn secondary" type="button" data-action="skip-habit" data-id="' + escapeHtml(habit.id) + '"' + (skipped ? ' disabled' : '') + '>跳过</button>',
+      '<button class="habit-btn check' + (done ? ' done' : '') + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '"' + (done ? ' disabled' : '') + '>打卡</button>',
+      '<button class="habit-btn skip' + (skipped ? ' done' : '') + '" type="button" data-action="skip-habit" data-id="' + escapeHtml(habit.id) + '"' + (skipped ? ' disabled' : '') + '>跳过</button>',
       '</div>',
       '</article>'
     ].join('');
@@ -458,13 +465,38 @@
     if (selected && label) label.textContent = selected.dataset.choiceLabel || selected.textContent.trim();
     if (selected && desc) desc.textContent = selected.dataset.choiceDesc || '';
     if (targetId === 'quick-time-mode') updateQuickTimeFields();
+    if (targetId === 'quick-repeat' && value !== 'custom') {
+      appState.customRepeat = null;
+      if (els.quickRepeatCustomHint) {
+        els.quickRepeatCustomHint.hidden = true;
+        els.quickRepeatCustomHint.textContent = '';
+      }
+    }
+    if (targetId === 'quick-reminder' && value !== 'custom') {
+      appState.customReminder = null;
+    }
     closeSelectMenus();
+  }
+
+  function formatTimeDisplay(value) {
+    if (!value) return '--:--';
+    return value;
+  }
+
+  function updateTimeDisplay() {
+    var startVal = els.quickStartTime ? els.quickStartTime.value : '';
+    var endVal = els.quickEndTime ? els.quickEndTime.value : '';
+    if (els.quickStartTimeText) els.quickStartTimeText.textContent = formatTimeDisplay(startVal);
+    if (els.quickEndTimeText) els.quickEndTimeText.textContent = formatTimeDisplay(endVal);
+    if (els.quickStartTimeBtn) els.quickStartTimeBtn.classList.toggle('has-value', Boolean(startVal));
+    if (els.quickEndTimeBtn) els.quickEndTimeBtn.classList.toggle('has-value', Boolean(endVal));
   }
 
   function updateQuickTimeFields() {
     var mode = els.quickTimeMode ? els.quickTimeMode.value : 'all-day';
     var showTime = mode === 'point' || mode === 'range';
     if (els.quickTimeInputs) els.quickTimeInputs.hidden = !showTime;
+    if (els.quickEndTimeBtn) els.quickEndTimeBtn.hidden = mode !== 'range';
     if (els.quickEndTime) els.quickEndTime.hidden = mode !== 'range';
     if (els.quickTimeHint) {
       els.quickTimeHint.textContent = mode === 'all-day'
@@ -473,19 +505,31 @@
           ? '会在日历里显示为具体时间点。'
           : '适合课程、会议、运动等有起止时间的安排。';
     }
+    updateTimeDisplay();
   }
 
   function updateScheduledOptionFields() {
     var isScheduled = Boolean(els.quickDate && els.quickDate.value);
     if (els.quickTimeField) els.quickTimeField.hidden = !isScheduled;
-    if (els.quickRepeatField) els.quickRepeatField.hidden = !isScheduled || Boolean(appState.editingTaskId);
+    if (els.quickRepeatField) els.quickRepeatField.hidden = !isScheduled;
     if (els.quickReminderField) els.quickReminderField.hidden = !isScheduled;
     if (!isScheduled) {
       if (els.quickTimeMode) setChoiceValue('quick-time-mode', 'all-day');
-      if (els.quickRepeat) setChoiceValue('quick-repeat', 'none');
-      if (els.quickReminder) setChoiceValue('quick-reminder', 'none');
+      if (els.quickRepeat) {
+        setChoiceValue('quick-repeat', 'none');
+        appState.customRepeat = null;
+        if (els.quickRepeatCustomHint) {
+          els.quickRepeatCustomHint.hidden = true;
+          els.quickRepeatCustomHint.textContent = '';
+        }
+      }
+      if (els.quickReminder) {
+        setChoiceValue('quick-reminder', 'none');
+        appState.customReminder = null;
+      }
       if (els.quickStartTime) els.quickStartTime.value = '';
       if (els.quickEndTime) els.quickEndTime.value = '';
+      updateTimeDisplay();
     }
   }
 
@@ -500,6 +544,14 @@
     if (els.quickDateField) els.quickDateField.classList.toggle('is-custom-date', activeMode === 'custom');
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
       button.classList.toggle('active', button.dataset.datePreset === activeMode);
+      button.classList.remove('has-date');
+      if (button.dataset.datePreset === 'custom' && activeMode === 'custom' && normalizedDate) {
+        var parts = normalizedDate.split('-').map(Number);
+        button.textContent = (parts[1]) + '月' + parts[2] + '日';
+        button.classList.add('has-date');
+      } else if (button.dataset.datePreset === 'custom') {
+        button.textContent = '自定义';
+      }
     });
     updateScheduledOptionFields();
   }
@@ -528,6 +580,8 @@
 
   function openSheet() {
     appState.editingTaskId = '';
+    appState.customRepeat = null;
+    appState.customReminder = null;
     $('quick-sheet-title').textContent = '新增事项';
     els.quickEditId.value = '';
     setChoiceValue('quick-priority', 'medium');
@@ -537,7 +591,12 @@
     setChoiceValue('quick-reminder', 'none');
     els.quickStartTime.value = '';
     els.quickEndTime.value = '';
-    setQuickDate('', 'pending');
+    updateTimeDisplay();
+    if (els.quickRepeatCustomHint) {
+      els.quickRepeatCustomHint.hidden = true;
+      els.quickRepeatCustomHint.textContent = '';
+    }
+    setQuickDate(appState.todayKey, 'today');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
@@ -548,6 +607,9 @@
     els.sheetBackdrop.hidden = true;
     els.quickSheet.hidden = true;
     els.quickForm.reset();
+    appState.customRepeat = null;
+    appState.customReminder = null;
+    closePicker();
     setChoiceValue('quick-priority', 'medium');
     setChoiceValue('quick-area', 'life');
     setChoiceValue('quick-repeat', 'none');
@@ -555,7 +617,11 @@
     setChoiceValue('quick-reminder', 'none');
     els.quickStartTime.value = '';
     els.quickEndTime.value = '';
-    setQuickDate('', 'pending');
+    updateTimeDisplay();
+    if (els.quickRepeatCustomHint) {
+      els.quickRepeatCustomHint.hidden = true;
+      els.quickRepeatCustomHint.textContent = '';
+    }
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     appState.editingTaskId = '';
   }
@@ -578,6 +644,7 @@
     }
 
     var repeat = els.quickRepeat.value || 'none';
+    var reminder = els.quickReminder.value || 'none';
     var payload = {
       title: title,
       notes: els.quickNotes.value,
@@ -587,8 +654,14 @@
       timeMode: els.quickTimeMode.value || 'all-day',
       startTime: els.quickStartTime.value,
       endTime: els.quickTimeMode.value === 'range' ? els.quickEndTime.value : '',
-      reminder: els.quickReminder.value || 'none'
+      reminder: reminder
     };
+    if (repeat === 'custom' && appState.customRepeat) {
+      payload.customRepeat = appState.customRepeat;
+    }
+    if (reminder === 'custom' && appState.customReminder) {
+      payload.customReminder = appState.customReminder;
+    }
     var action;
     if (appState.editingTaskId) {
       action = DB.updateTask(appState.editingTaskId, payload);
@@ -597,6 +670,7 @@
         ? DB.createTask(payload)
         : DB.createHabit(Object.assign({}, payload, {
           schedule: repeat,
+          customRepeat: repeat === 'custom' ? appState.customRepeat : null,
           startDate: payload.date,
           weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
         }));
@@ -673,6 +747,8 @@
       return;
     }
     appState.editingTaskId = id;
+    appState.customRepeat = task.customRepeat || null;
+    appState.customReminder = task.customReminder || null;
     $('quick-sheet-title').textContent = '编辑事项';
     els.quickEditId.value = id;
     els.quickTitle.value = task.title || '';
@@ -680,10 +756,21 @@
     setChoiceValue('quick-area', State.normalizeArea ? State.normalizeArea(task.area) : 'life');
     setChoiceValue('quick-repeat', 'none');
     setChoiceValue('quick-time-mode', task.timeMode || 'all-day');
-    setChoiceValue('quick-reminder', task.reminder || 'none');
+    var reminderVal = task.reminder || 'none';
+    setChoiceValue('quick-reminder', reminderVal);
+    if (reminderVal === 'custom' && task.customReminder) {
+      document.querySelectorAll('[data-choice-target="quick-reminder"]').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.choiceValue === 'custom');
+      });
+    }
     els.quickStartTime.value = task.startTime || '';
     els.quickEndTime.value = task.endTime || '';
     els.quickNotes.value = task.notes || '';
+    updateTimeDisplay();
+    if (els.quickRepeatCustomHint) {
+      els.quickRepeatCustomHint.hidden = true;
+      els.quickRepeatCustomHint.textContent = '';
+    }
     setQuickDate(task.date || '');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
@@ -785,6 +872,474 @@
     });
   }
 
+  function formatRepeatLabel(repeatValue, customRepeat) {
+    if (repeatValue === 'none') return '不重复';
+    if (repeatValue === 'daily') return '每天';
+    if (repeatValue === 'weekdays') return '工作日';
+    if (repeatValue === 'weekends') return '周末';
+    if (repeatValue === 'weekly') return '每周';
+    if (repeatValue === 'monthly') return '每月';
+    if (repeatValue === 'custom' && customRepeat) {
+      var interval = customRepeat.interval || 1;
+      var unit = customRepeat.unit || 'day';
+      var unitLabel = { day: '天', week: '周', month: '月' }[unit] || '天';
+      var skipHolidays = customRepeat.skipHolidays ? '，跳过节假日' : '';
+      var skipWeekends = customRepeat.skipWeekends ? '，跳过双休日' : '';
+      return '每' + interval + unitLabel + '重复' + skipHolidays + skipWeekends;
+    }
+    return '不重复';
+  }
+
+  function formatReminderLabel(reminderValue, customReminder) {
+    if (reminderValue === 'none') return '不提醒';
+    if (reminderValue === 'at-time') return '准时';
+    if (reminderValue === '5') return '5分钟前';
+    if (reminderValue === '15') return '15分钟前';
+    if (reminderValue === '30') return '30分钟前';
+    if (reminderValue === '60') return '1小时前';
+    if (reminderValue === 'custom' && customReminder) {
+      var d = customReminder.days || 0;
+      var h = customReminder.hours || 0;
+      var m = customReminder.minutes || 0;
+      var parts = [];
+      if (d > 0) parts.push(d + '天');
+      if (h > 0) parts.push(h + '小时');
+      if (m > 0) parts.push(m + '分钟');
+      return '提前' + parts.join('');
+    }
+    return '不提醒';
+  }
+
+  function createPickerWheel(options, selectedIndex, columnClass) {
+    var itemHeight = 40;
+    var visibleCount = 5;
+    var container = document.createElement('div');
+    container.className = 'picker-wheel ' + (columnClass || '');
+    container.style.height = (itemHeight * visibleCount) + 'px';
+
+    var highlight = document.createElement('div');
+    highlight.className = 'picker-wheel-highlight';
+    container.appendChild(highlight);
+
+    var list = document.createElement('div');
+    list.className = 'picker-wheel-list';
+    list.style.transform = 'translateY(0)';
+
+    var paddingTop = document.createElement('div');
+    paddingTop.style.height = (itemHeight * 2) + 'px';
+    list.appendChild(paddingTop);
+
+    options.forEach(function(opt, idx) {
+      var item = document.createElement('div');
+      item.className = 'picker-wheel-item' + (idx === selectedIndex ? ' selected' : '');
+      item.style.height = itemHeight + 'px';
+      item.style.lineHeight = itemHeight + 'px';
+      item.textContent = opt.label;
+      item.dataset.index = idx;
+      list.appendChild(item);
+    });
+
+    var paddingBottom = document.createElement('div');
+    paddingBottom.style.height = (itemHeight * 2) + 'px';
+    list.appendChild(paddingBottom);
+
+    container.appendChild(list);
+
+    var currentIndex = selectedIndex;
+    var startY = 0;
+    var startOffset = 0;
+    var currentOffset = -selectedIndex * itemHeight;
+    var isDragging = false;
+    list.style.transform = 'translateY(' + currentOffset + 'px)';
+
+    function updatePosition(offset, animate) {
+      list.style.transition = animate ? 'transform 200ms ease-out' : 'none';
+      list.style.transform = 'translateY(' + offset + 'px)';
+      currentOffset = offset;
+      var idx = Math.round(-offset / itemHeight);
+      idx = Math.max(0, Math.min(options.length - 1, idx));
+      if (idx !== currentIndex) {
+        var items = list.querySelectorAll('.picker-wheel-item');
+        items.forEach(function(el) { el.classList.remove('selected'); });
+        if (items[idx]) items[idx].classList.add('selected');
+        currentIndex = idx;
+      }
+    }
+
+    function snapToIndex(idx) {
+      var clampedIdx = Math.max(0, Math.min(options.length - 1, idx));
+      var offset = -clampedIdx * itemHeight;
+      updatePosition(offset, true);
+    }
+
+    container.addEventListener('touchstart', function(e) {
+      isDragging = true;
+      startY = e.touches[0].clientY;
+      startOffset = currentOffset;
+      list.style.transition = 'none';
+    }, { passive: true });
+
+    container.addEventListener('touchmove', function(e) {
+      if (!isDragging) return;
+      var deltaY = e.touches[0].clientY - startY;
+      var newOffset = startOffset + deltaY;
+      var minOffset = -(options.length - 1) * itemHeight;
+      var maxOffset = 0;
+      if (newOffset > maxOffset + 40) newOffset = maxOffset + (newOffset - maxOffset) * 0.3;
+      if (newOffset < minOffset - 40) newOffset = minOffset + (newOffset - minOffset) * 0.3;
+      updatePosition(newOffset, false);
+    }, { passive: true });
+
+    container.addEventListener('touchend', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      var idx = Math.round(-currentOffset / itemHeight);
+      snapToIndex(idx);
+    });
+
+    container.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      startY = e.clientY;
+      startOffset = currentOffset;
+      list.style.transition = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var deltaY = e.clientY - startY;
+      var newOffset = startOffset + deltaY;
+      var minOffset = -(options.length - 1) * itemHeight;
+      var maxOffset = 0;
+      if (newOffset > maxOffset + 40) newOffset = maxOffset + (newOffset - maxOffset) * 0.3;
+      if (newOffset < minOffset - 40) newOffset = minOffset + (newOffset - minOffset) * 0.3;
+      updatePosition(newOffset, false);
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      var idx = Math.round(-currentOffset / itemHeight);
+      snapToIndex(idx);
+    });
+
+    container.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? 1 : -1;
+      snapToIndex(currentIndex + delta);
+    }, { passive: false });
+
+    list.addEventListener('click', function(e) {
+      var item = e.target.closest('.picker-wheel-item');
+      if (!item) return;
+      var idx = parseInt(item.dataset.index, 10);
+      if (!isNaN(idx)) snapToIndex(idx);
+    });
+
+    return {
+      el: container,
+      getValue: function() { return options[currentIndex].value; },
+      getIndex: function() { return currentIndex; },
+      setIndex: function(idx) { snapToIndex(idx); }
+    };
+  }
+
+  function openRepeatPicker() {
+    var existing = appState.customRepeat || { interval: 1, unit: 'day', skipHolidays: false, skipWeekends: false };
+    var intervalOptions = [];
+    for (var i = 1; i <= 30; i++) {
+      intervalOptions.push({ label: '每' + i, value: i });
+    }
+    var unitOptions = [
+      { label: '天重复', value: 'day' },
+      { label: '周重复', value: 'week' },
+      { label: '月重复', value: 'month' }
+    ];
+
+    var body = els.pickerBody;
+    body.innerHTML = '';
+    body.className = 'picker-body repeat-picker';
+
+    var intervalWheel = createPickerWheel(intervalOptions, existing.interval - 1, 'picker-col-interval');
+    var unitWheel = createPickerWheel(unitOptions, ['day', 'week', 'month'].indexOf(existing.unit), 'picker-col-unit');
+
+    var wheelsRow = document.createElement('div');
+    wheelsRow.className = 'picker-wheels-row';
+    wheelsRow.appendChild(intervalWheel.el);
+    wheelsRow.appendChild(unitWheel.el);
+    body.appendChild(wheelsRow);
+
+    var toggleRow = document.createElement('div');
+    toggleRow.className = 'picker-toggles';
+    toggleRow.innerHTML =
+      '<label class="picker-toggle"><input type="checkbox" id="picker-skip-holidays"' + (existing.skipHolidays ? ' checked' : '') + '><span>跳过法定节假日</span></label>' +
+      '<label class="picker-toggle"><input type="checkbox" id="picker-skip-weekends"' + (existing.skipWeekends ? ' checked' : '') + '><span>跳过双休日</span></label>';
+    body.appendChild(toggleRow);
+
+    els.pickerTitle.textContent = '自定义重复';
+    if (els.pickerFooterHint) els.pickerFooterHint.hidden = true;
+    els.pickerBackdrop.hidden = false;
+    els.pickerSheet.hidden = false;
+
+    appState.pickerState = {
+      type: 'repeat',
+      wheels: { interval: intervalWheel, unit: unitWheel }
+    };
+  }
+
+  function openReminderPicker() {
+    var existing = appState.customReminder || { days: 0, hours: 0, minutes: 5 };
+    var dayOptions = [{ label: '0天', value: 0 }];
+    for (var d = 1; d <= 7; d++) {
+      dayOptions.push({ label: d + '天', value: d });
+    }
+    var hourOptions = [];
+    for (var h = 0; h <= 23; h++) {
+      hourOptions.push({ label: h + '小时', value: h });
+    }
+    var minuteOptions = [];
+    for (var m = 0; m <= 59; m++) {
+      minuteOptions.push({ label: m + '分钟', value: m });
+    }
+
+    var body = els.pickerBody;
+    body.innerHTML = '';
+    body.className = 'picker-body reminder-picker';
+
+    var dayWheel = createPickerWheel(dayOptions, existing.days, 'picker-col-days');
+    var hourWheel = createPickerWheel(hourOptions, existing.hours, 'picker-col-hours');
+    var minuteWheel = createPickerWheel(minuteOptions, existing.minutes, 'picker-col-minutes');
+
+    var wheelsRow = document.createElement('div');
+    wheelsRow.className = 'picker-wheels-row three-cols';
+    wheelsRow.appendChild(dayWheel.el);
+    wheelsRow.appendChild(hourWheel.el);
+    wheelsRow.appendChild(minuteWheel.el);
+    body.appendChild(wheelsRow);
+
+    els.pickerTitle.textContent = '自定义提醒';
+    if (els.pickerFooterHint) {
+      els.pickerFooterHint.hidden = false;
+      els.pickerFooterHint.textContent = '';
+    }
+    els.pickerBackdrop.hidden = false;
+    els.pickerSheet.hidden = false;
+
+    appState.pickerState = {
+      type: 'reminder',
+      wheels: { days: dayWheel, hours: hourWheel, minutes: minuteWheel }
+    };
+
+    function checkReminderValidity() {
+      if (!appState.pickerState || appState.pickerState.type !== 'reminder') return;
+      var d = dayWheel.getValue();
+      var h = hourWheel.getValue();
+      var m = minuteWheel.getValue();
+      if (els.pickerFooterHint) {
+        if (d === 0 && h === 0 && m === 0) {
+          els.pickerFooterHint.textContent = '提醒时间已过期，无法提醒';
+          els.pickerFooterHint.classList.add('is-warning');
+        } else {
+          els.pickerFooterHint.textContent = '提前 ' + (d > 0 ? d + '天 ' : '') + (h > 0 ? h + '小时 ' : '') + m + '分钟 提醒';
+          els.pickerFooterHint.classList.remove('is-warning');
+        }
+      }
+    }
+    function wrapWheel(wheel) {
+      var oldSetIndex = wheel.setIndex;
+      wheel.setIndex = function(idx) {
+        oldSetIndex.call(wheel, idx);
+        checkReminderValidity();
+      };
+    }
+    wrapWheel(dayWheel);
+    wrapWheel(hourWheel);
+    wrapWheel(minuteWheel);
+    checkReminderValidity();
+  }
+
+  function closePicker() {
+    if (els.pickerBackdrop) els.pickerBackdrop.hidden = true;
+    if (els.pickerSheet) els.pickerSheet.hidden = true;
+    if (els.calPickerSheet) els.calPickerSheet.hidden = true;
+    appState.pickerState = null;
+    appState.calPicker = null;
+  }
+
+  function confirmPicker() {
+    if (!appState.pickerState) return;
+    var state = appState.pickerState;
+    if (state.type === 'repeat') {
+      var interval = state.wheels.interval.getValue();
+      var unit = state.wheels.unit.getValue();
+      var skipHolidays = document.getElementById('picker-skip-holidays');
+      var skipWeekends = document.getElementById('picker-skip-weekends');
+      appState.customRepeat = {
+        interval: interval,
+        unit: unit,
+        skipHolidays: skipHolidays ? skipHolidays.checked : false,
+        skipWeekends: skipWeekends ? skipWeekends.checked : false
+      };
+      setChoiceValue('quick-repeat', 'custom');
+      if (els.quickRepeatCustomHint) {
+        els.quickRepeatCustomHint.hidden = false;
+        els.quickRepeatCustomHint.textContent = formatRepeatLabel('custom', appState.customRepeat);
+      }
+      document.querySelectorAll('[data-choice-target="quick-repeat"]').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.choiceValue === 'custom');
+      });
+    } else if (state.type === 'reminder') {
+      var d = state.wheels.days.getValue();
+      var h = state.wheels.hours.getValue();
+      var minutes = state.wheels.minutes.getValue();
+      if (d === 0 && h === 0 && minutes === 0) {
+        showToast('提醒时间不能为0');
+        return;
+      }
+      appState.customReminder = { days: d, hours: h, minutes: minutes };
+      setChoiceValue('quick-reminder', 'custom');
+      document.querySelectorAll('[data-choice-target="quick-reminder"]').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.choiceValue === 'custom');
+      });
+    } else if (state.type === 'time') {
+      var selHour = state.wheels.hours.getValue();
+      var selMinute = state.wheels.minutes.getValue();
+      var timeStr = String(selHour).padStart(2, '0') + ':' + String(selMinute).padStart(2, '0');
+      if (state.target === 'end') {
+        els.quickEndTime.value = timeStr;
+        var startVal = els.quickStartTime.value;
+        if (startVal && timeStr <= startVal) {
+          showToast('结束时间需晚于开始时间');
+          return;
+        }
+      } else {
+        els.quickStartTime.value = timeStr;
+        if (els.quickTimeMode.value === 'range' && !els.quickEndTime.value) {
+          var endH = selHour + 1;
+          var endM = selMinute;
+          if (endH > 23) { endH = 23; endM = 59; }
+          els.quickEndTime.value = String(endH).padStart(2, '0') + ':' + String(endM).padStart(2, '0');
+        }
+      }
+      updateTimeDisplay();
+    }
+    closePicker();
+  }
+
+  function closeCalPicker() {
+    if (els.calPickerSheet) els.calPickerSheet.hidden = true;
+    appState.calPicker = null;
+    if (!appState.pickerState) {
+      if (els.pickerBackdrop) els.pickerBackdrop.hidden = true;
+    }
+  }
+
+  function openCalendarPicker() {
+    var currentDate = els.quickDate.value || appState.todayKey;
+    var parts = currentDate.split('-').map(Number);
+    var initYear = parts[0] && parts[0] > 2000 ? parts[0] : new Date().getFullYear();
+    var initMonth = parts[1] ? parts[1] - 1 : new Date().getMonth();
+
+    appState.calPicker = {
+      year: initYear,
+      month: initMonth,
+      selectedKey: els.quickDate.value || appState.todayKey,
+      tempKey: els.quickDate.value || appState.todayKey
+    };
+
+    renderCalPicker();
+
+    if (els.pickerBackdrop) els.pickerBackdrop.hidden = false;
+    if (els.calPickerSheet) els.calPickerSheet.hidden = false;
+    if (els.pickerSheet) els.pickerSheet.hidden = true;
+  }
+
+  function renderCalPicker() {
+    if (!appState.calPicker) return;
+    var cp = appState.calPicker;
+    var grid = DateUtils.buildMonthGrid(cp.year, cp.month);
+
+    if (els.calPickerMonthLabel) {
+      els.calPickerMonthLabel.textContent = DateUtils.formatMonthLabel(cp.year, cp.month);
+    }
+
+    if (els.calPickerGrid) {
+      els.calPickerGrid.innerHTML = grid.map(function(cell) {
+        var classes = ['cal-day-cell'];
+        if (!cell.isCurrentMonth) classes.push('outside');
+        if (cell.isToday) classes.push('today');
+        if (cell.dateKey === cp.tempKey) classes.push('selected');
+        return '<button class="' + classes.join(' ') + '" type="button" data-action="cal-select-day" data-date="' + cell.dateKey + '">' + cell.day + '</button>';
+      }).join('');
+    }
+  }
+
+  function confirmCalPicker() {
+    if (!appState.calPicker) return;
+    var selectedKey = appState.calPicker.tempKey;
+    if (selectedKey) {
+      setQuickDate(selectedKey, 'custom');
+    }
+    closeCalPicker();
+  }
+
+  function openTimePicker(target) {
+    var timeTarget = target || 'start';
+    var currentVal = timeTarget === 'end' ? (els.quickEndTime ? els.quickEndTime.value : '') : (els.quickStartTime ? els.quickStartTime.value : '');
+    var initialHour = 9;
+    var initialMinute = 0;
+    if (currentVal) {
+      var parts = currentVal.split(':').map(Number);
+      initialHour = parts[0] || 0;
+      initialMinute = parts[1] || 0;
+    } else if (timeTarget === 'end' && els.quickStartTime && els.quickStartTime.value) {
+      var startParts = els.quickStartTime.value.split(':').map(Number);
+      initialHour = (startParts[0] || 9) + 1;
+      initialMinute = startParts[1] || 0;
+      if (initialHour > 23) { initialHour = 23; initialMinute = 59; }
+    }
+
+    var hourOptions = [];
+    for (var h = 0; h <= 23; h++) {
+      hourOptions.push({ label: String(h).padStart(2, '0') + '时', value: h });
+    }
+    var minuteOptions = [];
+    for (var m = 0; m <= 59; m++) {
+      minuteOptions.push({ label: String(m).padStart(2, '0') + '分', value: m });
+    }
+
+    var body = els.pickerBody;
+    body.innerHTML = '';
+    body.className = 'picker-body time-picker';
+
+    var hourWheel = createPickerWheel(hourOptions, initialHour, 'picker-col-hours');
+    var minuteWheel = createPickerWheel(minuteOptions, initialMinute, 'picker-col-minutes');
+
+    var colonSpan = document.createElement('span');
+    colonSpan.className = 'picker-colon';
+    colonSpan.textContent = ':';
+
+    var wheelsRow = document.createElement('div');
+    wheelsRow.className = 'picker-wheels-row';
+    wheelsRow.appendChild(hourWheel.el);
+    wheelsRow.appendChild(colonSpan);
+    wheelsRow.appendChild(minuteWheel.el);
+    body.appendChild(wheelsRow);
+
+    els.pickerTitle.textContent = timeTarget === 'end' ? '选择结束时间' : '选择时间';
+    if (els.pickerFooterHint) els.pickerFooterHint.hidden = true;
+
+    if (els.calPickerSheet) els.calPickerSheet.hidden = true;
+    els.pickerBackdrop.hidden = false;
+    els.pickerSheet.hidden = false;
+
+    appState.pickerState = {
+      type: 'time',
+      target: timeTarget,
+      wheels: { hours: hourWheel, minutes: minuteWheel }
+    };
+  }
+
   function cacheElements() {
     els.todayTitle = $('today-title');
     els.todayWeekday = $('today-weekday');
@@ -832,12 +1387,26 @@
     els.quickTimeInputs = $('quick-time-inputs');
     els.quickStartTime = $('quick-start-time');
     els.quickEndTime = $('quick-end-time');
+    els.quickStartTimeBtn = $('quick-start-time-btn');
+    els.quickEndTimeBtn = $('quick-end-time-btn');
+    els.quickStartTimeText = $('quick-start-time-text');
+    els.quickEndTimeText = $('quick-end-time-text');
     els.quickReminder = $('quick-reminder');
     els.quickReminderField = $('quick-reminder-field');
     els.quickTimeHint = $('quick-time-hint');
     els.quickReminderHint = $('quick-reminder-hint');
+    els.quickRepeatCustomHint = $('quick-repeat-custom-hint');
     els.quickMoreSettings = $('quick-more-settings');
     els.quickNotes = $('quick-notes');
+    els.pickerBackdrop = $('picker-backdrop');
+    els.pickerSheet = $('picker-sheet');
+    els.pickerTitle = $('picker-title');
+    els.pickerBody = $('picker-body');
+    els.pickerFooterHint = $('picker-footer-hint');
+    els.calPickerSheet = $('calendar-picker-sheet');
+    els.calPickerMonthLabel = $('cal-picker-month-label');
+    els.calPickerGrid = $('cal-picker-grid');
+    els.quickCustomDateBtn = $('quick-custom-date-btn');
     els.exportButton = $('export-button');
     els.importButton = $('import-button');
     els.importFile = $('import-file');
@@ -891,11 +1460,14 @@
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
       button.addEventListener('click', function() {
         var preset = button.dataset.datePreset;
-        setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : preset === 'weekend' ? weekendKey() : '', preset);
+        if (preset === 'pending') {
+          setQuickDate('', 'pending');
+        } else if (preset === 'custom') {
+          openCalendarPicker();
+        } else {
+          setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : preset === 'weekend' ? weekendKey() : '', preset);
+        }
       });
-    });
-    els.quickDatePicker.addEventListener('change', function() {
-      setQuickDate(els.quickDatePicker.value, 'custom');
     });
     document.addEventListener('click', function(event) {
       if (!event.target.closest('.custom-select')) closeSelectMenus();
@@ -941,6 +1513,57 @@
       var nextView = viewFromHash();
       if (nextView !== appState.view) {
         switchView(nextView);
+      }
+    });
+    if (els.pickerBackdrop) els.pickerBackdrop.addEventListener('click', closePicker);
+    document.addEventListener('click', function(event) {
+      var target = event.target.closest('[data-action]');
+      if (!target) return;
+      var action = target.dataset.action;
+      if (action === 'picker-cancel') {
+        closePicker();
+      } else if (action === 'picker-confirm') {
+        confirmPicker();
+      } else if (action === 'open-custom-repeat') {
+        openRepeatPicker();
+      } else if (action === 'open-custom-reminder') {
+        openReminderPicker();
+      } else if (action === 'open-time-picker') {
+        var timeTarget = target.dataset.timeTarget || 'start';
+        openTimePicker(timeTarget);
+      } else if (action === 'cal-picker-cancel') {
+        closeCalPicker();
+      } else if (action === 'cal-picker-confirm') {
+        confirmCalPicker();
+      } else if (action === 'cal-prev-month') {
+        if (appState.calPicker) {
+          appState.calPicker.month -= 1;
+          if (appState.calPicker.month < 0) { appState.calPicker.month = 11; appState.calPicker.year -= 1; }
+          renderCalPicker();
+        }
+      } else if (action === 'cal-next-month') {
+        if (appState.calPicker) {
+          appState.calPicker.month += 1;
+          if (appState.calPicker.month > 11) { appState.calPicker.month = 0; appState.calPicker.year += 1; }
+          renderCalPicker();
+        }
+      } else if (action === 'cal-goto-today') {
+        if (appState.calPicker) {
+          var todayParts = appState.todayKey.split('-').map(Number);
+          appState.calPicker.year = todayParts[0];
+          appState.calPicker.month = todayParts[1] - 1;
+          appState.calPicker.tempKey = appState.todayKey;
+          renderCalPicker();
+        }
+      } else if (action === 'cal-select-day') {
+        if (appState.calPicker && target.dataset.date) {
+          var clickedKey = target.dataset.date;
+          var clickedParts = clickedKey.split('-').map(Number);
+          appState.calPicker.year = clickedParts[0];
+          appState.calPicker.month = clickedParts[1] - 1;
+          appState.calPicker.tempKey = clickedKey;
+          renderCalPicker();
+        }
       }
     });
   }

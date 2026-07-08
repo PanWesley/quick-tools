@@ -97,10 +97,48 @@
   function habitDueOn(habit, dateKey) {
     if (!habit || habit.status === 'archived') return false;
     if (habit.startDate && dateKey < habit.startDate) return false;
-    var weekday = weekdayFromDateKey(dateKey);
-    if (habit.schedule === 'weekdays') return weekday >= 1 && weekday <= 5;
-    if (habit.schedule === 'weekends') return weekday === 0 || weekday === 6;
-    if (habit.schedule === 'weekly') return Number(habit.weekday) === weekday;
+    var dateParts = String(dateKey).split('-').map(Number);
+    var date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    var weekday = date.getDay();
+    var schedule = habit.schedule || 'daily';
+
+    if (schedule === 'daily') return true;
+    if (schedule === 'weekdays') return weekday >= 1 && weekday <= 5;
+    if (schedule === 'weekends') return weekday === 0 || weekday === 6;
+    if (schedule === 'weekly') return Number(habit.weekday) === weekday;
+    if (schedule === 'monthly') {
+      var startParts = habit.startDate ? String(habit.startDate).split('-').map(Number) : null;
+      var startDate = startParts ? new Date(startParts[0], startParts[1] - 1, startParts[2]) : date;
+      return date.getDate() === startDate.getDate();
+    }
+    if (schedule === 'custom' && habit.customRepeat) {
+      var cr = habit.customRepeat;
+      var interval = cr.interval || 1;
+      var unit = cr.unit || 'day';
+      var startD = habit.startDate ? (function() {
+        var sp = String(habit.startDate).split('-').map(Number);
+        return new Date(sp[0], sp[1] - 1, sp[2]);
+      })() : date;
+      var diffTime = date.getTime() - startD.getTime();
+      var diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) return false;
+
+      var isDue = false;
+      if (unit === 'day') {
+        isDue = diffDays % interval === 0;
+      } else if (unit === 'week') {
+        isDue = diffDays % (interval * 7) === 0;
+      } else if (unit === 'month') {
+        var monthsDiff = (date.getFullYear() - startD.getFullYear()) * 12 + (date.getMonth() - startD.getMonth());
+        isDue = date.getDate() === startD.getDate() && monthsDiff % interval === 0;
+      }
+
+      if (isDue) {
+        if (cr.skipWeekends && (weekday === 0 || weekday === 6)) return false;
+        if (cr.skipHolidays) return false;
+      }
+      return isDue;
+    }
     return true;
   }
 

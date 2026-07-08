@@ -134,6 +134,8 @@
       startTime: input.startTime || '',
       endTime: input.endTime || '',
       reminder: input.reminder || 'none',
+      customRepeat: input.customRepeat || null,
+      customReminder: input.customReminder || null,
       status: 'active',
       tags: input.tags || [],
       createdAt: timestamp,
@@ -185,6 +187,8 @@
       startTime: input.startTime || '',
       endTime: input.endTime || '',
       reminder: input.reminder || 'none',
+      customRepeat: input.customRepeat || null,
+      customReminder: input.customReminder || null,
       status: 'active',
       createdAt: timestamp,
       updatedAt: timestamp
