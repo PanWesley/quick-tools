@@ -554,38 +554,41 @@ button {
   font-weight: var(--weight-regular);
 }
 
-.priority-tag {
-  max-width: 7.5em;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: var(--task-pill-bg, var(--mint-soft));
-  color: var(--task-pill-text, #247d67);
-  font-size: 10px;
-  font-weight: var(--weight-medium);
-  line-height: 1.15;
-  text-align: center;
-  white-space: normal;
+.type-tag {
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
-.priority-tag.high {
-  background: var(--priority-high-pill-bg);
-  color: var(--priority-high-pill-text);
+.type-tag.task-tag {
+  background: rgba(110, 142, 251, 0.12);
+  color: var(--primary-strong);
 }
 
-.priority-tag.medium {
-  background: var(--priority-medium-pill-bg);
-  color: var(--priority-medium-pill-text);
+.type-tag.habit-tag {
+  background: rgba(176, 136, 232, 0.12);
+  color: #6b3fa0;
 }
 
-.priority-tag.low {
-  background: var(--priority-low-pill-bg);
-  color: var(--priority-low-pill-text);
-}
+.habit-check.habit-check-high { border-color: var(--priority-high); }
+.habit-check.habit-check-medium { border-color: var(--priority-medium); }
+.habit-check.habit-check-low { border-color: var(--priority-low); }
+.habit-check.habit-check-none { border-color: var(--priority-none); }
 
-.priority-tag.none {
-  background: var(--priority-none-pill-bg);
-  color: var(--priority-none-pill-text);
+.habit-check-done-high { background: rgba(255,111,82,0.18) !important; color: #c74530 !important; }
+.habit-check-done-medium { background: rgba(255,178,63,0.18) !important; color: #b07a10 !important; }
+.habit-check-done-low { background: rgba(100,181,246,0.18) !important; color: #2b7ec0 !important; }
+.habit-check-done-none { background: rgba(176,136,232,0.18) !important; color: #6b3fa0 !important; }
+
+.task-row.is-overdue-row {
+  --task-accent: var(--danger);
+  --task-bg: rgba(217, 91, 104, 0.04);
 }
+.task-row.is-overdue-row .task-title { color: var(--danger); }
+.task-row.is-overdue-row .task-meta { color: var(--danger); }
 
 .task-row.is-completed .task-title,
 .date-row.is-completed .task-title {
@@ -2728,19 +2731,20 @@ textarea {
     margin-left: -96px;
   }
 
-  .date-row .priority-tag {
+  .date-row .type-tag {
     grid-column: 2;
     justify-self: start;
   }
 
-  .task-content .priority-tag {
+  .task-content .type-tag {
     grid-column: 3;
     grid-row: 1 / span 2;
     justify-self: end;
     align-self: center;
   }
 
-  .date-task-row .priority-tag {
+  .date-task-row .type-tag,
+  .list-task-row .type-tag {
     grid-column: 3;
     grid-row: 1;
     align-self: start;
