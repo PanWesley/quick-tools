@@ -384,6 +384,11 @@ button {
   gap: 14px;
 }
 
+.setting-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
 .stack-list {
   display: grid;
   gap: 8px;
@@ -429,7 +434,7 @@ button {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(104px, auto);
   align-items: center;
   gap: 8px;
   min-height: 62px;
@@ -1106,6 +1111,7 @@ textarea {
   border-radius: var(--radius);
   cursor: pointer;
   font-weight: var(--weight-medium);
+  flex-shrink: 0;
 }
 
 .btn.primary {

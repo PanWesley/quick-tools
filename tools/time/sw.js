@@ -3,7 +3,7 @@
  * Cache-first app shell for the standalone time tool.
  */
 
-const CACHE_NAME = 'today-youxu-v22';
+const CACHE_NAME = 'today-youxu-v23';
 const APP_SHELL = [
   '/tools/time/',
   '/tools/time/index.html',
