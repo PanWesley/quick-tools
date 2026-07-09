@@ -423,13 +423,81 @@
 
   function listConfig(filter) {
     return {
-      all: { title: '全部', subtitle: '所有未完成的任务和习惯', empty: '还没有任何事项。点击右下角 + 开始记录吧。' },
-      inbox: { title: '未安排', subtitle: '还没定日期的事项', empty: '没有未安排事项。新增事项时选择"待定"即可放到这里。' },
-      upcoming: { title: '即将到来', subtitle: '今天之后的任务，按日期排列', empty: '还没有未来任务。' },
-      overdue: { title: '已过期', subtitle: '超过截止日期未完成的任务', empty: '没有过期任务，保持得不错！' },
-      completed: { title: '已完成', subtitle: '最近完成的记录', empty: '还没有完成记录。' },
-      deleted: { title: '已删除', subtitle: '最近删除的任务，可以恢复', empty: '最近没有删除的任务。' }
-    }[filter] || { title: '全部', subtitle: '所有未完成的任务和习惯', empty: '还没有任何事项。' };
+      all: {
+        title: '全部',
+        subtitle: '所有未完成的任务和习惯',
+        icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><path d="M16 24l6 6 10-12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        tip: '清单空空如也',
+        encouragement: '点击右下角 + 开始记录今天的第一件事吧 ✨'
+      },
+      inbox: {
+        title: '未安排',
+        subtitle: '还没定日期的事项',
+        icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><rect x="14" y="14" width="20" height="20" rx="3" stroke="currentColor" stroke-width="2"/><path d="M14 22h20" stroke="currentColor" stroke-width="2"/><circle cx="19" cy="28" r="1.5" fill="currentColor"/><circle cx="24" cy="28" r="1.5" fill="currentColor"/><circle cx="29" cy="28" r="1.5" fill="currentColor"/></svg>',
+        tip: '想法收集箱',
+        encouragement: '想到什么先记下来，不用急着安排时间 💭'
+      },
+      upcoming: {
+        title: '即将到来',
+        subtitle: '今天之后的任务，按日期排列',
+        icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><circle cx="24" cy="26" r="12" stroke="currentColor" stroke-width="2"/><path d="M24 20v6l4 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        tip: '未来可期',
+        encouragement: '暂时没有安排的任务，享受当下的轻松吧 🌿'
+      },
+      overdue: {
+        title: '已过期',
+        subtitle: '超过截止日期未完成的任务',
+        icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><path d="M24 14v12l7 4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>',
+        tip: '干得漂亮',
+        encouragement: '没有过期任务，你的时间管理做得很棒！🎉'
+      },
+      completed: {
+        title: '已完成',
+        subtitle: '最近完成的记录',
+        icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><path d="M16 25l6 6 12-14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="34" cy="16" r="3" fill="currentColor"/></svg>',
+        tip: '成就记录',
+        encouragement: '完成的每一件事都值得庆祝，去完成更多吧 🏆'
+      },
+      deleted: {
+        title: '已删除',
+        subtitle: '最近删除的任务，可以恢复',
+        icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><path d="M18 18l12 12M30 18l-12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        tip: '回收站',
+        encouragement: '这里很干净，不需要的东西都清理掉了 🧹'
+      }
+    }[filter] || {
+      title: '全部',
+      subtitle: '所有未完成的任务和习惯',
+      icon: '<svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="currentColor" fill-opacity="0.08"/><path d="M16 24l6 6 10-12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      tip: '清单空空如也',
+      encouragement: '点击右下角 + 开始记录吧'
+    };
+  }
+
+  function getTodayJournal() {
+    var journal = appState.data.journals.find(function(entry) {
+      return entry.date === appState.todayKey && String(entry.content || '').trim();
+    });
+    return journal ? String(journal.content).trim() : '';
+  }
+
+  function renderListEmpty(filter) {
+    var config = listConfig(filter);
+    var journalContent = getTodayJournal();
+    var html = [];
+    html.push('<div class="list-empty-state">');
+    html.push('  <div class="empty-icon">' + config.icon + '</div>');
+    html.push('  <p class="empty-tip">' + escapeHtml(config.tip) + '</p>');
+    html.push('  <p class="empty-encouragement">' + escapeHtml(config.encouragement) + '</p>');
+    if (journalContent) {
+      html.push('  <div class="empty-journal">');
+      html.push('    <span class="empty-journal-quote">"</span>');
+      html.push('    <p class="empty-journal-text">' + escapeHtml(journalContent) + '</p>');
+      html.push('    <span class="empty-journal-caption">— 今日一句</span>');
+      html.push('  </div>');
+    }
+    html.push('</div>');
+    return html.join('');
   }
 
   function formatDateLabel(dateKey) {
@@ -698,7 +766,7 @@
       });
 
       if (html.length === 0) {
-        els.listContainer.innerHTML = renderEmpty(config.empty);
+        els.listContainer.innerHTML = renderListEmpty(filter);
       } else {
         els.listContainer.innerHTML = html.join('');
       }
@@ -706,7 +774,7 @@
     } else {
       var displayItems = currentGroup.slice(0, appState.listDisplayCount);
       if (displayItems.length === 0) {
-        els.listContainer.innerHTML = renderEmpty(config.empty);
+        els.listContainer.innerHTML = renderListEmpty(filter);
       } else {
         if (filter === 'overdue') {
           var groupedOverdue = {};
