@@ -314,24 +314,48 @@
     ].join('');
   }
 
+  var journalQuotes = [
+    '今天的你，已经很棒了 ✨',
+    '专注当下，一步一步来 🌿',
+    '小小的坚持，成就大大的改变 💪',
+    '完成比完美更重要 🎯',
+    '今天也是元气满满的一天 ☀️',
+    '行动是最好的开始 🚀',
+    '给今天的自己一点肯定 🌟',
+    '每一个今天都值得认真对待 📅',
+    '做一件让自己开心的小事吧 🎈',
+    '保持热爱，奔赴山海 🌊',
+    '慢慢来，好戏都在烟火里 🎆',
+    '愿你今天比昨天更好一点 🌱'
+  ];
+
+  function randomJournalQuote() {
+    var idx = Math.floor(Math.random() * journalQuotes.length);
+    return journalQuotes[idx];
+  }
+
   function renderToday() {
     var todayDate = DateUtils.fromDateKey(appState.todayKey);
     var todayTasks = State.getTodayTasks(appState.data.tasks, appState.todayKey);
     var dueHabits = appState.data.habits.filter(function(habit) {
       return State.habitDueOn(habit, appState.todayKey);
     });
+    var uncheckedHabits = dueHabits.filter(function(habit) {
+      var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, appState.todayKey);
+      return !log || (log.state !== 'done' && log.state !== 'skipped');
+    });
     var journal = appState.data.journals.find(function(entry) {
-      return entry.date === appState.todayKey;
+      return entry.date === appState.todayKey && String(entry.content || '').trim();
     });
 
     els.todayTitle.textContent = (todayDate.getMonth() + 1) + '月' + todayDate.getDate() + '日';
     els.todayWeekday.textContent = DateUtils.formatWeekday(appState.todayKey);
-    els.todaySummary.textContent = '今天还有 ' + todayTasks.length + ' 件事、' + dueHabits.length + ' 个习惯';
+    els.todaySummary.textContent = '今天还有 ' + todayTasks.length + ' 件事、' + uncheckedHabits.length + ' 个习惯待打卡';
     els.todayTaskCount.textContent = todayTasks.length;
-    els.todayHabitCount.textContent = dueHabits.length;
+    els.todayHabitCount.textContent = uncheckedHabits.length;
     els.todayTaskList.innerHTML = todayTasks.length ? todayTasks.map(renderTask).join('') : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
     els.todayHabitList.innerHTML = dueHabits.length ? dueHabits.map(renderHabit).join('') : renderEmpty('还没有需要今天打卡的习惯。');
-    els.journalContent.value = journal ? journal.content : '';
+    els.journalContent.value = journal ? journal.content : randomJournalQuote();
   }
 
   function renderCalendar() {
