@@ -470,6 +470,10 @@ button {
   font-size: 12px;
   font-weight: var(--weight-medium);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
 }
 
 .swipe-action.edit {
@@ -483,14 +487,8 @@ button {
 }
 
 .swipe-action.restore {
-  grid-column: 1 / -1;
   background: var(--mint-soft);
   color: #247d67;
-}
-
-.swipe-action.check {
-  background: color-mix(in srgb, #b088e8 18%, transparent);
-  color: #6b3fa0;
 }
 
 .swipe-action.skip {
@@ -1372,7 +1370,15 @@ textarea {
   --task-pill-text: #6b3fa0;
 }
 
-.date-habit-row .task-content {
+.today-habit-row {
+  --task-accent: #b088e8;
+  --task-bg: color-mix(in srgb, #b088e8 4%, var(--surface));
+  --task-pill-bg: color-mix(in srgb, #b088e8 12%, transparent);
+  --task-pill-text: #6b3fa0;
+}
+
+.date-habit-row .task-content,
+.today-habit-row .task-content {
   grid-template-columns: 28px minmax(0, 1fr) auto;
   min-height: 54px;
   padding: 9px 10px 9px 14px;
@@ -1783,6 +1789,31 @@ textarea {
   border-left: 2px solid #fff;
   border-bottom: 2px solid #fff;
   transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.list-task-check.habit-check-btn {
+  border-color: #b088e8;
+}
+
+.list-task-check.habit-done-check {
+  background: color-mix(in srgb, #b088e8 80%, #fff);
+  border-color: color-mix(in srgb, #b088e8 80%, #fff);
+  color: #fff;
+}
+
+.list-task-check.habit-done-check::after {
+  content: '';
+  width: 8px; height: 4px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.list-task-check.habit-skipped-check {
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 25%, transparent);
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .list-priority-marker {

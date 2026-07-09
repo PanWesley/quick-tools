@@ -292,20 +292,20 @@
     var actions = [];
     var checkButton;
     if (done || skipped) {
+      actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
       actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">重置</button>');
     } else {
-      actions.push('<button class="swipe-action check" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">打卡</button>');
+      actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
       actions.push('<button class="swipe-action skip" type="button" data-action="skip-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">跳过</button>');
     }
-    actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
     checkButton = done
       ? '<span class="date-icon habit-done-icon">✓</span>'
       : skipped
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + (actions.length ? ' has-swipe-actions' : '') + '" data-habit-accent="lilac"' + (actions.length ? ' data-swipe-row' : '') + '>',
-      actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
+      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + ' has-swipe-actions" data-habit-accent="lilac" data-swipe-row>',
+      '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
       '<div class="task-main">',
@@ -332,18 +332,31 @@
     var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, appState.todayKey);
     var done = log && log.state === 'done';
     var skipped = log && log.state === 'skipped';
-    var status = done ? '已打卡' : skipped ? '已跳过' : '待完成';
-    var statusClass = done ? 'is-done' : skipped ? 'is-skipped' : '';
+    var statusText = done ? '已打卡' : skipped ? '已跳过' : '待打卡';
+    var actions = [];
+    var checkButton;
+    if (done || skipped) {
+      actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
+      actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(appState.todayKey) + '">重置</button>');
+    } else {
+      actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
+      actions.push('<button class="swipe-action skip" type="button" data-action="skip-habit" data-id="' + escapeHtml(habit.id) + '">跳过</button>');
+    }
+    checkButton = done
+      ? '<span class="date-icon habit-done-icon">✓</span>'
+      : skipped
+        ? '<span class="date-icon habit-skip-icon">⊘</span>'
+        : '<button class="habit-check small" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="habit-card ' + statusClass + '">',
-      '<button class="habit-check' + (done ? ' checked' : '') + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡" ' + (done ? 'disabled' : '') + '>' + (done ? '✓' : '') + '</button>',
-      '<div class="habit-main">',
-      '<div class="habit-title">' + escapeHtml(habit.title) + '</div>',
-      '<div class="habit-meta">' + escapeHtml(areaLabel(habit.area) + ' · ' + status) + '</div>',
+      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + ' has-swipe-actions" data-habit-accent="lilac" data-swipe-row>',
+      '<div class="task-swipe-actions">' + actions.join('') + '</div>',
+      '<div class="task-content">',
+      checkButton,
+      '<div class="task-main">',
+      '<div class="task-title">' + escapeHtml(habit.title || '未命名习惯') + '</div>',
+      '<div class="task-meta">' + escapeHtml(areaLabel(habit.area) + ' · 习惯 · ' + statusText) + '</div>',
       '</div>',
-      '<div class="habit-actions">',
-      '<button class="habit-btn check' + (done ? ' done' : '') + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '"' + (done ? ' disabled' : '') + '>打卡</button>',
-      '<button class="habit-btn skip' + (skipped ? ' done' : '') + '" type="button" data-action="skip-habit" data-id="' + escapeHtml(habit.id) + '"' + (skipped ? ' disabled' : '') + '>跳过</button>',
+      '<span class="priority-tag habit-tag">习惯</span>',
       '</div>',
       '</article>'
     ].join('');
@@ -661,13 +674,25 @@
         '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>删除</button>');
     } else if (isHabit) {
       var log = State.getHabitLogForDate(appState.data.habitLogs, item.data.id, appState.todayKey);
-      var done = log && log.state === 'done';
-      var skipped = log && log.state === 'skipped';
-      checkButton = '<button class="list-task-check' + (done ? ' checked' : '') + '" type="button" data-action="' + (done ? '' : 'check-habit') + '" data-id="' + escapeHtml(item.data.id) + '"' + (done ? ' disabled' : '') + '>' + (done ? '✓' : '') + '</button>';
+      var hDone = log && log.state === 'done';
+      var hSkipped = log && log.state === 'skipped';
+      var hActive = hDone || hSkipped;
+      if (hDone) {
+        checkButton = '<span class="list-task-check habit-done-check"></span>';
+      } else if (hSkipped) {
+        checkButton = '<span class="list-task-check habit-skipped-check">⊘</span>';
+      } else {
+        checkButton = '<button class="list-task-check habit-check-btn" type="button" data-action="check-habit" data-id="' + escapeHtml(item.data.id) + '"></button>';
+      }
       actions.push('<button class="list-swipe-btn list-edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(item.data.id) + '">' +
         '<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>编辑</button>');
-      actions.push('<button class="list-swipe-btn list-skip" type="button" data-action="skip-habit" data-id="' + escapeHtml(item.data.id) + '"' + (skipped ? ' disabled' : '') + '>' +
-        '<svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>' + (skipped ? '已跳过' : '跳过') + '</button>');
+      if (hActive) {
+        actions.push('<button class="list-swipe-btn list-restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(item.data.id) + '" data-date="' + escapeHtml(appState.todayKey) + '">' +
+          '<svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18z"/></svg>重置</button>');
+      } else {
+        actions.push('<button class="list-swipe-btn list-skip" type="button" data-action="skip-habit" data-id="' + escapeHtml(item.data.id) + '">' +
+          '<svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>跳过</button>');
+      }
     } else {
       checkButton = '<button class="list-task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(item.data.id) + '"></button>';
       actions.push('<button class="list-swipe-btn list-edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">' +
