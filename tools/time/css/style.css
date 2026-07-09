@@ -488,6 +488,16 @@ button {
   color: #247d67;
 }
 
+.swipe-action.check {
+  background: color-mix(in srgb, #b088e8 18%, transparent);
+  color: #6b3fa0;
+}
+
+.swipe-action.skip {
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
+}
+
 .priority-high {
   --task-accent: var(--priority-high-accent);
   --task-bg: var(--priority-high-bg);
@@ -1354,8 +1364,78 @@ textarea {
   padding: 9px 10px 9px 14px;
 }
 
-.date-note-row {
+.date-habit-row {
+  margin-bottom: 0;
+  --task-accent: #b088e8;
+  --task-bg: color-mix(in srgb, #b088e8 4%, var(--surface));
+  --task-pill-bg: color-mix(in srgb, #b088e8 12%, transparent);
+  --task-pill-text: #6b3fa0;
+}
+
+.date-habit-row .task-content {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  min-height: 54px;
+  padding: 9px 10px 9px 14px;
+}
+
+.habit-check.small {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #b088e8;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: transparent;
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  transition: all 160ms ease;
+}
+
+.habit-check.small:hover {
+  background: color-mix(in srgb, #b088e8 15%, transparent);
+}
+
+.habit-done-icon {
+  background: color-mix(in srgb, #b088e8 18%, transparent);
+  color: #6b3fa0;
+}
+
+.habit-skip-icon {
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.habit-tag {
+  background: color-mix(in srgb, #b088e8 12%, transparent);
+  color: #6b3fa0;
+  font-size: 11px;
+}
+
+.date-habit-row.is-done {
+  opacity: 0.68;
+}
+
+.date-habit-row.is-done .task-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.date-habit-row.is-skipped {
+  opacity: 0.6;
+}
+
+.date-habit-row.is-skipped .task-title {
+  color: var(--text-muted);
+}
+
+.date-note-row .task-content {
   grid-template-columns: 28px minmax(0, 1fr);
+  min-height: 54px;
+  padding: 9px 10px 9px 14px;
 }
 
 .date-icon {

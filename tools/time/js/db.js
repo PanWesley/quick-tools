@@ -258,6 +258,32 @@
     });
   }
 
+  function resetHabitLog(habitId, date) {
+    return getAll('habitLogs').then(function(logs) {
+      var existing = logs.find(function(log) {
+        return log.habitId === habitId && log.date === date;
+      });
+      if (!existing) return null;
+      return openDatabase().then(function(db) {
+        var transaction = db.transaction(['habitLogs', 'opLogs'], 'readwrite');
+        transaction.objectStore('habitLogs').delete(existing.id);
+        transaction.objectStore('opLogs').put({
+          id: createId('op'),
+          entityType: 'habitLog',
+          entityId: existing.id,
+          action: 'reset',
+          payload: { habitId: habitId, date: date },
+          clientTs: nowIso(),
+          syncState: 'local'
+        });
+        return new Promise(function(resolve, reject) {
+          transaction.oncomplete = function() { resolve(); };
+          transaction.onerror = function() { reject(transaction.error); };
+        });
+      });
+    });
+  }
+
   function upsertJournal(date, content, mood) {
     return getAll('journals').then(function(entries) {
       var existing = entries.find(function(entry) { return entry.date === date; });
@@ -337,6 +363,7 @@
     createHabit: createHabit,
     updateHabit: updateHabit,
     upsertHabitLog: upsertHabitLog,
+    resetHabitLog: resetHabitLog,
     upsertJournal: upsertJournal,
     getAllData: getAllData,
     importData: importData,

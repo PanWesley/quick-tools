@@ -18,6 +18,7 @@
     listPageSize: 20,
     listDisplayCount: 20,
     editingTaskId: '',
+    editingType: '',
     customRepeat: null,
     customReminder: null,
     pickerState: null
@@ -283,6 +284,40 @@
     ].join('');
   }
 
+  function renderDateHabit(habit, dateKey) {
+    var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, dateKey);
+    var done = log && log.state === 'done';
+    var skipped = log && log.state === 'skipped';
+    var statusText = done ? '已打卡' : skipped ? '已跳过' : '待打卡';
+    var actions = [];
+    var checkButton;
+    if (done || skipped) {
+      actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">重置</button>');
+    } else {
+      actions.push('<button class="swipe-action check" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">打卡</button>');
+      actions.push('<button class="swipe-action skip" type="button" data-action="skip-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">跳过</button>');
+    }
+    actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
+    checkButton = done
+      ? '<span class="date-icon habit-done-icon">✓</span>'
+      : skipped
+        ? '<span class="date-icon habit-skip-icon">⊘</span>'
+        : '<button class="habit-check small" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '" aria-label="打卡习惯"></button>';
+    return [
+      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + (actions.length ? ' has-swipe-actions' : '') + '" data-habit-accent="lilac"' + (actions.length ? ' data-swipe-row' : '') + '>',
+      actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
+      '<div class="task-content">',
+      checkButton,
+      '<div class="task-main">',
+      '<div class="task-title">' + escapeHtml(habit.title || '未命名习惯') + '</div>',
+      '<div class="task-meta">' + escapeHtml(areaLabel(habit.area) + ' · 习惯 · ' + statusText) + '</div>',
+      '</div>',
+      '<span class="priority-tag habit-tag">习惯</span>',
+      '</div>',
+      '</article>'
+    ].join('');
+  }
+
   function calendarEntryTone(entry) {
     if (entry.type === 'task') return priorityTone(entry.priority);
     if (entry.type === 'habit') return entry.state === 'done' ? 'mint' : 'lilac';
@@ -418,11 +453,10 @@
       rows.push(renderDateTask(task));
     });
     habits.forEach(function(habit) {
-      var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, dateKey);
-      rows.push('<article class="date-row date-note-row"><span class="date-icon habit-icon">习</span><div><div class="task-title">' + escapeHtml(habit.title || '未命名习惯') + '</div><div class="task-meta">' + escapeHtml(areaLabel(habit.area) + ' · 习惯 · ' + (log ? log.state : '待打卡')) + '</div></div></article>');
+      rows.push(renderDateHabit(habit, dateKey));
     });
     if (journal) {
-      rows.push('<article class="date-row date-note-row"><span class="date-icon journal-icon">记</span><div><div class="task-title">每日一句</div><div class="task-meta">' + escapeHtml(journal.content) + '</div></div></article>');
+      rows.push('<article class="task-row date-note-row"><div class="task-content"><span class="date-icon journal-icon">记</span><div class="task-main"><div class="task-title">每日一句</div><div class="task-meta">' + escapeHtml(journal.content) + '</div></div></div></article>');
     }
 
     els.selectedDateTitle.textContent = dateKey;
@@ -1012,6 +1046,7 @@
 
   function openSheet() {
     appState.editingTaskId = '';
+    appState.editingType = '';
     appState.customRepeat = null;
     appState.customReminder = null;
     $('quick-sheet-title').textContent = '新增事项';
@@ -1056,6 +1091,7 @@
     }
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     appState.editingTaskId = '';
+    appState.editingType = '';
   }
 
   function loadData() {
@@ -1095,7 +1131,24 @@
       payload.customReminder = appState.customReminder;
     }
     var action;
-    if (appState.editingTaskId) {
+    var wasEditing = Boolean(appState.editingTaskId);
+    if (wasEditing && appState.editingType === 'habit') {
+      var habitPayload = {
+        title: title,
+        notes: els.quickNotes.value,
+        area: els.quickArea.value || 'life',
+        priority: els.quickPriority.value,
+        reminder: reminder
+      };
+      if (reminder === 'custom' && appState.customReminder) {
+        habitPayload.customReminder = appState.customReminder;
+      }
+      if (repeat !== 'none') {
+        habitPayload.schedule = repeat;
+        habitPayload.customRepeat = repeat === 'custom' ? appState.customRepeat : null;
+      }
+      action = DB.updateHabit(appState.editingTaskId, habitPayload);
+    } else if (wasEditing) {
       action = DB.updateTask(appState.editingTaskId, payload);
     } else {
       action = repeat === 'none'
@@ -1109,7 +1162,6 @@
     }
 
     action.then(function() {
-      var wasEditing = Boolean(appState.editingTaskId);
       closeSheet();
       showToast(wasEditing ? '事项已更新' : '事项已创建');
       return loadData();
@@ -1158,7 +1210,7 @@
     } else if (action === 'edit-task') {
       openEditTask(id);
     } else if (action === 'edit-habit') {
-      showToast('习惯编辑功能开发中');
+      openEditHabit(id);
     } else if (action === 'complete-task') {
       DB.completeTask(id).then(loadData).then(function() { showToast('任务已完成'); });
     } else if (action === 'uncomplete-task') {
@@ -1177,6 +1229,15 @@
       DB.upsertHabitLog(id, appState.todayKey, 'done').then(loadData).then(function() { showToast('打卡完成'); });
     } else if (action === 'skip-habit') {
       DB.upsertHabitLog(id, appState.todayKey, 'skipped').then(loadData).then(function() { showToast('已跳过'); });
+    } else if (action === 'check-habit-date') {
+      var date = target.dataset.date || appState.todayKey;
+      DB.upsertHabitLog(id, date, 'done').then(loadData).then(function() { showToast('打卡完成'); });
+    } else if (action === 'skip-habit-date') {
+      var date = target.dataset.date || appState.todayKey;
+      DB.upsertHabitLog(id, date, 'skipped').then(loadData).then(function() { showToast('已跳过'); });
+    } else if (action === 'reset-habit') {
+      var date = target.dataset.date || appState.todayKey;
+      DB.resetHabitLog(id, date).then(loadData).then(function() { showToast('已重置'); });
     } else if (action === 'select-date') {
       appState.selectedDateKey = target.dataset.date;
       renderCalendar();
@@ -1190,6 +1251,7 @@
       return;
     }
     appState.editingTaskId = id;
+    appState.editingType = 'task';
     appState.customRepeat = task.customRepeat || null;
     appState.customReminder = task.customReminder || null;
     $('quick-sheet-title').textContent = '编辑事项';
@@ -1215,6 +1277,46 @@
       els.quickRepeatCustomHint.textContent = '';
     }
     setQuickDate(task.date || '');
+    if (els.quickMoreSettings) els.quickMoreSettings.open = false;
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    els.quickTitle.focus();
+  }
+
+  function openEditHabit(id) {
+    var habit = appState.data.habits.find(function(item) { return item.id === id; });
+    if (!habit) {
+      showToast('没有找到这个习惯');
+      return;
+    }
+    appState.editingTaskId = id;
+    appState.editingType = 'habit';
+    appState.customRepeat = habit.customRepeat || null;
+    appState.customReminder = habit.customReminder || null;
+    $('quick-sheet-title').textContent = '编辑习惯';
+    els.quickEditId.value = id;
+    els.quickTitle.value = habit.title || '';
+    setChoiceValue('quick-priority', normalizePriority(habit.priority));
+    setChoiceValue('quick-area', State.normalizeArea ? State.normalizeArea(habit.area) : 'life');
+    var scheduleVal = habit.schedule || 'daily';
+    setChoiceValue('quick-repeat', scheduleVal === 'daily' || scheduleVal === 'weekly' || scheduleVal === 'custom' ? scheduleVal : 'daily');
+    setChoiceValue('quick-time-mode', 'all-day');
+    var reminderVal = habit.reminder || 'none';
+    setChoiceValue('quick-reminder', reminderVal);
+    if (reminderVal === 'custom' && habit.customReminder) {
+      document.querySelectorAll('[data-choice-target="quick-reminder"]').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.choiceValue === 'custom');
+      });
+    }
+    els.quickStartTime.value = '';
+    els.quickEndTime.value = '';
+    els.quickNotes.value = habit.notes || '';
+    updateTimeDisplay();
+    if (els.quickRepeatCustomHint) {
+      els.quickRepeatCustomHint.hidden = true;
+      els.quickRepeatCustomHint.textContent = '';
+    }
+    setQuickDate(habit.startDate || appState.todayKey);
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;

@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>清单页优化预览 v2 - 今日有序</title>
+<style>
+:root {
+  --primary: #ff8a2a;
+  --primary-strong: #d85f12;
+  --primary-soft: #fff0df;
+  --accent: #ff7a8a;
+  --mint: #55c7a5;
+  --mint-soft: #e8f8f2;
+  --sky: #7fc7ef;
+  --sun: #ffd36e;
+  --lilac: #b9a7ff;
+  --danger: #d95b68;
+  --bg: #fff7f1;
+  --surface: #ffffff;
+  --surface-soft: #fffaf5;
+  --text-strong: #211b29;
+  --text: #332c3d;
+  --text-muted: #8c8291;
+  --text-soft: #aaa1ad;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 560;
+  --border: #f2dfd1;
+  --radius: 8px;
+  --priority-high: #ff6f52;
+  --priority-medium: #ffb23f;
+  --priority-low: #64b5f6;
+  --priority-none: #b9a7ff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { font-size: 16px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding-bottom: 80px;
+  position: relative;
+  overflow-x: hidden;
+}
+.eyebrow { font-size: 13px; color: var(--primary-strong); font-weight: var(--weight-semibold); letter-spacing: 0.02em; }
+h1 { font-size: 28px; font-weight: 700; color: var(--text-strong); line-height: 1.2; margin-top: 2px; }
+.section-head p { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+.section-head { padding: 16px 20px 8px; }
+
+.panel {
+  background: var(--surface);
+  border-radius: 16px;
+  margin: 0 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.list-search-row { padding: 14px 16px 10px; }
+.search-input {
+  width: 100%; height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0 16px 0 40px;
+  font-size: 14px;
+  background: var(--surface-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238c8291' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 110-10 5 5 0 010 10z'/%3E%3C/svg%3E") 14px center no-repeat;
+  color: var(--text);
+  outline: none;
+}
+.search-input::placeholder { color: var(--text-soft); }
+
+.tab-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 12px;
+  position: relative;
+}
+.tab-scroll-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+.tab-scroll-wrap::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 24px;
+  background: linear-gradient(to right, rgba(255,255,255,0), #fff 80%);
+  pointer-events: none;
+  z-index: 3;
+}
+.tab-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-right: 28px;
+}
+.tab-scroll::-webkit-scrollbar { display: none; }
+.list-tab {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 160ms ease;
+  white-space: nowrap;
+}
+.list-tab.active {
+  background: linear-gradient(135deg, var(--primary-soft), #fff8f1);
+  border-color: var(--primary);
+  color: var(--primary-strong);
+  font-weight: var(--weight-semibold);
+}
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  background: rgba(0,0,0,0.05);
+  color: var(--text-muted);
+}
+.list-tab.active .tab-count {
+  background: var(--primary);
+  color: #fff;
+}
+.tab-overdue .tab-count { background: var(--danger); color: #fff; }
+.tab-overdue.active { border-color: var(--danger); color: var(--danger); background: rgba(217,91,104,0.08); }
+
+.filter-dropdown {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border-radius: 18px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+.filter-btn.active {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+}
+.filter-btn svg { width: 14px; height: 14px; fill: currentColor; }
+.filter-arrow {
+  font-size: 10px;
+  transition: transform 200ms;
+}
+.filter-dropdown.open .filter-arrow { transform: rotate(180deg); }
+.filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  min-width: 100px;
+  z-index: 50;
+  overflow: hidden;
+  display: none;
+}
+.filter-dropdown.open .filter-menu { display: block; }
+.filter-option {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-weight: var(--weight-medium);
+}
+.filter-option:active { background: var(--surface-soft); }
+.filter-option.selected {
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  font-weight: var(--weight-semibold);
+}
+
+.divider { height: 1px; background: var(--border); margin: 0 16px; }
+
+.list-section-title {
+  padding: 12px 16px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.list-section-title h3 {
+  font-size: 15px;
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+.list-section-title .subtitle {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+/* Date group header */
+.date-group-header {
+  padding: 10px 16px 6px;
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.date-group-header.today { color: var(--primary-strong); }
+.date-group-header.overdue { color: var(--danger); }
+.date-group-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  margin-left: 8px;
+}
+
+.task-list { padding: 0; overflow: hidden; }
+
+/* Swipeable task row */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+.swipe-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface);
+  position: relative;
+  z-index: 2;
+  transition: transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-bottom: 1px solid rgba(242,223,209,0.6);
+}
+.swipe-row:last-child .swipe-content { border-bottom: none; }
+.swipe-content:active { background: var(--surface-soft); }
+.swipe-row.open .swipe-content { transform: translateX(-120px); }
+.swipe-actions {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  display: flex;
+  z-index: 1;
+}
+.swipe-btn {
+  width: 60px;
+  border: none;
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.swipe-btn svg { width: 18px; height: 18px; fill: currentColor; }
+.swipe-btn.edit { background: var(--sky); }
+.swipe-btn.delete { background: var(--danger); }
+.swipe-btn.skip { background: var(--text-soft); }
+
+.task-check {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 160ms;
+  background: var(--surface);
+}
+.task-check.checked {
+  background: var(--mint);
+  border-color: var(--mint);
+}
+.task-check.checked::after {
+  content: '';
+  width: 8px; height: 4px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.priority-marker {
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.priority-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+.priority-high .priority-dot { background: var(--priority-high); }
+.priority-medium .priority-dot { background: var(--priority-medium); }
+.priority-low .priority-dot { background: var(--priority-low); }
+.priority-none .priority-dot { background: var(--priority-none); }
+.repeat-icon {
+  width: 18px; height: 18px;
+}
+.priority-high .repeat-icon { color: var(--priority-high); }
+.priority-medium .repeat-icon { color: var(--priority-medium); }
+.priority-low .repeat-icon { color: var(--priority-low); }
+.priority-none .repeat-icon { color: var(--priority-none); }
+
+.task-body { flex: 1; min-width: 0; }
+.task-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.task-title {
+  font-size: 15px;
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+.swipe-content.completed .task-title {
+  color: var(--text-soft);
+  text-decoration: line-through;
+}
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.meta-tag {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.date-tag { color: var(--text-muted); }
+.date-tag.overdue { color: var(--danger); font-weight: var(--weight-semibold); }
+.date-tag.today { color: var(--primary-strong); font-weight: var(--weight-semibold); }
+.time-tag { color: var(--text-muted); }
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: #c97a10;
+  font-weight: var(--weight-semibold);
+  background: rgba(255,211,110,0.2);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.empty-hint {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.load-more {
+  padding: 16px;
+  text-align: center;
+}
+.load-more-btn {
+  padding: 10px 32px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--primary-strong);
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: all 160ms;
+}
+.load-more-btn:active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  background: rgba(255,247,241,0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding: 6px 0 max(6px, env(safe-area-inset-bottom));
+  z-index: 100;
+}
+.nav-item {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.nav-item.active {
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  border-radius: 16px;
+  margin: 0 8px;
+  font-weight: var(--weight-semibold);
+}
+
+.hint-banner {
+  margin: 8px 16px 0;
+  padding: 10px 14px;
+  background: var(--primary-soft);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--primary-strong);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+</style>
+</head>
+<body>
+
+<div class="section-head">
+  <p class="eyebrow">清单</p>
+  <h1>整理任务</h1>
+  <p>统一管理全部任务、未安排、即将到来、已过期和历史记录。</p>
+</div>
+
+<div class="panel" style="margin-top:8px;">
+  <div class="list-search-row">
+    <input class="search-input" type="search" placeholder="搜索任务标题或备注">
+  </div>
+
+  <div class="tab-row">
+    <div class="tab-scroll-wrap">
+      <div class="tab-scroll">
+        <button class="list-tab active">全部 <span class="tab-count">13</span></button>
+        <button class="list-tab">未安排 <span class="tab-count">3</span></button>
+        <button class="list-tab">即将到来 <span class="tab-count">8</span></button>
+        <button class="list-tab tab-overdue">已过期 <span class="tab-count">2</span></button>
+        <button class="list-tab">已完成 <span class="tab-count">24</span></button>
+        <button class="list-tab">已删除 <span class="tab-count">5</span></button>
+      </div>
+    </div>
+    <div class="filter-dropdown" id="areaFilter" onclick="this.classList.toggle('open')">
+      <button class="filter-btn" type="button">
+        <svg viewBox="0 0 24 24"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+        全部
+        <span class="filter-arrow">&#9662;</span>
+      </button>
+      <div class="filter-menu">
+        <button class="filter-option selected">全部</button>
+        <button class="filter-option">生活</button>
+        <button class="filter-option">学习</button>
+        <button class="filter-option">工作</button>
+        <button class="filter-option">健康</button>
+        <button class="filter-option">家务</button>
+        <button class="filter-option">纪念</button>
+        <button class="filter-option">其他</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Overdue group -->
+  <div class="date-group-header overdue">&#9888; 已过期 · 2</div>
+  <div class="task-list">
+    <div class="swipe-row priority-high">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn delete">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          删除
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker"><div class="priority-dot"></div></div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">提交Q2绩效自评</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag date-tag overdue">&#128197; 7月5日</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="swipe-row priority-medium">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn delete">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          删除
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker"><div class="priority-dot"></div></div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">还书到图书馆</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag date-tag overdue">&#128197; 7月3日</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- No date group -->
+  <div class="date-group-header">&#128204; 未安排 · 3</div>
+  <div class="task-list">
+    <div class="swipe-row priority-none">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn delete">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          删除
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker"><div class="priority-dot"></div></div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">想学做提拉米苏</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128161; 想法收集</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="swipe-row priority-none habit-row">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn skip">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          跳过
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker">
+          <svg class="repeat-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">写日记</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128260; 每1天</span>
+            <span class="streak-badge">&#128293; 8天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Today group -->
+  <div class="date-group-header today">&#9728; 今天 · 4</div>
+  <div class="task-list">
+    <div class="swipe-row priority-high">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn delete">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          删除
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker"><div class="priority-dot"></div></div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">提交季度项目报告</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag date-tag today">&#128336; 14:00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="swipe-row priority-medium habit-row">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn skip">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          跳过
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check checked"></div>
+        <div class="priority-marker">
+          <svg class="repeat-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">晨间阅读30分钟</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128260; 每1天</span>
+            <span class="streak-badge">&#128293; 12天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="swipe-row priority-high habit-row">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn skip">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          跳过
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker">
+          <svg class="repeat-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">夜跑5公里</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128336; 19:30</span>
+            <span class="meta-tag">&#128260; 每1天</span>
+            <span class="streak-badge">&#128293; 5天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tomorrow group -->
+  <div class="date-group-header">&#128197; 明天 · 2</div>
+  <div class="task-list">
+    <div class="swipe-row priority-medium">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn delete">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          删除
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker"><div class="priority-dot"></div></div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">去超市采购一周食材</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128336; 18:00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Later group -->
+  <div class="date-group-header">&#128197; 以后 · 2</div>
+  <div class="task-list">
+    <div class="swipe-row">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn delete">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          删除
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker"><div class="priority-dot"></div></div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">英语在线课程</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128197; 7月10日 20:00-21:00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="swipe-row priority-low habit-row">
+      <div class="swipe-actions">
+        <button class="swipe-btn edit">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          编辑
+        </button>
+        <button class="swipe-btn skip">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          跳过
+        </button>
+      </div>
+      <div class="swipe-content" onclick="this.parentElement.classList.toggle('open')">
+        <div class="task-check"></div>
+        <div class="priority-marker">
+          <svg class="repeat-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-title">复盘周记</span>
+          </div>
+          <div class="task-meta">
+            <span class="meta-tag">&#128260; 每7天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <div class="load-more">
+    <button class="load-more-btn">加载更多 &#9662;</button>
+  </div>
+</div>
+
+<div class="hint-banner">
+  &#128070; <b>提示：</b>点击任务行左滑显示操作（任务=编辑/删除，习惯=编辑/跳过），右侧漏斗图标可按归属筛选
+</div>
+
+<nav class="bottom-nav">
+  <button class="nav-item">
+    <span style="font-size:20px">&#128197;</span>
+    <span>今日</span>
+  </button>
+  <button class="nav-item">
+    <span style="font-size:20px">&#128198;</span>
+    <span>日历</span>
+  </button>
+  <button class="nav-item active">
+    <span style="font-size:20px">&#9776;</span>
+    <span>清单</span>
+  </button>
+  <button class="nav-item">
+    <span style="font-size:20px">&#128100;</span>
+    <span>我的</span>
+  </button>
+</nav>
+
+</body>
+</html>
