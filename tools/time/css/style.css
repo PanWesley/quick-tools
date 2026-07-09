@@ -1905,11 +1905,31 @@ textarea {
   cursor: pointer;
   color: var(--text-muted);
   font-weight: var(--weight-medium);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 0;
+  font-size: 11px;
+  font-family: inherit;
+  transition: all 160ms ease;
+}
+
+.nav-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  transition: transform 160ms ease;
 }
 
 .nav-item.active {
   background: var(--primary-soft);
   color: var(--primary-strong);
+}
+
+.nav-item.active .nav-icon {
+  transform: scale(1.05);
 }
 
 .fab {

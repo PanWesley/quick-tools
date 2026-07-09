@@ -765,6 +765,13 @@
     return ['today', 'calendar', 'list', 'profile'].includes(view) ? view : 'today';
   }
 
+  var viewTitles = {
+    today: { title: '今日', desc: '今天要做什么，一眼看清' },
+    calendar: { title: '日历', desc: '按月查看任务和习惯打卡' },
+    list: { title: '清单', desc: '统一管理全部任务、未安排、即将到来、已过期和历史记录' },
+    profile: { title: '我的', desc: '外观、隐私、本地数据和帮助都放在这里' }
+  };
+
   function switchView(view) {
     if (els.quickSheet && !els.quickSheet.hidden) closeSheet();
     closeSelectMenus();
@@ -775,6 +782,11 @@
     document.querySelectorAll('.nav-item').forEach(function(button) {
       button.classList.toggle('active', button.dataset.view === view);
     });
+    var vt = viewTitles[view] || viewTitles.today;
+    var titleEl = document.getElementById('app-header-title');
+    var descEl = document.getElementById('app-header-desc');
+    if (titleEl) titleEl.textContent = vt.title;
+    if (descEl) descEl.textContent = vt.desc;
     if (window.location.hash !== '#' + view) {
       window.location.hash = view;
     }

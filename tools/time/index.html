@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=123">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=124">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -30,8 +30,8 @@
   <a class="brand" href="#today" data-view-link="today" aria-label="返回今日">
     <img src="/icons/today-youxu-icon.svg" alt="" aria-hidden="true" class="brand-mark" style="background: transparent; box-shadow: none;">
     <span>
-      <strong>今日有序</strong>
-      <small>日历、待办与习惯打卡，一起管理美好的今天。</small>
+      <strong id="app-header-title">今日</strong>
+      <small id="app-header-desc">今天要做什么，一眼看清</small>
     </span>
   </a>
 </header>
@@ -252,10 +252,40 @@
 <button class="fab" id="open-add" type="button" aria-label="新增事项">+</button>
 
 <nav class="bottom-nav" aria-label="主导航">
-  <button class="nav-item active" type="button" data-view="today">今日</button>
-  <button class="nav-item" type="button" data-view="calendar">日历</button>
-  <button class="nav-item" type="button" data-view="list">清单</button>
-  <button class="nav-item" type="button" data-view="profile">我的</button>
+  <button class="nav-item active" type="button" data-view="today">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    <span>今日</span>
+  </button>
+  <button class="nav-item" type="button" data-view="calendar">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+      <line x1="16" y1="2" x2="16" y2="6"/>
+      <line x1="8" y1="2" x2="8" y2="6"/>
+      <line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+    <span>日历</span>
+  </button>
+  <button class="nav-item" type="button" data-view="list">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6"/>
+      <line x1="8" y1="12" x2="21" y2="12"/>
+      <line x1="8" y1="18" x2="21" y2="18"/>
+      <line x1="3" y1="6" x2="3.01" y2="6"/>
+      <line x1="3" y1="12" x2="3.01" y2="12"/>
+      <line x1="3" y1="18" x2="3.01" y2="18"/>
+    </svg>
+    <span>清单</span>
+  </button>
+  <button class="nav-item" type="button" data-view="profile">
+    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+    <span>我的</span>
+  </button>
 </nav>
 
 <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
@@ -411,12 +441,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=122"></script>
-<script src="/tools/time/js/app-state.js?v=122"></script>
-<script src="/tools/time/js/export.js?v=122"></script>
-<script src="/tools/time/js/import-utils.js?v=122"></script>
-<script src="/tools/time/js/db.js?v=122"></script>
-<script src="/tools/time/js/app.js?v=122"></script>
+<script src="/tools/time/js/date-utils.js?v=124"></script>
+<script src="/tools/time/js/app-state.js?v=124"></script>
+<script src="/tools/time/js/export.js?v=124"></script>
+<script src="/tools/time/js/import-utils.js?v=124"></script>
+<script src="/tools/time/js/db.js?v=124"></script>
+<script src="/tools/time/js/app.js?v=124"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
