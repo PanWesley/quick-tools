@@ -1137,7 +1137,11 @@
 
   function rescheduleNotifications() {
     if (!NotificationService) return;
-    NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
+    DB.getAllData().then(function(data) {
+      appState.data = data;
+      NotificationService.checkMissedReminders(data, appState.todayKey, State.habitDueOn);
+      NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
+    }).catch(function() {});
   }
 
   window.TodayYouxuReschedule = rescheduleNotifications;
@@ -1149,7 +1153,7 @@
       updateNotificationUI();
       if (NotificationService) {
         NotificationService.checkMissedReminders(data, appState.todayKey, State.habitDueOn);
-        rescheduleNotifications();
+        NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
       }
     }).catch(function(error) {
       showToast('本地数据库读取失败：' + error.message);
@@ -1921,6 +1925,9 @@
         }
       } else {
         els.quickStartTime.value = timeStr;
+        if (els.quickTimeMode.value === 'all-day') {
+          setChoiceValue('quick-time-mode', 'point');
+        }
         if (els.quickTimeMode.value === 'range' && !els.quickEndTime.value) {
           var endH = selHour + 1;
           var endM = selMinute;
@@ -2306,7 +2313,6 @@
     });
     document.addEventListener('visibilitychange', function() {
       if (!document.hidden && NotificationService) {
-        NotificationService.checkMissedReminders(appState.data, appState.todayKey, State.habitDueOn);
         rescheduleNotifications();
         updateNotificationUI();
       }
