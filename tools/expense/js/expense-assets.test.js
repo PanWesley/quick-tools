@@ -115,6 +115,11 @@ assert.match(
 );
 assert.match(
   serviceWorker,
+  /'\/tools\/expense\/assets\/billnest-lifestyle-journal\.png'/,
+  'project-bound onboarding visual asset must be available offline'
+);
+assert.match(
+  serviceWorker,
   /event\.waitUntil\(refreshCachedRequest\(request\)\)/,
   'cached responses must refresh in the background'
 );
@@ -137,6 +142,16 @@ assert.match(
 );
 
 assert.match(html, /id="dashboard-attention"[^>]*hidden/);
+assert.strictEqual(
+  (html.match(/id="insight-alert-list"/g) || []).length,
+  1,
+  'dashboard alert list id must be unique'
+);
+assert.match(
+  html,
+  /data-template-label="咖啡 18"/,
+  'add view should expose warm default quick templates for first-time users'
+);
 assert.match(html, /id="backup-restore-modal"/);
 assert.match(html, /id="backup-encrypted-modal"/);
 assert.match(html, /<h3>表格导入<\/h3>/);

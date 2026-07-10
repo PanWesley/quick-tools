@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   '/tools/expense/index.html',
   '/tools/expense/manifest.json',
   '/tools/expense/css/style.css',
+  '/tools/expense/assets/billnest-lifestyle-journal.png',
   '/tools/expense/js/db.js',
   '/tools/expense/js/tag-management-utils.js',
   '/tools/expense/js/db-backup-utils.js',

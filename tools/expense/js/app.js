@@ -483,6 +483,14 @@ function renderDashboardHero() {
 
     const total = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const count = expenses.length;
+    const hasActiveFilters = Boolean(
+      (filters.tags && filters.tags.length > 0) ||
+      filters.minAmount ||
+      filters.maxAmount ||
+      (filters.search && String(filters.search).trim()) ||
+      filters.timeRange === 'custom' ||
+      (filters.timeRange && filters.timeRange !== 'this-month')
+    );
     if (labelEl) {
       labelEl.textContent = `${getDateRangeLabel(filters.timeRange || 'this-month')}支出`;
     }
@@ -490,6 +498,8 @@ function renderDashboardHero() {
     // Show empty state
     if (count === 0) {
       if (emptyEl) emptyEl.style.display = 'flex';
+      const dashboardView = document.getElementById('view-dashboard');
+      if (dashboardView) dashboardView.classList.toggle('dashboard-empty-state', !hasActiveFilters);
       const insightsEl = document.getElementById('dashboard-insights');
       if (insightsEl) insightsEl.style.display = 'none';
       if (document.getElementById('dashboard-hero')) {
@@ -508,6 +518,8 @@ function renderDashboardHero() {
 
     // Hide empty, show hero
     if (emptyEl) emptyEl.style.display = 'none';
+    const dashboardView = document.getElementById('view-dashboard');
+    if (dashboardView) dashboardView.classList.remove('dashboard-empty-state');
     if (document.getElementById('dashboard-hero')) {
       document.getElementById('dashboard-hero').style.display = 'block';
     }
@@ -1555,6 +1567,31 @@ function tryAddTagFromInput() {
   input.value = '';
   hideTagSuggestions();
 }
+
+window.applyDefaultTemplate = function(label, amount, itemName, tagName) {
+  if (typeof window.switchEntryMode === 'function') {
+    window.switchEntryMode('form');
+  }
+
+  const amountInput = document.getElementById('exp-amount');
+  const itemInput = document.getElementById('exp-item-name');
+  const tagInput = document.getElementById('exp-tags-input');
+
+  if (amountInput) amountInput.value = amount;
+  if (itemInput) itemInput.value = itemName || label || '';
+
+  const tag = allTags.find(t => t.name === tagName);
+  if (tag) {
+    quickFormSelectedTags = [tag.id, ...quickFormSelectedTags.filter(id => id !== tag.id)];
+    renderSelectedTags();
+    if (tagInput) tagInput.value = '';
+  } else if (tagInput && tagName) {
+    tagInput.value = tagName;
+  }
+
+  showToast(`${label} 已填好`);
+  if (amountInput) amountInput.focus();
+};
 
 function renderSelectedTags() {
   const container = document.getElementById('selected-tags');
@@ -3553,6 +3590,20 @@ window.tryDemoFromOnboarding = async function() {
     switchView('dashboard');
   } catch (error) {
     showToast('演示模式开启失败: ' + error.message);
+  }
+};
+
+window.tryDemoFromDashboard = async function() {
+  try {
+    await enableDemoMode();
+    await loadTags();
+    await renderExpenseList();
+    await refreshDashboard();
+    updateDemoToggleUI();
+    showToast('演示数据已打开');
+    switchView('dashboard');
+  } catch (error) {
+    showToast('演示数据开启失败: ' + error.message);
   }
 };
 

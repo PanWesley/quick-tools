@@ -46,17 +46,17 @@
     <div class="onboarding-shell">
       <section class="onboarding-hero onboarding-panel">
         <div class="onboarding-copy">
-          <div class="onboarding-eyebrow"><span></span>隐私优先的生活账本</div>
-          <h2>先记第一笔，再看懂每个月的钱去哪了。</h2>
-          <p>BillNest 把账单数据留在你的浏览器里，支持自然语言快速记账、Excel 导入、趋势分析和加密备份。</p>
+          <div class="onboarding-eyebrow"><span></span>安心收纳每天的小花费</div>
+          <h2>把每天的小花费，收进一个温柔的小账本。</h2>
+          <p>BillNest 把账单数据留在你的浏览器里，几秒记一笔，也能慢慢看见这个月的生活节奏。</p>
           <div class="onboarding-actions">
             <button class="btn-primary" type="button" onclick="startFromOnboarding()">立即开始记账</button>
             <button class="btn-secondary" type="button" onclick="importFromOnboarding()">导入 Excel / CSV</button>
             <button class="btn-secondary" type="button" onclick="tryDemoFromOnboarding()">体验演示数据</button>
           </div>
           <div class="onboarding-demo-line">
-            <span class="onboarding-typing">午饭 32，咖啡 18，地铁 6</span>
-            <small>自动拆成 3 条账单，并按餐饮、交通归类</small>
+            <span class="onboarding-typing">咖啡 18，鲜花 36，晚餐 72</span>
+            <small>自动拆成 3 条账单，让日常开销有迹可循</small>
           </div>
         </div>
 
@@ -80,7 +80,8 @@
       </section>
 
       <aside class="onboarding-phone-panel onboarding-panel">
-        <div class="onboarding-orbit" aria-hidden="true"></div>
+        <img class="onboarding-lifestyle-image" src="/tools/expense/assets/billnest-lifestyle-journal.png" alt="桌面上的账本、咖啡、花束和收据">
+        <div class="onboarding-photo-scrim" aria-hidden="true"></div>
         <div class="onboarding-phone">
           <div class="onboarding-phone-status"></div>
           <div class="onboarding-phone-body">
@@ -98,12 +99,12 @@
             </div>
             <div class="onboarding-feed">
               <div class="onboarding-feed-list">
-                <div><span>午饭 · 餐饮</span><strong>¥32</strong></div>
                 <div><span>咖啡 · 餐饮</span><strong>¥18</strong></div>
-                <div><span>地铁 · 交通</span><strong>¥6</strong></div>
+                <div><span>鲜花 · 生活</span><strong>¥36</strong></div>
+                <div><span>晚餐 · 餐饮</span><strong>¥72</strong></div>
                 <div><span>超市 · 日用</span><strong>¥128</strong></div>
-                <div><span>会员 · 订阅</span><strong>¥25</strong></div>
-                <div><span>药店 · 健康</span><strong>¥75</strong></div>
+                <div><span>护肤 · 购物</span><strong>¥198</strong></div>
+                <div><span>地铁 · 交通</span><strong>¥6</strong></div>
               </div>
             </div>
           </div>
@@ -117,9 +118,9 @@
 
     <section class="onboarding-ai-preview">
       <div class="onboarding-ai-copy">
-        <span class="onboarding-ai-kicker">智能分析预览</span>
-        <h3>不只记账，帮你看懂消费信号。</h3>
-        <p>本月钱花在哪、哪些支出异常、哪些订阅可以停、月底大概会花多少，都可以在后续高级分析里持续展开。</p>
+        <span class="onboarding-ai-kicker">生活节奏预览</span>
+        <h3>不只记账，也陪你看见消费里的小变化。</h3>
+        <p>记录几天后，BillNest 会帮你看见钱花在哪里、哪些支出值得留意，以及月底大概会花多少。</p>
       </div>
       <div class="onboarding-ai-cards">
         <div class="onboarding-ai-card">
@@ -146,8 +147,8 @@
   <!-- Dashboard View -->
   <section class="view-section" id="view-dashboard">
     <div class="dashboard-header">
-      <h2>📊 概览</h2>
-      <p class="subtitle">支出情况一览</p>
+      <h2>概览</h2>
+      <p class="subtitle">看看这个月的生活节奏</p>
     </div>
 
     <!-- Filter Bar -->
@@ -203,7 +204,7 @@
     <div class="dashboard-insights" id="dashboard-insights">
       <section class="insight-panel insight-pace">
         <div class="insight-panel-header">
-          <h3>花费提醒</h3>
+          <h3>节奏提醒</h3>
           <span id="pace-status">—</span>
         </div>
         <div class="pace-plain">
@@ -229,7 +230,7 @@
 
       <section class="insight-panel insight-alerts">
         <div class="insight-panel-header">
-          <h3>异常提醒</h3>
+          <h3>值得留意的小变化</h3>
           <span id="insight-count">0 条</span>
         </div>
         <div class="insight-alert-list" id="insight-alert-list"></div>
@@ -239,18 +240,14 @@
     <!-- Empty Dashboard State -->
     <div class="empty-dashboard" id="empty-dashboard" style="display:none;">
       <div class="empty-illustration">
-        <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
-          <rect x="15" y="25" width="70" height="50" rx="8" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.4"/>
-          <line x1="25" y1="38" x2="75" y2="38" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-          <line x1="25" y1="48" x2="60" y2="48" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-          <line x1="25" y1="58" x2="68" y2="58" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-          <circle cx="82" cy="22" r="14" fill="var(--primary-light)" stroke="var(--primary)" stroke-width="1.5"/>
-          <path d="M78 22h8M82 18v8" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
+        <img src="/tools/expense/assets/billnest-lifestyle-journal.png" alt="温柔的桌面账本和收据">
       </div>
-      <h3>开始记录</h3>
-      <p>点击底部"记账"按钮，3 秒完成一笔记录</p>
-      <button class="btn-primary" onclick="switchView('add')">记第一笔</button>
+      <h3>开始你的本月账本</h3>
+      <p>记录 3 天后，我会帮你看见消费节奏和值得留意的小变化。</p>
+      <div class="empty-dashboard-actions">
+        <button class="btn-primary" onclick="switchView('add')">记第一笔</button>
+        <button class="btn-secondary" onclick="tryDemoFromDashboard()">试试演示数据</button>
+      </div>
     </div>
 
     <!-- Charts Row 1: Pie + Bar -->
@@ -286,9 +283,23 @@
   <!-- Add Expense View (Default) -->
   <section class="view-section active" id="view-add">
     <div class="page-header">
-      <h2>➕ 记一笔</h2>
-      <p class="subtitle">快速记录新的支出</p>
+      <h2>记一笔</h2>
+      <p class="subtitle">几秒钟，把今天的小花费用温柔地收好</p>
     </div>
+
+    <section class="quick-start-card" aria-label="今日记账快捷入口">
+      <div class="quick-start-copy">
+        <span class="quick-start-kicker">今日小账本</span>
+        <strong>从最常见的一笔开始</strong>
+        <small>点一下快捷项，会自动填好金额和项目名称。</small>
+      </div>
+      <div class="quick-template-grid">
+        <button type="button" data-template-label="咖啡 18" onclick="applyDefaultTemplate('咖啡 18', 18, '咖啡', '餐饮')">咖啡 18</button>
+        <button type="button" data-template-label="午餐 38" onclick="applyDefaultTemplate('午餐 38', 38, '午餐', '餐饮')">午餐 38</button>
+        <button type="button" data-template-label="地铁 6" onclick="applyDefaultTemplate('地铁 6', 6, '地铁', '交通')">地铁 6</button>
+        <button type="button" data-template-label="护肤 198" onclick="applyDefaultTemplate('护肤 198', 198, '护肤', '购物')">护肤 198</button>
+      </div>
+    </section>
 
     <!-- Mode Toggle -->
     <div class="mode-toggle-bar">
@@ -298,7 +309,7 @@
 
     <!-- Recent Templates -->
     <div class="recent-templates" id="recent-templates">
-      <div class="templates-label">最近模板</div>
+      <div class="templates-label">最近常用组合</div>
       <div class="templates-chips" id="templates-chips"></div>
     </div>
 
@@ -310,7 +321,7 @@
       </div>
       <div class="form-group">
         <label for="exp-item-name">项目名称</label>
-        <input type="text" id="exp-item-name" placeholder="例如：午餐、打车…">
+        <input type="text" id="exp-item-name" placeholder="例如：咖啡、鲜花、晚餐…">
       </div>
       <div class="form-group">
         <label for="exp-amount">金额 <span class="required">*</span></label>
@@ -322,7 +333,7 @@
       <div class="form-group">
         <label for="exp-tags-input">标签</label>
         <div class="tag-input-wrap">
-          <input type="text" id="exp-tags-input" placeholder="输入标签，用空格/逗号/回车分隔…" autocomplete="off">
+          <input type="text" id="exp-tags-input" placeholder="输入标签，如 餐饮、交通、护肤…" autocomplete="off">
           <div class="tag-suggestions" id="tag-suggestions" style="display:none;"></div>
         </div>
         <div class="selected-tags" id="selected-tags"></div>
@@ -337,7 +348,7 @@
     <div class="form-card entry-mode" id="entry-nl-mode" style="display:none;">
       <div class="form-group">
         <label for="nl-input">自然语言输入</label>
-        <textarea id="nl-input" rows="5" placeholder="格式：日期 项目 金额 标签\n例如：昨天 午餐 35 餐饮 美团\n      6-10 打车 22 交通 滴滴\n支持多条一起输入，每行一条"></textarea>
+        <textarea id="nl-input" rows="5" placeholder="例如：咖啡 18 餐饮\n鲜花 36 生活\n晚餐 72 餐饮\n支持多条一起输入，每行一条"></textarea>
       </div>
       <div class="nl-preview" id="nl-preview" style="display:none;">
         <div class="nl-preview-title">解析结果（可点击编辑）</div>
