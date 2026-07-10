@@ -92,9 +92,18 @@
     var content = row.querySelector('.task-content');
     row.classList.remove('actions-open');
     if (content) {
-      content.style.marginLeft = '';
-      content.style.marginRight = '';
+      content.style.marginLeft = '0';
+      content.style.marginRight = '0';
     }
+    if (document.activeElement && row.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    setTimeout(function() {
+      if (content && !row.classList.contains('actions-open')) {
+        content.style.marginLeft = '';
+        content.style.marginRight = '';
+      }
+    }, 220);
   }
 
   function openListSwipeRow(row) {
@@ -245,8 +254,9 @@
       actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
     }
 
+    var isOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row>',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row>',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -269,8 +279,9 @@
     var completeButton = task.status === 'completed'
       ? '<span class="date-icon done-icon">✓</span>'
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
+    var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + '>',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + '>',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
