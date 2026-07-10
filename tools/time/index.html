@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=134">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=135">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -184,6 +184,16 @@
           </button>
         </div>
       </section>
+      <section class="panel setting-row notification-setting-row">
+        <div>
+          <h2>系统通知</h2>
+          <p id="notification-desc">授权后，任务和习惯将按提醒时间弹出系统通知。添加到桌面后效果更佳。</p>
+        </div>
+        <div class="setting-actions">
+          <span class="mode-pill notification-status-default" id="notification-status">未授权</span>
+          <button class="btn secondary" type="button" id="notification-setup-button" data-action="notification-setup">授权通知</button>
+        </div>
+      </section>
       <section class="panel setting-row">
         <div>
           <h2>隐私</h2>
@@ -243,7 +253,7 @@
           <h2>关于</h2>
           <p>今日有序是轻量时间管理 PWA，专注今天、日历、清单和习惯打卡。</p>
         </div>
-        <span class="muted-pill">v0.5.0</span>
+        <span class="muted-pill">v0.6.0</span>
       </section>
     </div>
   </section>
@@ -361,7 +371,7 @@
         <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="15" data-choice-label="15分钟前">15分钟前</button>
         <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="custom" data-choice-label="自定义" data-action="open-custom-reminder">自定义</button>
       </div>
-      <p class="field-hint" id="quick-reminder-hint">全天事项会先记录提醒偏好，具体通知能力后续接入。</p>
+      <p class="field-hint" id="quick-reminder-hint">请在「我的」页面授权通知权限后生效。</p>
     </div>
     <details class="more-settings" id="quick-more-settings">
       <summary>更多设置 <span>归属、优先级、备注</span></summary>
@@ -448,7 +458,8 @@
 <script src="/tools/time/js/export.js?v=131"></script>
 <script src="/tools/time/js/import-utils.js?v=131"></script>
 <script src="/tools/time/js/db.js?v=131"></script>
-<script src="/tools/time/js/app.js?v=133"></script>
+<script src="/tools/time/js/notification.js?v=1"></script>
+<script src="/tools/time/js/app.js?v=135"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>

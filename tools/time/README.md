@@ -29,6 +29,7 @@
 - **左滑操作统一**：任务左滑显示编辑、删除；习惯左滑显示编辑、跳过；已删除项左滑显示恢复、彻底删除。
 - **最近删除**：任务删除后保留为软删除状态，可从清单页恢复，也可彻底删除。
 - **任务搜索**：清单页顶部搜索框支持按任务标题或备注关键词快速查找。
+- **系统通知提醒**：添加到桌面后支持系统级通知，每个任务/习惯按设置的提醒时间弹出通知；在「我的」页授权并开启后生效；应用切回前台时自动检查漏掉的提醒并汇总通知。
 - **JSON 导出**：导出 tasks、habits、habitLogs、journals、opLogs。
 - **JSON 导入恢复**：校验 `app: "today-youxu"` 和 `version: 1`，按 `id` 合并记录，优先保留 `updatedAt` 更新的数据，并记录导入 OpLog。
 
@@ -69,7 +70,8 @@ tools/time/
     ├── date-utils.js       # 日期工具
     ├── db.js               # IndexedDB 读写与 OpLog
     ├── export.js           # 导出数据结构
-    └── import-utils.js     # 导入校验与合并规则
+    ├── import-utils.js     # 导入校验与合并规则
+    └── notification.js     # 系统通知服务（权限、调度、提醒）
 ```
 
 ## 本地验证
@@ -82,6 +84,7 @@ node --check tools/time/js/import-utils.js
 node --check tools/time/js/app-state.js
 node --check tools/time/js/db.js
 node --check tools/time/js/app.js
+node --check tools/time/js/notification.js
 node --check tools/time/sw.js
 ```
 

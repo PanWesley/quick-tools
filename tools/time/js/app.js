@@ -3,6 +3,7 @@
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
   var DB = window.TodayYouxuDB;
+  var NotificationService = window.TodayYouxuNotification;
 
   var appState = {
     view: 'today',
@@ -1134,10 +1135,22 @@
     appState.editingType = '';
   }
 
+  function rescheduleNotifications() {
+    if (!NotificationService) return;
+    NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
+  }
+
+  window.TodayYouxuReschedule = rescheduleNotifications;
+
   function loadData() {
     return DB.getAllData().then(function(data) {
       appState.data = data;
       render();
+      updateNotificationUI();
+      if (NotificationService) {
+        NotificationService.checkMissedReminders(data, appState.todayKey, State.habitDueOn);
+        rescheduleNotifications();
+      }
     }).catch(function(error) {
       showToast('本地数据库读取失败：' + error.message);
     });
@@ -1281,6 +1294,8 @@
     } else if (action === 'select-date') {
       appState.selectedDateKey = target.dataset.date;
       renderCalendar();
+    } else if (action === 'notification-setup') {
+      handleNotificationAction();
     }
   }
 
@@ -1417,6 +1432,112 @@
       }).catch(fallback);
     } else {
       fallback();
+    }
+  }
+
+  function getNotificationStatusInfo() {
+    if (!NotificationService) return { status: 'unsupported', label: '不支持', desc: '当前浏览器不支持系统通知' };
+    var perm = NotificationService.getPermissionStatus();
+    var enabled = NotificationService.isEnabled();
+    if (perm === 'unsupported') return { status: 'unsupported', label: '不支持', desc: '当前浏览器不支持系统通知' };
+    if (perm === 'denied') return { status: 'denied', label: '已拒绝', desc: '通知权限已被拒绝，请在系统设置中开启' };
+    if (perm === 'default') return { status: 'default', label: '未授权', desc: '点击按钮授权系统通知权限' };
+    if (enabled) return { status: 'granted', label: '已开启', desc: '任务和习惯将按设置时间发送系统通知' };
+    return { status: 'disabled', label: '已关闭', desc: '通知权限已授权但提醒功能未开启' };
+  }
+
+  function updateNotificationUI() {
+    if (!els.notificationStatus) return;
+    var info = getNotificationStatusInfo();
+    els.notificationStatus.textContent = info.label;
+    els.notificationStatus.className = 'mode-pill notification-status-' + info.status;
+    if (els.notificationDesc) els.notificationDesc.textContent = info.desc;
+    if (els.notificationButton) {
+      if (info.status === 'unsupported') {
+        els.notificationButton.hidden = true;
+      } else if (info.status === 'denied') {
+        els.notificationButton.hidden = false;
+        els.notificationButton.textContent = '了解如何开启';
+      } else if (info.status === 'default') {
+        els.notificationButton.hidden = false;
+        els.notificationButton.textContent = '授权通知';
+      } else if (info.status === 'granted' || info.status === 'disabled') {
+        els.notificationButton.hidden = false;
+        els.notificationButton.textContent = info.status === 'granted' ? '测试通知' : '开启提醒';
+      }
+    }
+    if (els.quickReminderHint) {
+      if (info.status === 'granted') {
+        els.quickReminderHint.textContent = '授权后，到达提醒时间会弹出系统通知。';
+      } else {
+        els.quickReminderHint.textContent = '请在「我的」页面授权通知权限后生效。';
+      }
+    }
+  }
+
+  function handleNotificationAction() {
+    if (!NotificationService) return;
+    var info = getNotificationStatusInfo();
+    if (info.status === 'denied') {
+      showToast('请在浏览器或系统设置中允许今日有序发送通知');
+      return;
+    }
+    if (info.status === 'default') {
+      NotificationService.requestPermission().then(function(perm) {
+        if (perm === 'granted') {
+          showToast('通知权限已开启');
+          updateNotificationUI();
+          rescheduleNotifications();
+        } else if (perm === 'denied') {
+          showToast('通知权限被拒绝');
+        }
+        updateNotificationUI();
+      });
+      return;
+    }
+    if (info.status === 'disabled') {
+      NotificationService.setEnabled(true);
+      showToast('提醒已开启');
+      updateNotificationUI();
+      rescheduleNotifications();
+      return;
+    }
+    if (info.status === 'granted') {
+      if (NotificationService.isEnabled()) {
+        showNotification('🔔 测试通知', {
+          body: '通知功能正常！' + new Date().toLocaleTimeString(),
+          tag: 'test-notification-' + Date.now()
+        });
+      } else {
+        NotificationService.setEnabled(true);
+        updateNotificationUI();
+        rescheduleNotifications();
+      }
+    }
+  }
+
+  function showNotification(title, options) {
+    if (!NotificationService || !NotificationService.isEnabled()) {
+      showToast(title + ': ' + (options && options.body ? options.body : ''));
+      return;
+    }
+    var reg = null;
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(function(registration) {
+        registration.showNotification(title, Object.assign({
+          icon: '/icons/today-youxu-icon-192x192.png',
+          badge: '/icons/today-youxu-icon-72x72.png',
+          vibrate: [200, 100, 200]
+        }, options || {}));
+      });
+    } else {
+      try {
+        new Notification(title, Object.assign({
+          icon: '/icons/today-youxu-icon-192x192.png'
+        }, options || {}));
+      } catch (e) {
+        showToast(title + ': ' + (options && options.body ? options.body : ''));
+      }
     }
   }
 
@@ -2003,6 +2124,9 @@
     els.clearButton = $('clear-button');
     els.feedbackEmail = $('feedback-email-text');
     els.feedbackMailButton = $('feedback-mail-button');
+    els.notificationStatus = $('notification-status');
+    els.notificationDesc = $('notification-desc');
+    els.notificationButton = $('notification-setup-button');
     els.toast = $('toast');
   }
 
@@ -2180,11 +2304,22 @@
         }
       }
     });
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden && NotificationService) {
+        NotificationService.checkMissedReminders(appState.data, appState.todayKey, State.habitDueOn);
+        rescheduleNotifications();
+        updateNotificationUI();
+      }
+    });
   }
 
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('/tools/time/sw.js').catch(function(error) {
+    navigator.serviceWorker.register('/tools/time/sw.js').then(function(reg) {
+      if (NotificationService) {
+        NotificationService.setServiceWorkerRegistration(reg);
+      }
+    }).catch(function(error) {
       console.warn('[TodayYouxu] Service worker registration failed:', error);
     });
   }
@@ -2196,6 +2331,15 @@
     switchView(viewFromHash());
     loadData();
     registerServiceWorker();
+    if (NotificationService) {
+      NotificationService.initSW();
+      NotificationService.startPeriodicCheck();
+      if (NotificationService.setPermissionChangeCallback) {
+        NotificationService.setPermissionChangeCallback(function() {
+          updateNotificationUI();
+        });
+      }
+    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

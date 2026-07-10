@@ -2836,4 +2836,43 @@ textarea {
     width: 100%;
     text-align: left;
   }
+
+  .notification-setting-row .setting-actions {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}
+
+.setting-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.notification-status-granted {
+  background: var(--mint-soft);
+  color: #247d67;
+}
+
+.notification-status-default {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.notification-status-denied {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.notification-status-disabled {
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.notification-status-unsupported {
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
 }
