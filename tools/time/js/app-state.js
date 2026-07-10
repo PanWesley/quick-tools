@@ -93,19 +93,6 @@
       });
   }
 
-  function getAllActiveItems(tasks, habits, todayKey) {
-    var items = [];
-    (tasks || []).filter(activeOnly).forEach(function(task) {
-      items.push({ type: 'task', data: task });
-    });
-    (habits || []).forEach(function(habit) {
-      if (habit.status !== 'archived') {
-        items.push({ type: 'habit', data: habit });
-      }
-    });
-    return items;
-  }
-
   function calculateHabitStreak(logs, habitId, todayKey) {
     var streak = 0;
     var dateParts = String(todayKey).split('-').map(Number);
@@ -287,7 +274,6 @@
     getOverdueTasks: getOverdueTasks,
     getCompletedTasks: getCompletedTasks,
     getDeletedTasks: getDeletedTasks,
-    getAllActiveItems: getAllActiveItems,
     calculateHabitStreak: calculateHabitStreak,
     getRepeatLabel: getRepeatLabel,
     getTaskDisplayTitle: getTaskDisplayTitle,

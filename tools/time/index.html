@@ -68,7 +68,7 @@
       <div class="habit-grid" id="today-habit-list"></div>
     </section>
 
-    <section class="panel" aria-labelledby="journal-title">
+    <section class="panel" id="journal-section" aria-labelledby="journal-title">
       <div class="panel-head">
         <div>
           <h2 id="journal-title">今日一句</h2>
@@ -200,6 +200,16 @@
           <p>任务、习惯和每日一句默认只保存在本机；匿名统计不记录输入内容。</p>
         </div>
         <span class="mode-pill">本地优先</span>
+      </section>
+      <section class="panel setting-row">
+        <div>
+          <h2>今日一句</h2>
+          <p>在今日页显示每日一句输入框。关闭后页面更聚焦任务和习惯。</p>
+        </div>
+        <label class="setting-toggle">
+          <input type="checkbox" id="journal-enabled-toggle" checked>
+          <span class="setting-toggle-track"></span>
+        </label>
       </section>
       <section class="panel setting-row">
         <div>
@@ -456,13 +466,13 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="/tools/time/js/date-utils.js?v=131"></script>
-<script src="/tools/time/js/app-state.js?v=131"></script>
-<script src="/tools/time/js/export.js?v=131"></script>
-<script src="/tools/time/js/import-utils.js?v=131"></script>
-<script src="/tools/time/js/db.js?v=131"></script>
+<script src="/tools/time/js/date-utils.js?v=135"></script>
+<script src="/tools/time/js/app-state.js?v=135"></script>
+<script src="/tools/time/js/export.js?v=135"></script>
+<script src="/tools/time/js/import-utils.js?v=135"></script>
+<script src="/tools/time/js/db.js?v=135"></script>
 <script src="/tools/time/js/notification.js?v=4"></script>
-<script src="/tools/time/js/app.js?v=137"></script>
+<script src="/tools/time/js/app.js?v=135"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>

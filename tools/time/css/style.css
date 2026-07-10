@@ -389,6 +389,57 @@ button {
   min-width: 0;
 }
 
+.setting-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.setting-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+
+.setting-toggle-track {
+  display: block;
+  width: 48px;
+  height: 28px;
+  background: var(--border);
+  border-radius: 999px;
+  position: relative;
+  transition: background 200ms ease;
+}
+
+.setting-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  transition: transform 200ms ease;
+}
+
+.setting-toggle input[type="checkbox"]:checked + .setting-toggle-track {
+  background: var(--primary);
+}
+
+.setting-toggle input[type="checkbox"]:checked + .setting-toggle-track::after {
+  transform: translateX(20px);
+}
+
+.setting-toggle input[type="checkbox"]:focus-visible + .setting-toggle-track {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .stack-list {
   display: grid;
   gap: 8px;

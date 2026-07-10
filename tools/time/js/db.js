@@ -213,6 +213,7 @@
       schedule: input.schedule || 'daily',
       weekday: input.weekday === undefined ? new Date().getDay() : Number(input.weekday),
       targetCount: Number(input.targetCount || 1),
+      priority: input.priority || 'none',
       area: input.area || 'life',
       notes: String(input.notes || '').trim(),
       startDate: input.startDate || '',
@@ -236,11 +237,27 @@
     });
   }
 
-  function upsertHabitLog(habitId, date, state) {
-    return getAll('habitLogs').then(function(logs) {
-      var existing = logs.find(function(log) {
-        return log.habitId === habitId && log.date === date;
+  function getHabitLogByHabitAndDate(habitId, date) {
+    return openDatabase().then(function(db) {
+      var transaction = db.transaction('habitLogs', 'readonly');
+      var index = transaction.objectStore('habitLogs').index('date');
+      return requestToPromise(index.getAll(date)).then(function(logs) {
+        db.close();
+        return logs.find(function(log) { return log.habitId === habitId; }) || null;
       });
+    });
+  }
+
+  function getJournalByDate(date) {
+    return openDatabase().then(function(db) {
+      var transaction = db.transaction('journals', 'readonly');
+      var index = transaction.objectStore('journals').index('date');
+      return requestToPromise(index.get(date)).finally(function() { db.close(); });
+    });
+  }
+
+  function upsertHabitLog(habitId, date, state) {
+    return getHabitLogByHabitAndDate(habitId, date).then(function(existing) {
       var timestamp = nowIso();
       var log = existing ? Object.assign({}, existing, {
         state: state,
@@ -259,10 +276,7 @@
   }
 
   function resetHabitLog(habitId, date) {
-    return getAll('habitLogs').then(function(logs) {
-      var existing = logs.find(function(log) {
-        return log.habitId === habitId && log.date === date;
-      });
+    return getHabitLogByHabitAndDate(habitId, date).then(function(existing) {
       if (!existing) return null;
       return openDatabase().then(function(db) {
         var transaction = db.transaction(['habitLogs', 'opLogs'], 'readwrite');
@@ -277,16 +291,15 @@
           syncState: 'local'
         });
         return new Promise(function(resolve, reject) {
-          transaction.oncomplete = function() { resolve(); };
-          transaction.onerror = function() { reject(transaction.error); };
+          transaction.oncomplete = function() { db.close(); resolve(); };
+          transaction.onerror = function() { db.close(); reject(transaction.error); };
         });
       });
     });
   }
 
   function upsertJournal(date, content, mood) {
-    return getAll('journals').then(function(entries) {
-      var existing = entries.find(function(entry) { return entry.date === date; });
+    return getJournalByDate(date).then(function(existing) {
       var timestamp = nowIso();
       var entry = existing ? Object.assign({}, existing, {
         content: content,

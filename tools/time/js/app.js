@@ -207,7 +207,10 @@
   function weekendKey() {
     var date = DateUtils.fromDateKey(appState.todayKey);
     var day = date.getDay();
-    var offset = day === 0 ? 6 : 6 - day;
+    if (day === 6 || day === 0) {
+      return appState.todayKey;
+    }
+    var offset = 6 - day;
     return DateUtils.toDateKey(DateUtils.addDays(date, offset));
   }
 
@@ -228,15 +231,6 @@
       var menu = $(trigger.dataset.selectTarget + '-menu');
       trigger.setAttribute('aria-expanded', String(menu && !menu.hidden));
     });
-  }
-
-  function listConfig(filter) {
-    return {
-      inbox: { title: '未安排', subtitle: '还没定日期的事项，适合先收集想法。', empty: '没有未安排事项。新增事项时选择“待定”即可放到这里。' },
-      upcoming: { title: '之后要做', subtitle: '今天之后的任务，按日期从近到远排列。', empty: '还没有未来任务。' },
-      completed: { title: '已完成', subtitle: '最近完成的任务记录，最多显示 20 条。', empty: '还没有完成记录。' },
-      deleted: { title: '已删除', subtitle: '最近删除的任务，可以从这里恢复。', empty: '最近没有删除的任务。' }
-    }[filter] || { title: '未安排', subtitle: '还没定日期的事项，适合先收集想法。', empty: '没有未安排事项。' };
   }
 
   function renderTask(task, options) {
@@ -417,7 +411,11 @@
     els.todayHabitCount.textContent = uncheckedHabits.length;
     els.todayTaskList.innerHTML = todayTasks.length ? todayTasks.map(renderTask).join('') : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
     els.todayHabitList.innerHTML = dueHabits.length ? dueHabits.map(renderHabit).join('') : renderEmpty('还没有需要今天打卡的习惯。');
-    els.journalContent.value = journal ? journal.content : randomJournalQuote();
+    if (isJournalEnabled()) {
+      els.journalContent.value = journal ? journal.content : randomJournalQuote();
+    } else {
+      els.journalContent.value = '';
+    }
   }
 
   function renderCalendar() {
@@ -574,7 +572,7 @@
     html.push('  <div class="empty-icon">' + config.icon + '</div>');
     html.push('  <p class="empty-tip">' + escapeHtml(config.tip) + '</p>');
     html.push('  <p class="empty-encouragement">' + escapeHtml(config.encouragement) + '</p>');
-    if (journalContent) {
+    if (journalContent && isJournalEnabled()) {
       html.push('  <div class="empty-journal">');
       html.push('    <span class="empty-journal-quote">"</span>');
       html.push('    <p class="empty-journal-text">' + escapeHtml(journalContent) + '</p>');
@@ -1085,6 +1083,19 @@
     applyThemePreset(saved);
   }
 
+  function isJournalEnabled() {
+    return localStorage.getItem('today-youxu-journal-enabled') !== '0';
+  }
+
+  function applyJournalEnabled(enabled) {
+    if (els.journalSection) els.journalSection.hidden = !enabled;
+    if (els.journalEnabledToggle) {
+      els.journalEnabledToggle.checked = enabled;
+      els.journalEnabledToggle.setAttribute('aria-checked', String(enabled));
+    }
+    localStorage.setItem('today-youxu-journal-enabled', enabled ? '1' : '0');
+  }
+
   function openSheet() {
     appState.editingTaskId = '';
     appState.editingType = '';
@@ -1195,7 +1206,10 @@
         notes: els.quickNotes.value,
         area: els.quickArea.value || 'life',
         priority: els.quickPriority.value,
-        reminder: reminder
+        reminder: reminder,
+        timeMode: els.quickTimeMode.value || 'all-day',
+        startTime: els.quickStartTime.value || '',
+        endTime: els.quickTimeMode.value === 'range' ? (els.quickEndTime.value || '') : ''
       };
       if (reminder === 'custom' && appState.customReminder) {
         habitPayload.customReminder = appState.customReminder;
@@ -1206,7 +1220,20 @@
       }
       action = DB.updateHabit(appState.editingTaskId, habitPayload);
     } else if (wasEditing) {
-      action = DB.updateTask(appState.editingTaskId, payload);
+      if (repeat !== 'none') {
+        var habitCreateData = Object.assign({}, payload, {
+          schedule: repeat,
+          customRepeat: repeat === 'custom' ? appState.customRepeat : null,
+          startDate: payload.date,
+          weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
+        });
+        var convertingTaskId = appState.editingTaskId;
+        action = DB.createHabit(habitCreateData).then(function() {
+          return DB.purgeTask(convertingTaskId);
+        });
+      } else {
+        action = DB.updateTask(appState.editingTaskId, payload);
+      }
     } else {
       action = repeat === 'none'
         ? DB.createTask(payload)
@@ -1238,6 +1265,7 @@
   }
 
   function scheduleJournalSave() {
+    if (!isJournalEnabled()) return;
     clearTimeout(journalSaveTimer);
     journalSaveTimer = setTimeout(function() {
       saveJournal({ silent: true });
@@ -1358,8 +1386,28 @@
     setChoiceValue('quick-priority', normalizePriority(habit.priority));
     setChoiceValue('quick-area', State.normalizeArea ? State.normalizeArea(habit.area) : 'life');
     var scheduleVal = habit.schedule || 'daily';
-    setChoiceValue('quick-repeat', scheduleVal === 'daily' || scheduleVal === 'weekly' || scheduleVal === 'custom' ? scheduleVal : 'daily');
-    setChoiceValue('quick-time-mode', 'all-day');
+    var chipSchedules = ['none', 'daily', 'weekly', 'custom'];
+    if (chipSchedules.indexOf(scheduleVal) >= 0) {
+      setChoiceValue('quick-repeat', scheduleVal);
+    } else {
+      document.querySelectorAll('[data-choice-target="quick-repeat"]').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.choiceValue === 'custom');
+      });
+      els.quickRepeat.value = scheduleVal;
+      if (!appState.customRepeat) {
+        if (scheduleVal === 'weekdays') {
+          appState.customRepeat = { interval: 1, unit: 'day', skipWeekends: true, skipHolidays: false };
+        } else if (scheduleVal === 'monthly') {
+          appState.customRepeat = { interval: 1, unit: 'month', skipWeekends: false, skipHolidays: false };
+        }
+      }
+      if (els.quickRepeatCustomHint) {
+        els.quickRepeatCustomHint.hidden = false;
+        els.quickRepeatCustomHint.textContent = formatRepeatLabel(scheduleVal, appState.customRepeat);
+      }
+    }
+    var habitTimeMode = habit.timeMode || 'all-day';
+    setChoiceValue('quick-time-mode', habitTimeMode);
     var reminderVal = habit.reminder || 'none';
     setChoiceValue('quick-reminder', reminderVal);
     if (reminderVal === 'custom' && habit.customReminder) {
@@ -1367,13 +1415,13 @@
         btn.classList.toggle('active', btn.dataset.choiceValue === 'custom');
       });
     }
-    els.quickStartTime.value = '';
-    els.quickEndTime.value = '';
+    els.quickStartTime.value = habit.startTime || '';
+    els.quickEndTime.value = habit.endTime || '';
     els.quickNotes.value = habit.notes || '';
     updateTimeDisplay();
-    if (els.quickRepeatCustomHint) {
-      els.quickRepeatCustomHint.hidden = true;
-      els.quickRepeatCustomHint.textContent = '';
+    if (scheduleVal === 'custom' && habit.customRepeat && els.quickRepeatCustomHint) {
+      els.quickRepeatCustomHint.hidden = false;
+      els.quickRepeatCustomHint.textContent = formatRepeatLabel('custom', habit.customRepeat);
     }
     setQuickDate(habit.startDate || appState.todayKey);
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
@@ -2065,6 +2113,8 @@
     els.journalForm = $('journal-form');
     els.journalSave = $('journal-save');
     els.journalContent = $('journal-content');
+    els.journalSection = $('journal-section');
+    els.journalEnabledToggle = $('journal-enabled-toggle');
     els.calendarLabel = $('calendar-label');
     els.calendarCard = $('calendar-card');
     els.calendarToggle = $('toggle-calendar');
@@ -2195,6 +2245,17 @@
     });
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);
+    if (els.journalEnabledToggle) {
+      els.journalEnabledToggle.addEventListener('change', function() {
+        var enabled = els.journalEnabledToggle.checked;
+        applyJournalEnabled(enabled);
+        if (enabled) {
+          renderToday();
+        } else {
+          els.journalContent.value = '';
+        }
+      });
+    }
     els.taskSearch.addEventListener('input', function() {
       appState.search = els.taskSearch.value;
       appState.listDisplayCount = appState.listPageSize;
@@ -2333,6 +2394,7 @@
   function init() {
     cacheElements();
     initThemePreset();
+    applyJournalEnabled(isJournalEnabled());
     bindEvents();
     switchView(viewFromHash());
     loadData();
