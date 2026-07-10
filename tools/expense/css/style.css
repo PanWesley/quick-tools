@@ -1,6 +1,6 @@
 ﻿/* ============================================
    Expense Tracker - Stylesheet
-   Theme: Forest Canopy (温润的日式账本) v1.6.10
+   Theme: Forest Canopy (温润的日式账本) v1.6.11
    ============================================ */
 
 /* CSS Variables */
@@ -38,6 +38,30 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
 
+:root[data-accent-color="blush"] {
+  --primary: #A85F59;
+  --primary-hover: #884A45;
+  --primary-light: rgba(168, 95, 89, 0.1);
+  --primary-soft: #FFF0ED;
+  --focus-ring: rgba(168, 95, 89, 0.28);
+}
+
+:root[data-accent-color="apricot"] {
+  --primary: #A36A2D;
+  --primary-hover: #805022;
+  --primary-light: rgba(163, 106, 45, 0.1);
+  --primary-soft: #FFF3E2;
+  --focus-ring: rgba(163, 106, 45, 0.28);
+}
+
+:root[data-accent-color="sage"] {
+  --primary: #5F7F6B;
+  --primary-hover: #476352;
+  --primary-light: rgba(95, 127, 107, 0.1);
+  --primary-soft: #EDF5EF;
+  --focus-ring: rgba(95, 127, 107, 0.28);
+}
+
 [data-theme="dark"] {
   --bg: #1A1D1B;
   --card-bg: #242826;
@@ -55,6 +79,24 @@
   --surface-hover: rgba(255, 255, 255, 0.04);
   --surface-active: rgba(255, 255, 255, 0.08);
   color-scheme: dark;
+}
+
+:root[data-theme="dark"][data-accent-color="blush"] {
+  --primary-light: rgba(168, 95, 89, 0.18);
+  --primary-soft: rgba(168, 95, 89, 0.18);
+  --focus-ring: rgba(168, 95, 89, 0.36);
+}
+
+:root[data-theme="dark"][data-accent-color="apricot"] {
+  --primary-light: rgba(163, 106, 45, 0.18);
+  --primary-soft: rgba(163, 106, 45, 0.18);
+  --focus-ring: rgba(163, 106, 45, 0.36);
+}
+
+:root[data-theme="dark"][data-accent-color="sage"] {
+  --primary-light: rgba(95, 127, 107, 0.18);
+  --primary-soft: rgba(95, 127, 107, 0.18);
+  --focus-ring: rgba(95, 127, 107, 0.36);
 }
 
 /* Base Reset */
@@ -89,6 +131,12 @@ body {
   flex-direction: column;
   transition: background 0.3s, color 0.3s;
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); /* space for bottom nav + safe area */
+}
+
+[data-theme="dark"] body {
+  background:
+    linear-gradient(180deg, rgba(35, 41, 37, 0.92) 0%, rgba(26, 29, 27, 0) 360px),
+    var(--bg);
 }
 
 body[data-active-view="onboarding"] .bottom-nav {
@@ -2572,7 +2620,10 @@ h1, h2 {
 }
 
 .theme-options span {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-width: 56px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -2582,6 +2633,39 @@ h1, h2 {
   text-align: center;
   line-height: 1;
   transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.accent-options {
+  flex-wrap: wrap;
+}
+
+.accent-options span {
+  min-width: 78px;
+}
+
+.accent-swatch {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.accent-swatch.forest {
+  background: #3D7B6E;
+}
+
+.accent-swatch.blush {
+  background: #A85F59;
+}
+
+.accent-swatch.apricot {
+  background: #A36A2D;
+}
+
+.accent-swatch.sage {
+  background: #5F7F6B;
 }
 
 .theme-options input:checked + span {

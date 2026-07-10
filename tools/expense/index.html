@@ -8,7 +8,9 @@
     var theme = preference === 'system'
       ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : preference;
+    var accentColor = localStorage.getItem('quick-tools-accent-color') || 'forest';
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-accent-color', accentColor);
   })();
 </script>
 <meta charset="UTF-8">
@@ -24,7 +26,7 @@
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <title>BillNest - 隐私记账本</title>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=170">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=171">
 </head>
 <body>
 
@@ -569,6 +571,30 @@
           </label>
         </div>
       </div>
+      <div class="setting-item theme-setting accent-setting">
+        <div class="setting-info">
+          <span class="setting-title">主题色</span>
+          <span class="setting-desc">选择账本里的主色，用来影响按钮、导航、焦点和图表强调色</span>
+        </div>
+        <div class="theme-options accent-options" role="radiogroup" aria-label="主题色">
+          <label>
+            <input type="radio" name="accent-color" value="forest" onchange="setAccentColorPreference(this.value)">
+            <span><i class="accent-swatch forest" aria-hidden="true"></i>森林绿</span>
+          </label>
+          <label>
+            <input type="radio" name="accent-color" value="blush" onchange="setAccentColorPreference(this.value)">
+            <span><i class="accent-swatch blush" aria-hidden="true"></i>柔粉</span>
+          </label>
+          <label>
+            <input type="radio" name="accent-color" value="apricot" onchange="setAccentColorPreference(this.value)">
+            <span><i class="accent-swatch apricot" aria-hidden="true"></i>暖杏</span>
+          </label>
+          <label>
+            <input type="radio" name="accent-color" value="sage" onchange="setAccentColorPreference(this.value)">
+            <span><i class="accent-swatch sage" aria-hidden="true"></i>鼠尾草</span>
+          </label>
+        </div>
+      </div>
     </div>
     <div class="settings-group">
       <h3>数据安全</h3>
@@ -697,7 +723,7 @@
           <span class="setting-title">Expense Tracker</span>
           <span class="setting-desc">纯前端实现，数据存储在本地 IndexedDB 中</span>
         </div>
-        <span class="setting-version">v1.6.10</span>
+        <span class="setting-version">v1.6.11</span>
       </div>
     </div>
   </section>
@@ -851,20 +877,20 @@
     </button>
   </nav>
 
-<script src="/tools/expense/js/tag-management-utils.js?v=170"></script>
-<script src="/tools/expense/js/db-backup-utils.js?v=170"></script>
-<script src="/tools/expense/js/db.js?v=170"></script>
-<script src="/tools/expense/js/backup-utils.js?v=170"></script>
-<script src="/tools/expense/js/backup-crypto.js?v=170"></script>
-<script src="/tools/expense/js/backup-file-handle-db.js?v=170"></script>
-<script src="/tools/expense/js/backup-service.js?v=170"></script>
-<script src="/tools/expense/js/backup-ui.js?v=170"></script>
-<script src="/tools/expense/js/chart.js?v=170"></script>
-<script src="/tools/expense/js/import-export.js?v=170"></script>
-<script src="/tools/expense/js/guide.js?v=170"></script>
-<script src="/tools/expense/js/expense-list-utils.js?v=170"></script>
-<script src="/tools/expense/js/onboarding.js?v=170"></script>
-<script src="/tools/expense/js/app.js?v=170"></script>
+<script src="/tools/expense/js/tag-management-utils.js?v=171"></script>
+<script src="/tools/expense/js/db-backup-utils.js?v=171"></script>
+<script src="/tools/expense/js/db.js?v=171"></script>
+<script src="/tools/expense/js/backup-utils.js?v=171"></script>
+<script src="/tools/expense/js/backup-crypto.js?v=171"></script>
+<script src="/tools/expense/js/backup-file-handle-db.js?v=171"></script>
+<script src="/tools/expense/js/backup-service.js?v=171"></script>
+<script src="/tools/expense/js/backup-ui.js?v=171"></script>
+<script src="/tools/expense/js/chart.js?v=171"></script>
+<script src="/tools/expense/js/import-export.js?v=171"></script>
+<script src="/tools/expense/js/guide.js?v=171"></script>
+<script src="/tools/expense/js/expense-list-utils.js?v=171"></script>
+<script src="/tools/expense/js/onboarding.js?v=171"></script>
+<script src="/tools/expense/js/app.js?v=171"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
@@ -897,9 +923,20 @@ if ('serviceWorker' in navigator) {
 <script>
 // Theme Management (inline for instant theme sync)
 const themeMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const accentThemeColors = {
+  forest: '#3D7B6E',
+  blush: '#A85F59',
+  apricot: '#A36A2D',
+  sage: '#5F7F6B'
+};
 
 function getThemePreference() {
   return localStorage.getItem('quick-tools-theme') || 'light';
+}
+
+function getAccentColorPreference() {
+  const preference = localStorage.getItem('quick-tools-accent-color') || 'forest';
+  return accentThemeColors[preference] ? preference : 'forest';
 }
 
 function resolveTheme(preference) {
@@ -918,8 +955,20 @@ function applyThemePreference(preference) {
   }
 }
 
+function applyAccentColorPreference(preference) {
+  const accent = accentThemeColors[preference] ? preference : 'forest';
+  document.documentElement.setAttribute('data-accent-color', accent);
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute('content', accentThemeColors[accent]);
+  updateAccentColorControls(accent);
+  if (typeof refreshChartTheme === 'function') {
+    setTimeout(refreshChartTheme, 50);
+  }
+}
+
 function initTheme() {
   applyThemePreference(getThemePreference());
+  applyAccentColorPreference(getAccentColorPreference());
 }
 
 function setThemePreference(preference) {
@@ -927,8 +976,20 @@ function setThemePreference(preference) {
   applyThemePreference(preference);
 }
 
+function setAccentColorPreference(preference) {
+  const accent = accentThemeColors[preference] ? preference : 'forest';
+  localStorage.setItem('quick-tools-accent-color', accent);
+  applyAccentColorPreference(accent);
+}
+
 function updateThemeControls(preference) {
   document.querySelectorAll('input[name="theme-preference"]').forEach(function(input) {
+    input.checked = input.value === preference;
+  });
+}
+
+function updateAccentColorControls(preference) {
+  document.querySelectorAll('input[name="accent-color"]').forEach(function(input) {
     input.checked = input.value === preference;
   });
 }

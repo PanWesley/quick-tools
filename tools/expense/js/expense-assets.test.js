@@ -91,11 +91,11 @@ assert.ok(
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.10';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.11';/
 );
 assert.match(
   html,
-  /\/tools\/expense\/css\/style\.css\?v=170/,
+  /\/tools\/expense\/css\/style\.css\?v=171/,
   'main expense stylesheet must use the current asset version'
 );
 assert.match(
@@ -151,6 +151,35 @@ assert.match(
   html,
   /data-template-label="咖啡 18"/,
   'add view should expose warm default quick templates for first-time users'
+);
+assert.match(
+  html,
+  /<span class="setting-title">主题色<\/span>/,
+  'appearance settings should expose an accent color setting'
+);
+['forest', 'blush', 'apricot', 'sage'].forEach((accent) => {
+  assert.match(
+    html,
+    new RegExp(`name="accent-color" value="${accent}"`),
+    `accent color setting should include ${accent} preset`
+  );
+});
+assert.match(
+  html,
+  /function applyAccentColorPreference\(preference\)/,
+  'accent color preference should be applied before normal app startup'
+);
+assert.match(
+  stylesheet,
+  /\.accent-swatch/,
+  'accent color setting should render visible swatches'
+);
+const darkBodyBackgroundRule = stylesheet.match(/\[data-theme="dark"\]\s+body\s*\{([\s\S]*?)\n\}/);
+assert.ok(darkBodyBackgroundRule, 'dark theme should define its own body background');
+assert.doesNotMatch(
+  darkBodyBackgroundRule[1],
+  /255,\s*247,\s*242|248,\s*246,\s*242/,
+  'dark theme body background must not reuse the light warm gradient'
 );
 assert.match(html, /id="backup-restore-modal"/);
 assert.match(html, /id="backup-encrypted-modal"/);
