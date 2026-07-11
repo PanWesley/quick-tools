@@ -1,9 +1,11 @@
 import {
   allowedOrigin,
+  classifyPushStatus,
   createDeviceCredentials,
   hashDeviceToken,
   json,
   parseBearer,
+  retryAt,
   validateReminder,
   validateSubscription
 } from './core.mjs';
@@ -12,6 +14,9 @@ const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RECONCILE_REMINDERS = 500;
 const RECONCILE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const TEST_PUSH_INTERVAL_MS = 60 * 1000;
+const STALE_REMINDER_MS = 15 * 60 * 1000;
+const DELIVERY_LEASE_MS = 5 * 60 * 1000;
+const DELIVERY_BATCH_LIMIT = 100;
 
 function isObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -282,8 +287,70 @@ export function createNotificationApp({ repository, sendPush, now = () => new Da
     return json({ accepted: true }, 202, origin, env);
   }
 
-  async function runScheduled() {
-    return { processed: 0 };
+  async function topicFor(id) {
+    if (/^[A-Za-z0-9_-]{1,32}$/.test(id)) return id;
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id)));
+    let binary = '';
+    for (const byte of digest) binary += String.fromCharCode(byte);
+    return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '').slice(0, 32);
+  }
+
+  async function runScheduled(env) {
+    const at = now();
+    if (!(at instanceof Date) || Number.isNaN(at.getTime())) throw new TypeError('Server time is invalid.');
+    const atIso = at.toISOString();
+    const staleCutoff = new Date(at.getTime() - STALE_REMINDER_MS).toISOString();
+    const leaseUntil = new Date(at.getTime() + DELIVERY_LEASE_MS).toISOString();
+    await repository.releaseExpiredLeases(atIso);
+    const expired = await repository.expireStale(staleCutoff, atIso);
+    const reminders = await repository.claimDue(atIso, leaseUntil, DELIVERY_BATCH_LIMIT);
+    let sent = 0;
+    let retried = 0;
+    let failed = 0;
+
+    for (const reminder of reminders) {
+      let status = 503;
+      let errorCode = 'push_transport_error';
+      try {
+        const result = await sendPush({
+          subscription: reminder.subscription,
+          encryptedPayload: reminder.encryptedPayload,
+          topic: await topicFor(reminder.id),
+          env
+        });
+        status = responseStatus(result);
+        errorCode = Number.isInteger(status) ? `push_${status}` : 'push_invalid_response';
+      } catch {
+        status = 503;
+      }
+
+      const outcome = classifyPushStatus(status);
+      if (outcome === 'sent') {
+        if (await repository.markSent(reminder.id, reminder.leaseUntil, atIso)) sent += 1;
+        continue;
+      }
+      if (outcome === 'invalid_subscription') {
+        await repository.invalidateSubscription(reminder.deviceId, atIso);
+        if (await repository.markFailed(reminder.id, reminder.leaseUntil, 'subscription_invalid', atIso)) failed += 1;
+        continue;
+      }
+      if (outcome === 'retry') {
+        const nextAttempt = retryAt(reminder.attemptCount, at);
+        if (nextAttempt && await repository.markRetry(
+          reminder.id,
+          reminder.leaseUntil,
+          nextAttempt.toISOString(),
+          errorCode,
+          atIso
+        )) {
+          retried += 1;
+          continue;
+        }
+      }
+      if (await repository.markFailed(reminder.id, reminder.leaseUntil, errorCode, atIso)) failed += 1;
+    }
+
+    return { processed: reminders.length, sent, retried, failed, expired };
   }
 
   return { fetch, runScheduled };

@@ -177,4 +177,24 @@ test('stale workers cannot complete reminders after a new lease owns them', asyn
     db.database.prepare('SELECT id, status FROM reminders ORDER BY id').all().map((row) => ({ ...row })),
     [{ id: 'failed', status: 'failed' }, { id: 'retry', status: 'retry' }, { id: 'sent', status: 'sent' }]
   );
+
+  const retryRow = db.database.prepare(
+    "SELECT notify_at, lease_until FROM reminders WHERE id = 'retry'"
+  ).get();
+  assert.equal(retryRow.notify_at, DUE);
+  assert.equal(retryRow.lease_until, '2026-07-11T10:05:00.000Z');
+  assert.equal((await repository.claimDue(
+    '2026-07-11T10:04:59.000Z', '2026-07-11T10:06:00.000Z', 1
+  )).length, 0);
+  assert.equal((await repository.claimDue(
+    '2026-07-11T10:05:00.000Z', '2026-07-11T10:06:00.000Z', 1
+  )).length, 1);
+});
+
+test('claimDue never returns cancelled reminders', async () => {
+  const { repository } = await createFixture();
+  await subscribe(repository);
+  await repository.upsertReminder('device-1', 'cancelled', reminder(1), AT);
+  await repository.cancelReminder('device-1', 'cancelled', 2, AT);
+  assert.deepEqual(await repository.claimDue(AT, '2026-07-11T10:05:00.000Z', 100), []);
 });

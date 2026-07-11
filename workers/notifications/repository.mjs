@@ -265,10 +265,11 @@ export function createD1Repository(db) {
         INNER JOIN push_subscriptions s ON s.device_id = r.device_id
         WHERE r.status IN ('pending', 'retry')
           AND r.notify_at <= ?
+          AND (r.status = 'pending' OR r.lease_until IS NULL OR r.lease_until <= ?)
           AND s.invalidated_at IS NULL
         ORDER BY r.notify_at, r.id
         LIMIT ?
-      `).bind(at, limit).all();
+      `).bind(at, at, limit).all();
       const claimed = [];
       for (const candidate of rows(candidates)) {
         const result = await db.prepare(`
@@ -276,7 +277,8 @@ export function createD1Repository(db) {
           SET status = 'processing', attempt_count = attempt_count + 1,
               lease_until = ?, updated_at = ?
           WHERE id = ? AND status IN ('pending', 'retry') AND notify_at <= ?
-        `).bind(leaseUntil, at, candidate.id, at).run();
+            AND (status = 'pending' OR lease_until IS NULL OR lease_until <= ?)
+        `).bind(leaseUntil, at, candidate.id, at, at).run();
         if (changes(result) === 0) continue;
         const row = await db.prepare(`
           SELECT r.*, s.endpoint, s.p256dh, s.auth, s.expires_at
@@ -304,7 +306,7 @@ export function createD1Repository(db) {
     async markRetry(id, leaseUntil, retryAtValue, errorCode, at) {
       const result = await db.prepare(`
         UPDATE reminders
-        SET status = 'retry', notify_at = ?, lease_until = NULL,
+        SET status = 'retry', lease_until = ?,
             last_error_code = ?, updated_at = ?
         WHERE id = ? AND status = 'processing' AND lease_until = ?
       `).bind(retryAtValue, errorCode, at, id, leaseUntil).run();

@@ -385,3 +385,101 @@ test('requests reject oversized bodies and origins outside the allowlist', async
   assert.equal(rejected.headers.has('access-control-allow-origin'), false);
   assert.equal(repository.devices.length, 0);
 });
+
+function scheduledRepository(claimed) {
+  const calls = [];
+  return {
+    calls,
+    async releaseExpiredLeases(at) { calls.push(['releaseExpiredLeases', at]); return 1; },
+    async expireStale(cutoff, at) { calls.push(['expireStale', cutoff, at]); return 2; },
+    async claimDue(at, leaseUntil, limit) {
+      calls.push(['claimDue', at, leaseUntil, limit]);
+      return claimed.map((item) => ({ ...item, leaseUntil }));
+    },
+    async markSent(id, lease, at) { calls.push(['markSent', id, lease, at]); return true; },
+    async markRetry(id, lease, retryAt, code, at) {
+      calls.push(['markRetry', id, lease, retryAt, code, at]); return true;
+    },
+    async markFailed(id, lease, code, at) { calls.push(['markFailed', id, lease, code, at]); return true; },
+    async invalidateSubscription(deviceId, at) { calls.push(['invalidateSubscription', deviceId, at]); return true; }
+  };
+}
+
+function claimedReminder(id, attemptCount = 1) {
+  return {
+    id,
+    deviceId: `device-${id}`,
+    attemptCount,
+    encryptedPayload: { v: 1, iv: `iv-${id}`, ciphertext: `cipher-${id}` },
+    subscription: {
+      endpoint: `https://push.example/${id}`,
+      expirationTime: null,
+      p256dh: 'a'.repeat(87),
+      auth: 'b'.repeat(22)
+    }
+  };
+}
+
+test('scheduled delivery releases leases, expires stale rows, caps claims, and classifies outcomes', async () => {
+  const claimed = [
+    claimedReminder('sent'),
+    claimedReminder('missing'),
+    claimedReminder('gone'),
+    claimedReminder('rate'),
+    claimedReminder('internal'),
+    claimedReminder('server'),
+    claimedReminder('bad'),
+    claimedReminder('exhausted', 4)
+  ];
+  const statuses = {
+    sent: 201, missing: 404, gone: 410, rate: 429,
+    internal: 500, server: 503, bad: 400, exhausted: 503
+  };
+  const repository = scheduledRepository(claimed);
+  const pushes = [];
+  const app = createNotificationApp({
+    repository,
+    sendPush: async (message) => {
+      pushes.push(message);
+      return { status: statuses[message.topic] };
+    },
+    now: () => new Date(NOW),
+    crypto: webcrypto
+  });
+
+  const result = await app.runScheduled({});
+  assert.equal(result.processed, claimed.length);
+  assert.equal(pushes.length, claimed.length);
+  assert.equal(repository.calls[0][0], 'releaseExpiredLeases');
+  assert.deepEqual(repository.calls[1], [
+    'expireStale',
+    new Date(NOW.getTime() - 15 * 60 * 1000).toISOString(),
+    NOW.toISOString()
+  ]);
+  const claimCall = repository.calls.find((call) => call[0] === 'claimDue');
+  assert.equal(claimCall[3], 100);
+  assert.equal(new Date(claimCall[2]).getTime() - NOW.getTime(), 5 * 60 * 1000);
+  assert.ok(repository.calls.some((call) => call[0] === 'markSent' && call[1] === 'sent'));
+  assert.ok(repository.calls.some((call) => call[0] === 'invalidateSubscription' && call[1] === 'device-gone'));
+  assert.ok(repository.calls.some((call) => call[0] === 'invalidateSubscription' && call[1] === 'device-missing'));
+  assert.ok(repository.calls.some((call) => call[0] === 'markFailed' && call[1] === 'gone'));
+  assert.ok(repository.calls.some((call) => call[0] === 'markRetry' && call[1] === 'rate'));
+  assert.ok(repository.calls.some((call) => call[0] === 'markRetry' && call[1] === 'internal'));
+  assert.ok(repository.calls.some((call) => call[0] === 'markRetry' && call[1] === 'server'));
+  assert.ok(repository.calls.some((call) => call[0] === 'markFailed' && call[1] === 'bad'));
+  assert.ok(repository.calls.some((call) => call[0] === 'markFailed' && call[1] === 'exhausted'));
+});
+
+test('scheduled delivery handles transport errors and sends only rows returned by claimDue', async () => {
+  const repository = scheduledRepository([claimedReminder('claimed')]);
+  const app = createNotificationApp({
+    repository,
+    sendPush: async () => { throw new Error('network unavailable'); },
+    now: () => new Date(NOW),
+    crypto: webcrypto
+  });
+  const result = await app.runScheduled({});
+  assert.equal(result.processed, 1);
+  assert.ok(repository.calls.some((call) => call[0] === 'markRetry' && call[1] === 'claimed'));
+  assert.equal(repository.calls.some((call) => call.includes('cancelled')), false);
+});
