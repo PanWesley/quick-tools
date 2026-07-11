@@ -132,6 +132,24 @@ test('reminders reject schedules beyond 30 days and non-integer revisions', () =
   assert.equal(validateReminder({ ...reminder, notifyAt: '2026-07-11T10:30:00.000Z', revision: 3.5 }, now).ok, false);
 });
 
+test('reminders reject non-string notifyAt values without throwing', () => {
+  const now = new Date('2026-07-11T10:00:00.000Z');
+  const reminder = {
+    tool: 'time', sourceIdHash: 'a'.repeat(64), notifyAt: '2026-07-11T10:30:00.000Z',
+    encryptedPayload: { v: 1, iv: 'abc', ciphertext: 'def' }, encryptionVersion: 1, revision: 3
+  };
+
+  for (const notifyAt of [Symbol('notifyAt'), 123]) {
+    assert.doesNotThrow(() => {
+      assert.deepEqual(validateReminder({ ...reminder, notifyAt }, now), {
+        ok: false,
+        code: 'invalid_reminder',
+        message: 'Reminder time must be within the next 30 days.'
+      });
+    });
+  }
+});
+
 test('push status classification separates retryable and permanent failures', () => {
   assert.equal(classifyPushStatus(201), 'sent');
   assert.equal(classifyPushStatus(410), 'invalid_subscription');

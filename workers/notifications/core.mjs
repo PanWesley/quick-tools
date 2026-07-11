@@ -115,9 +115,12 @@ export function validateReminder(value, now) {
     return failure('invalid_reminder', 'Reminder source ID hash is invalid.');
   }
 
+  if (typeof value.notifyAt !== 'string') {
+    return failure('invalid_reminder', 'Reminder time must be within the next 30 days.');
+  }
+
   const notifyAt = new Date(value.notifyAt);
-  if (typeof value.notifyAt !== 'string'
-    || Number.isNaN(notifyAt.getTime())
+  if (Number.isNaN(notifyAt.getTime())
     || notifyAt.toISOString() !== value.notifyAt
     || !(now instanceof Date)
     || Number.isNaN(now.getTime())
