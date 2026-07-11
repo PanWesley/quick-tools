@@ -1,0 +1,190 @@
+const DEVICE_TOKEN_BYTES = 32;
+const MAX_REMINDER_DELAY_MS = 30 * 24 * 60 * 60 * 1000;
+const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000];
+
+function failure(code, message) {
+  return { ok: false, code, message };
+}
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value, keys) {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
+function isBase64url(value, length) {
+  return typeof value === 'string'
+    && value.length === length
+    && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+function base64url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+export function allowedOrigin(request, env) {
+  const origin = request.headers.get('Origin');
+  if (!origin || typeof env?.ALLOWED_ORIGINS !== 'string') return null;
+
+  const origins = env.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
+  return origins.includes(origin) ? origin : null;
+}
+
+export function parseBearer(request) {
+  const authorization = request.headers.get('Authorization');
+  const match = authorization?.match(/^Bearer ([^\s]+)$/);
+  return match?.[1] ?? null;
+}
+
+export function createDeviceCredentials(crypto) {
+  const bytes = new Uint8Array(DEVICE_TOKEN_BYTES);
+  crypto.getRandomValues(bytes);
+  return {
+    deviceId: crypto.randomUUID(),
+    deviceToken: base64url(bytes)
+  };
+}
+
+export async function hashDeviceToken(token, crypto) {
+  const input = new TextEncoder().encode(token);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function validateSubscription(value) {
+  if (!isObject(value) || !hasOnlyKeys(value, ['endpoint', 'expirationTime', 'keys'])) {
+    return failure('invalid_subscription', 'Subscription contains unsupported fields.');
+  }
+
+  if (typeof value.endpoint !== 'string') {
+    return failure('invalid_subscription', 'Subscription endpoint must be a valid HTTPS URL.');
+  }
+
+  let endpoint;
+  try {
+    endpoint = new URL(value.endpoint);
+  } catch {
+    return failure('invalid_subscription', 'Subscription endpoint must be a valid HTTPS URL.');
+  }
+
+  if (endpoint.protocol !== 'https:' || value.endpoint.length > 2048) {
+    return failure('invalid_subscription', 'Subscription endpoint must be a valid HTTPS URL.');
+  }
+
+  if (value.expirationTime !== undefined
+    && value.expirationTime !== null
+    && (!Number.isFinite(value.expirationTime) || value.expirationTime < 0)) {
+    return failure('invalid_subscription', 'Subscription expiration time is invalid.');
+  }
+
+  if (!isObject(value.keys)
+    || !hasOnlyKeys(value.keys, ['p256dh', 'auth'])
+    || !isBase64url(value.keys.p256dh, 87)
+    || !isBase64url(value.keys.auth, 22)) {
+    return failure('invalid_subscription', 'Subscription keys are invalid.');
+  }
+
+  return {
+    ok: true,
+    value: {
+      endpoint: value.endpoint,
+      expirationTime: value.expirationTime ?? null,
+      p256dh: value.keys.p256dh,
+      auth: value.keys.auth
+    }
+  };
+}
+
+export function validateReminder(value, now) {
+  const allowedKeys = ['tool', 'sourceIdHash', 'notifyAt', 'encryptedPayload', 'encryptionVersion', 'revision'];
+  if (!isObject(value) || !hasOnlyKeys(value, allowedKeys)) {
+    return failure('invalid_reminder', 'Reminder contains unsupported fields.');
+  }
+
+  if (typeof value.tool !== 'string' || !/^[a-z][a-z0-9_-]{0,31}$/.test(value.tool)) {
+    return failure('invalid_reminder', 'Reminder tool is invalid.');
+  }
+
+  if (typeof value.sourceIdHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.sourceIdHash)) {
+    return failure('invalid_reminder', 'Reminder source ID hash is invalid.');
+  }
+
+  const notifyAt = new Date(value.notifyAt);
+  if (typeof value.notifyAt !== 'string'
+    || Number.isNaN(notifyAt.getTime())
+    || notifyAt.toISOString() !== value.notifyAt
+    || !(now instanceof Date)
+    || Number.isNaN(now.getTime())
+    || notifyAt.getTime() < now.getTime()
+    || notifyAt.getTime() - now.getTime() > MAX_REMINDER_DELAY_MS) {
+    return failure('invalid_reminder', 'Reminder time must be within the next 30 days.');
+  }
+
+  if (!Number.isSafeInteger(value.encryptionVersion) || value.encryptionVersion !== 1) {
+    return failure('invalid_reminder', 'Reminder encryption version is invalid.');
+  }
+
+  if (!isObject(value.encryptedPayload)
+    || !hasOnlyKeys(value.encryptedPayload, ['v', 'iv', 'ciphertext'])
+    || value.encryptedPayload.v !== value.encryptionVersion
+    || typeof value.encryptedPayload.iv !== 'string'
+    || !/^[A-Za-z0-9_-]{1,256}$/.test(value.encryptedPayload.iv)
+    || typeof value.encryptedPayload.ciphertext !== 'string'
+    || !/^[A-Za-z0-9_-]{1,16384}$/.test(value.encryptedPayload.ciphertext)) {
+    return failure('invalid_reminder', 'Reminder encrypted payload is invalid.');
+  }
+
+  if (!Number.isSafeInteger(value.revision) || value.revision < 0) {
+    return failure('invalid_reminder', 'Reminder revision must be a non-negative integer.');
+  }
+
+  return {
+    ok: true,
+    value: {
+      tool: value.tool,
+      sourceIdHash: value.sourceIdHash,
+      notifyAt: value.notifyAt,
+      encryptedPayload: {
+        v: value.encryptedPayload.v,
+        iv: value.encryptedPayload.iv,
+        ciphertext: value.encryptedPayload.ciphertext
+      },
+      encryptionVersion: value.encryptionVersion,
+      revision: value.revision
+    }
+  };
+}
+
+export function classifyPushStatus(status) {
+  if (status >= 200 && status < 300) return 'sent';
+  if (status === 404 || status === 410) return 'invalid_subscription';
+  if (status === 429 || status >= 500) return 'retry';
+  return 'failed';
+}
+
+export function retryAt(attempt, now) {
+  if (!Number.isSafeInteger(attempt) || attempt < 1 || attempt > RETRY_DELAYS_MS.length
+    || !(now instanceof Date) || Number.isNaN(now.getTime())) {
+    return null;
+  }
+  return new Date(now.getTime() + RETRY_DELAYS_MS[attempt - 1]);
+}
+
+export function json(data, status, origin) {
+  const headers = new Headers({
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Vary': 'Origin',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  if (origin) {
+    headers.set('Access-Control-Allow-Origin', origin);
+    headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  }
+  return new Response(JSON.stringify(data), { status, headers });
+}
