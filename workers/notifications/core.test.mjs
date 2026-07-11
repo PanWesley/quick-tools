@@ -80,6 +80,30 @@ test('subscriptions require HTTPS endpoints and valid push key lengths', () => {
   assert.equal(validateSubscription({ ...subscription, plaintext: 'never accepted' }).ok, false);
 });
 
+test('validators reject exotic keys and prototypes but accept null-prototype objects', () => {
+  const subscription = {
+    endpoint: 'https://push.example/subscription',
+    expirationTime: null,
+    keys: { p256dh: 'a'.repeat(87), auth: 'b'.repeat(22) }
+  };
+
+  const symbolField = { ...subscription };
+  symbolField[Symbol('plaintext')] = 'never accepted';
+  assert.equal(validateSubscription(symbolField).ok, false);
+
+  const hiddenField = { ...subscription };
+  Object.defineProperty(hiddenField, 'plaintext', { value: 'never accepted' });
+  assert.equal(validateSubscription(hiddenField).ok, false);
+
+  const customPrototype = Object.assign(Object.create({ inherited: true }), subscription);
+  assert.equal(validateSubscription(customPrototype).ok, false);
+
+  const nullPrototype = Object.assign(Object.create(null), subscription, {
+    keys: Object.assign(Object.create(null), subscription.keys)
+  });
+  assert.equal(validateSubscription(nullPrototype).ok, true);
+});
+
 test('reminders accept ciphertext but reject plaintext fields', () => {
   const now = new Date('2026-07-11T10:00:00.000Z');
   const valid = validateReminder({
@@ -92,6 +116,10 @@ test('reminders accept ciphertext but reject plaintext fields', () => {
     ...valid.value.encryptedPayload,
     body: 'plaintext'
   } }, now).ok, false);
+
+  const hiddenPayload = { ...valid.value.encryptedPayload };
+  Object.defineProperty(hiddenPayload, 'body', { value: 'plaintext' });
+  assert.equal(validateReminder({ ...valid.value, encryptedPayload: hiddenPayload }, now).ok, false);
 });
 
 test('reminders reject schedules beyond 30 days and non-integer revisions', () => {
@@ -121,7 +149,8 @@ test('retry delays are capped at one, five, and fifteen minutes', () => {
 });
 
 test('JSON responses include security and CORS headers without reflecting untrusted origins', async () => {
-  const response = json({ ok: true }, 201, 'https://billnest.top');
+  const env = { ALLOWED_ORIGINS: 'https://billnest.top,https://www.billnest.top' };
+  const response = json({ ok: true }, 201, 'https://billnest.top', env);
   assert.equal(response.status, 201);
   assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -130,5 +159,8 @@ test('JSON responses include security and CORS headers without reflecting untrus
   assert.equal(response.headers.get('access-control-allow-headers'), 'Authorization, Content-Type');
   assert.equal(response.headers.get('vary'), 'Origin');
   assert.deepEqual(await response.json(), { ok: true });
-  assert.equal(json({ ok: true }, 200, null).headers.has('access-control-allow-origin'), false);
+  assert.equal(json({ ok: true }, 200, 'https://evil.example', env)
+    .headers.has('access-control-allow-origin'), false);
+  assert.equal(json({ ok: true }, 200, 'https://billnest.top')
+    .headers.has('access-control-allow-origin'), false);
 });

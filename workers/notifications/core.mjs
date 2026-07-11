@@ -7,11 +7,13 @@ function failure(code, message) {
 }
 
 function isObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function hasOnlyKeys(value, keys) {
-  return Object.keys(value).every((key) => keys.includes(key));
+  return Reflect.ownKeys(value).every((key) => typeof key === 'string' && keys.includes(key));
 }
 
 function isBase64url(value, length) {
@@ -174,15 +176,19 @@ export function retryAt(attempt, now) {
   return new Date(now.getTime() + RETRY_DELAYS_MS[attempt - 1]);
 }
 
-export function json(data, status, origin) {
+export function json(data, status, origin, env) {
   const headers = new Headers({
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json; charset=utf-8',
     'Vary': 'Origin',
     'X-Content-Type-Options': 'nosniff'
   });
-  if (origin) {
-    headers.set('Access-Control-Allow-Origin', origin);
+  const request = {
+    headers: { get: (name) => name.toLowerCase() === 'origin' ? origin : null }
+  };
+  const responseOrigin = allowedOrigin(request, env);
+  if (responseOrigin === origin && responseOrigin !== null) {
+    headers.set('Access-Control-Allow-Origin', responseOrigin);
     headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   }
