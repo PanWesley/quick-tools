@@ -163,6 +163,10 @@ Service Worker 解密失败时显示通用兜底通知“你有一项提醒”�
 
 ## API
 
+### `GET /api/notifications/config`
+
+返回客户端创建 PushSubscription 所需的 VAPID 公钥和通知协议版本。该接口不返回私钥、设备信息或任何提醒数据。
+
 ### `POST /api/notifications/devices`
 
 注册匿名安装实例，返回 `device_id` 和只显示一次的 `device_token`。请求可以包含平台类别、时区和客户端版本，不接受硬件标识。
@@ -170,6 +174,10 @@ Service Worker 解密失败时显示通用兜底通知“你有一项提醒”�
 ### `PUT /api/notifications/devices/:id/subscription`
 
 创建或替换当前 PushSubscription。需要设备凭证。重复提交相同订阅应幂等成功。
+
+### `DELETE /api/notifications/devices/:id/subscription`
+
+关闭当前设备的后台通知，取消未来提醒并使当前 PushSubscription 失效。需要设备凭证，重复调用应幂等成功。
 
 ### `PUT /api/notifications/reminders/:id`
 
