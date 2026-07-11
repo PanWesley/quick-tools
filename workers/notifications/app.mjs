@@ -33,6 +33,15 @@ function emptyResponse(status, origin, env) {
 }
 
 async function readJson(request) {
+  const mediaType = request.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    return {
+      ok: false,
+      status: 415,
+      code: 'unsupported_media_type',
+      message: 'Content-Type must be application/json.'
+    };
+  }
   const contentLength = Number(request.headers.get('Content-Length'));
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
     return { ok: false, status: 413, code: 'payload_too_large', message: 'Request body is too large.' };
@@ -119,6 +128,23 @@ function routeFor(pathname) {
   return null;
 }
 
+function validatePreflight(request, route) {
+  const requestedMethod = request.headers.get('Access-Control-Request-Method');
+  if (!requestedMethod) return { status: 400, message: 'Preflight method is required.' };
+  if (!route.methods.includes(requestedMethod.toUpperCase())) {
+    return { status: 405, message: 'Preflight method is not allowed.' };
+  }
+  const requestedHeaders = request.headers.get('Access-Control-Request-Headers');
+  if (requestedHeaders) {
+    const allowed = new Set(['authorization', 'content-type']);
+    const headers = requestedHeaders.split(',').map((header) => header.trim().toLowerCase());
+    if (headers.some((header) => !header || !allowed.has(header))) {
+      return { status: 400, message: 'Preflight headers are not allowed.' };
+    }
+  }
+  return null;
+}
+
 function responseStatus(result) {
   if (typeof result === 'number') return result;
   return result?.status;
@@ -140,13 +166,17 @@ export function createNotificationApp({ repository, sendPush, now = () => new Da
     if (!origin) return errorResponse('origin_forbidden', 'Request origin is not allowed.', 403, request.headers.get('Origin'), env);
 
     const route = routeFor(new URL(request.url).pathname);
-    if (request.method === 'OPTIONS') return emptyResponse(204, origin, env);
     if (!route) return errorResponse('not_found', 'Route not found.', 404, origin, env);
-    if (!route.methods.includes(request.method)) {
-      return errorResponse('method_not_allowed', 'Method not allowed.', 405, origin, env);
-    }
     if ('id' in route && route.id === null) {
       return errorResponse('invalid_path', 'Route path is invalid.', 400, origin, env);
+    }
+    if (request.method === 'OPTIONS') {
+      const invalid = validatePreflight(request, route);
+      if (invalid) return errorResponse('invalid_preflight', invalid.message, invalid.status, origin, env);
+      return emptyResponse(204, origin, env);
+    }
+    if (!route.methods.includes(request.method)) {
+      return errorResponse('method_not_allowed', 'Method not allowed.', 405, origin, env);
     }
 
     if (route.name === 'config') {
@@ -189,8 +219,7 @@ export function createNotificationApp({ repository, sendPush, now = () => new Da
     }
 
     if (route.name === 'subscription') {
-      await repository.removeSubscription(device.id, at.toISOString());
-      await repository.cancelDeviceReminders(device.id, at.toISOString());
+      await repository.removeSubscriptionAndCancelReminders(device.id, at.toISOString());
       return emptyResponse(204, origin, env);
     }
 
@@ -239,7 +268,12 @@ export function createNotificationApp({ repository, sendPush, now = () => new Da
     const subscription = await repository.claimTestPush(device.id, at.toISOString(), TEST_PUSH_INTERVAL_MS);
     if (subscription === null) return errorResponse('rate_limited', 'Test notification rate limit exceeded.', 429, origin, env, true);
     if (subscription === false) return errorResponse('subscription_missing', 'No active push subscription exists.', 409, origin, env);
-    const result = await sendPush({ subscription, ...payload, env });
+    let result;
+    try {
+      result = await sendPush({ subscription, ...payload, env });
+    } catch {
+      return errorResponse('push_failed', 'Test notification could not be sent.', 502, origin, env, true);
+    }
     const status = responseStatus(result);
     if (!Number.isInteger(status) || status < 200 || status >= 300) {
       if (status === 404 || status === 410) await repository.invalidateSubscription(device.id, at.toISOString());

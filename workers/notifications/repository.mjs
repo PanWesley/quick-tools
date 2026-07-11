@@ -116,6 +116,25 @@ export function createD1Repository(db) {
       return changes(result) > 0;
     },
 
+    async removeSubscriptionAndCancelReminders(deviceId, at) {
+      const results = await db.batch([
+        db.prepare(`
+          UPDATE push_subscriptions
+          SET invalidated_at = ?, updated_at = ?
+          WHERE device_id = ? AND invalidated_at IS NULL
+        `).bind(at, at, deviceId),
+        db.prepare(`
+          UPDATE reminders
+          SET status = 'cancelled', lease_until = NULL, updated_at = ?
+          WHERE device_id = ? AND status IN ('pending', 'processing', 'retry')
+        `).bind(at, deviceId)
+      ]);
+      return {
+        subscriptionRemoved: changes(results[0]) > 0,
+        remindersCancelled: changes(results[1])
+      };
+    },
+
     async upsertReminder(deviceId, id, reminder, at) {
       const before = await db.prepare(`
         SELECT device_id, revision, status
@@ -272,32 +291,32 @@ export function createD1Repository(db) {
       return claimed;
     },
 
-    async markSent(id, at) {
+    async markSent(id, leaseUntil, at) {
       const result = await db.prepare(`
         UPDATE reminders
         SET status = 'sent', sent_at = ?, lease_until = NULL,
             last_error_code = NULL, updated_at = ?
-        WHERE id = ? AND status = 'processing'
-      `).bind(at, at, id).run();
+        WHERE id = ? AND status = 'processing' AND lease_until = ?
+      `).bind(at, at, id, leaseUntil).run();
       return changes(result) > 0;
     },
 
-    async markRetry(id, retryAtValue, errorCode, at) {
+    async markRetry(id, leaseUntil, retryAtValue, errorCode, at) {
       const result = await db.prepare(`
         UPDATE reminders
         SET status = 'retry', notify_at = ?, lease_until = NULL,
             last_error_code = ?, updated_at = ?
-        WHERE id = ? AND status = 'processing'
-      `).bind(retryAtValue, errorCode, at, id).run();
+        WHERE id = ? AND status = 'processing' AND lease_until = ?
+      `).bind(retryAtValue, errorCode, at, id, leaseUntil).run();
       return changes(result) > 0;
     },
 
-    async markFailed(id, errorCode, at) {
+    async markFailed(id, leaseUntil, errorCode, at) {
       const result = await db.prepare(`
         UPDATE reminders
         SET status = 'failed', lease_until = NULL, last_error_code = ?, updated_at = ?
-        WHERE id = ? AND status = 'processing'
-      `).bind(errorCode, at, id).run();
+        WHERE id = ? AND status = 'processing' AND lease_until = ?
+      `).bind(errorCode, at, id, leaseUntil).run();
       return changes(result) > 0;
     },
 

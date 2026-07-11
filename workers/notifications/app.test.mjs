@@ -13,6 +13,7 @@ function createMemoryRepository() {
     subscriptions: [],
     reminders: [],
     testPushes: new Map(),
+    subscriptionDeletionCalls: 0,
 
     async createDevice(device) {
       this.devices.push({ ...device });
@@ -31,10 +32,27 @@ function createMemoryRepository() {
       return next;
     },
 
-    async removeSubscription(deviceId, at) {
-      const subscription = this.subscriptions.find((item) => item.deviceId === deviceId);
-      if (subscription) subscription.invalidatedAt = at;
-      return Boolean(subscription);
+    async removeSubscriptionAndCancelReminders(deviceId, at) {
+      this.subscriptionDeletionCalls += 1;
+      const subscriptions = structuredClone(this.subscriptions);
+      const reminders = structuredClone(this.reminders);
+      try {
+        const subscription = this.subscriptions.find((item) => item.deviceId === deviceId);
+        if (subscription) subscription.invalidatedAt = at;
+        if (this.failSubscriptionDeletion) throw new Error('injected deletion failure');
+        let remindersCancelled = 0;
+        for (const reminder of this.reminders) {
+          if (reminder.deviceId === deviceId && ['pending', 'processing', 'retry'].includes(reminder.status)) {
+            Object.assign(reminder, { status: 'cancelled', updatedAt: at, leaseUntil: null });
+            remindersCancelled += 1;
+          }
+        }
+        return { subscriptionRemoved: Boolean(subscription), remindersCancelled };
+      } catch (error) {
+        this.subscriptions = subscriptions;
+        this.reminders = reminders;
+        throw error;
+      }
     },
 
     async upsertReminder(deviceId, id, reminder, at) {
@@ -55,17 +73,6 @@ function createMemoryRepository() {
       if (revision === reminder.revision && reminder.status !== 'cancelled') return { outcome: 'conflict', reminder };
       Object.assign(reminder, { revision, status: 'cancelled', updatedAt: at });
       return { outcome: 'cancelled', reminder };
-    },
-
-    async cancelDeviceReminders(deviceId, at) {
-      let count = 0;
-      for (const reminder of this.reminders) {
-        if (reminder.deviceId === deviceId && ['pending', 'processing', 'retry'].includes(reminder.status)) {
-          Object.assign(reminder, { status: 'cancelled', updatedAt: at, leaseUntil: null });
-          count += 1;
-        }
-      }
-      return count;
     },
 
     async reconcile(deviceId, summaries, from, through) {
@@ -106,15 +113,15 @@ function jsonRequest(path, method, body, token, headers = {}) {
   });
 }
 
-function fixture() {
+function fixture({ sendPush } = {}) {
   const repository = createMemoryRepository();
   const pushes = [];
   const app = createNotificationApp({
     repository,
-    sendPush: async (message) => {
+    sendPush: sendPush ?? (async (message) => {
       pushes.push(message);
       return { status: 201 };
-    },
+    }),
     now: () => new Date(NOW),
     crypto: webcrypto
   });
@@ -192,6 +199,23 @@ test('subscription replacement is idempotent and deletion cancels future reminde
   assert.ok(context.repository.subscriptions[0].invalidatedAt);
   assert.equal(context.repository.reminders[0].status, 'cancelled');
   assert.equal((await context.app.fetch(jsonRequest(path, 'DELETE', undefined, credentials.deviceToken), context.env)).status, 204);
+  assert.equal(context.repository.subscriptionDeletionCalls, 2);
+});
+
+test('composed in-memory subscription deletion rolls back both state changes on failure', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const path = `/api/notifications/devices/${credentials.deviceId}/subscription`;
+  await context.app.fetch(jsonRequest(path, 'PUT', subscription(), credentials.deviceToken), context.env);
+  await context.app.fetch(jsonRequest('/api/notifications/reminders/future', 'PUT', reminder(), credentials.deviceToken), context.env);
+  context.repository.failSubscriptionDeletion = true;
+
+  await assert.rejects(
+    context.repository.removeSubscriptionAndCancelReminders(credentials.deviceId, NOW.toISOString()),
+    /injected deletion failure/
+  );
+  assert.equal(context.repository.subscriptions[0].invalidatedAt, undefined);
+  assert.equal(context.repository.reminders[0].status, 'pending');
 });
 
 test('older reminder revisions cannot overwrite a newer reminder and equal revisions are idempotent', async () => {
@@ -254,16 +278,89 @@ test('test endpoint accepts encrypted payload only and rate limits through repos
   }, credentials.deviceToken), context.env)).status, 400);
 });
 
+test('test endpoint converts rejected push sends into a unified 502 response', async () => {
+  const context = fixture({ sendPush: async () => { throw new Error('network unavailable'); } });
+  const credentials = await register(context);
+  const subscriptionPath = `/api/notifications/devices/${credentials.deviceId}/subscription`;
+  await context.app.fetch(jsonRequest(subscriptionPath, 'PUT', subscription(), credentials.deviceToken), context.env);
+  const response = await context.app.fetch(jsonRequest('/api/notifications/test', 'POST', {
+    encryptedPayload: { v: 1, iv: 'abc', ciphertext: 'def' }, encryptionVersion: 1
+  }, credentials.deviceToken), context.env);
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: { code: 'push_failed', message: 'Test notification could not be sent.', retryable: true }
+  });
+});
+
 test('routing distinguishes 404s and 405s and handles preflight', async () => {
   const { app, env } = fixture();
   assert.equal((await app.fetch(jsonRequest('/api/notifications/unknown', 'POST', {}), env)).status, 404);
   assert.equal((await app.fetch(jsonRequest('/api/notifications/config', 'POST', {}), env)).status, 405);
   assert.equal((await app.fetch(jsonRequest('/api/notifications/reminders/%E0%A4%A', 'PUT', {}), env)).status, 400);
   const preflight = await app.fetch(new Request('https://billnest.top/api/notifications/config', {
-    method: 'OPTIONS', headers: { Origin: 'https://billnest.top' }
+    method: 'OPTIONS', headers: {
+      Origin: 'https://billnest.top',
+      'Access-Control-Request-Method': 'GET',
+      'Access-Control-Request-Headers': 'Content-Type'
+    }
   }), env);
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://billnest.top');
+});
+
+test('preflight rejects unknown, malformed, unsupported, and incomplete requests', async () => {
+  const { app, env } = fixture();
+  const preflight = (path, method, headers = {}) => app.fetch(new Request(`https://billnest.top${path}`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'https://billnest.top',
+      ...(method ? { 'Access-Control-Request-Method': method } : {}),
+      ...headers
+    }
+  }), env);
+  assert.equal((await preflight('/api/notifications/unknown', 'POST')).status, 404);
+  assert.equal((await preflight('/api/notifications/reminders/%E0%A4%A', 'PUT')).status, 400);
+  assert.equal((await preflight('/api/notifications/config', 'POST')).status, 405);
+  assert.equal((await preflight('/api/notifications/config', 'GET', {
+    'Access-Control-Request-Headers': 'Content-Type, X-Device-Secret'
+  })).status, 400);
+  assert.equal((await preflight('/api/notifications/config')).status, 400);
+});
+
+test('every JSON-consuming endpoint requires an application/json media type', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const requests = [
+    new Request('https://billnest.top/api/notifications/devices', {
+      method: 'POST', headers: { Origin: 'https://billnest.top' }, body: '{}'
+    }),
+    new Request(`https://billnest.top/api/notifications/devices/${credentials.deviceId}/subscription`, {
+      method: 'PUT', headers: {
+        Origin: 'https://billnest.top', Authorization: `Bearer ${credentials.deviceToken}`, 'Content-Type': 'text/plain'
+      }, body: '{}'
+    }),
+    new Request('https://billnest.top/api/notifications/reminders/reminder-1', {
+      method: 'PUT', headers: { Origin: 'https://billnest.top', Authorization: `Bearer ${credentials.deviceToken}` }, body: '{}'
+    }),
+    new Request('https://billnest.top/api/notifications/reminders/reminder-1', {
+      method: 'DELETE', headers: {
+        Origin: 'https://billnest.top', Authorization: `Bearer ${credentials.deviceToken}`, 'Content-Type': 'text/plain'
+      }, body: '{}'
+    }),
+    new Request('https://billnest.top/api/notifications/reconcile', {
+      method: 'POST', headers: { Origin: 'https://billnest.top', Authorization: `Bearer ${credentials.deviceToken}` }, body: '{}'
+    }),
+    new Request('https://billnest.top/api/notifications/test', {
+      method: 'POST', headers: {
+        Origin: 'https://billnest.top', Authorization: `Bearer ${credentials.deviceToken}`, 'Content-Type': 'text/plain'
+      }, body: '{}'
+    })
+  ];
+  for (const request of requests) {
+    const response = await context.app.fetch(request, context.env);
+    assert.equal(response.status, 415);
+    assert.equal((await response.json()).error.code, 'unsupported_media_type');
+  }
 });
 
 test('requests reject oversized bodies and origins outside the allowlist', async () => {
