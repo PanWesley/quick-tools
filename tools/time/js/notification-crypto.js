@@ -105,19 +105,29 @@
     });
   }
 
-  function writeRecord(database, storeName, key, value) {
+  function addRecord(database, storeName, key, value) {
     return new Promise(function(resolve, reject) {
       var transaction;
+      var request;
+      var constraintError = false;
       try {
         transaction = database.transaction(storeName, 'readwrite');
-        transaction.objectStore(storeName).put(value, key);
+        request = transaction.objectStore(storeName).add(value, key);
       } catch (error) {
         reject(error);
         return;
       }
-      transaction.oncomplete = function() { resolve(); };
+      request.onerror = function(event) {
+        if (request.error && request.error.name === 'ConstraintError') {
+          constraintError = true;
+          if (event && typeof event.preventDefault === 'function') event.preventDefault();
+          if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+        }
+      };
+      transaction.oncomplete = function() { resolve(!constraintError); };
       transaction.onerror = transaction.onabort = function() {
-        reject(transaction.error || new Error('IndexedDB write failed'));
+        if (constraintError) resolve(false);
+        else reject(transaction.error || request.error || new Error('IndexedDB write failed'));
       };
     });
   }
@@ -145,8 +155,10 @@
         false,
         ['encrypt', 'decrypt']
       );
-      await writeRecord(database, KEY_STORE, KEY_ID, key);
-      return key;
+      if (await addRecord(database, KEY_STORE, KEY_ID, key)) return key;
+      var winner = await readRecord(database, KEY_STORE, KEY_ID);
+      if (!winner) throw new Error('IndexedDB key winner is unavailable');
+      return winner;
     }
 
     return { getOrCreateKey: getOrCreateKey };

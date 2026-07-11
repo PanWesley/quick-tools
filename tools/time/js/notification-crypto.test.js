@@ -52,6 +52,22 @@ function createFakeIndexedDB() {
                   get(key) {
                     return request(() => records.get(key));
                   },
+                  add(value, key) {
+                    const addRequest = request(() => {
+                      if (records.has(key)) {
+                        const error = new Error('Key already exists');
+                        error.name = 'ConstraintError';
+                        throw error;
+                      }
+                      records.set(key, value);
+                      return key;
+                    });
+                    addRequest.transaction = transaction;
+                    queueMicrotask(() => {
+                      if (transaction.oncomplete) transaction.oncomplete();
+                    });
+                    return addRequest;
+                  },
                   put(value, key) {
                     const putRequest = request(() => records.set(key, value));
                     putRequest.transaction = transaction;
@@ -126,5 +142,20 @@ test('getOrCreateKey stores one non-extractable AES-GCM 256-bit key in IndexedDB
   }]);
   assert.equal(indexedDB.opens[0].name, 'todayYouxuNotificationDB');
   assert.equal(indexedDB.opens[0].version, 1);
+  assert.strictEqual(indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v1'), first);
+});
+
+test('concurrent independent key stores return the same persisted winner', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const cryptoApi = require('./notification-crypto.js');
+  const firstStore = cryptoApi.create({ indexedDB, crypto: webcrypto });
+  const secondStore = cryptoApi.create({ indexedDB, crypto: webcrypto });
+
+  const [first, second] = await Promise.all([
+    firstStore.getOrCreateKey(),
+    secondStore.getOrCreateKey()
+  ]);
+
+  assert.strictEqual(first, second);
   assert.strictEqual(indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v1'), first);
 });
