@@ -163,6 +163,16 @@ test('config reads the public key from runtime env', async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { protocolVersion: 1, vapidPublicKey: 'runtime-public-key' });
   assert.equal(response.headers.get('access-control-allow-origin'), 'https://billnest.top');
+
+  const sameOriginResponse = await app.fetch(
+    new Request('https://billnest.top/api/notifications/config'),
+    env
+  );
+  assert.equal(sameOriginResponse.status, 200);
+  assert.deepEqual(await sameOriginResponse.json(), {
+    protocolVersion: 1,
+    vapidPublicKey: 'runtime-public-key'
+  });
 });
 
 test('anonymous registration returns one device token and stores only its hash', async () => {

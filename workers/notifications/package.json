@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test *.test.mjs",
+    "test": "node --disable-warning=ExperimentalWarning --test *.test.mjs",
     "dev": "wrangler dev --test-scheduled",
     "check": "wrangler deploy --dry-run"
   },

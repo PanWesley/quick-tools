@@ -22,6 +22,7 @@ test('allowlists explicitly configured origins only', () => {
   assert.equal(allowedOrigin(new Request('https://worker.test', {
     headers: { Origin: 'https://evil.example' }
   }), env), null);
+  assert.equal(allowedOrigin(new Request('https://billnest.top/api/notifications/config'), env), 'https://billnest.top');
   assert.equal(allowedOrigin(new Request('https://worker.test'), env), null);
 });
 

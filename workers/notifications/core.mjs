@@ -29,8 +29,16 @@ function base64url(bytes) {
 }
 
 export function allowedOrigin(request, env) {
-  const origin = request.headers.get('Origin');
-  if (!origin || typeof env?.ALLOWED_ORIGINS !== 'string') return null;
+  if (typeof env?.ALLOWED_ORIGINS !== 'string') return null;
+  const headerOrigin = request.headers.get('Origin');
+  let origin = headerOrigin;
+  if (!origin) {
+    try {
+      origin = new URL(request.url).origin;
+    } catch {
+      return null;
+    }
+  }
 
   const origins = env.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
   return origins.includes(origin) ? origin : null;
