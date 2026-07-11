@@ -1,0 +1,11 @@
+{
+  "name": "billnest-notifications",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-11",
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://billnest.top,https://www.billnest.top"
+  }
+}
