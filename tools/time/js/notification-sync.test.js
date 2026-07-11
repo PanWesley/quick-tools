@@ -29,7 +29,7 @@ function createFakeIndexedDB() {
         if (!database) {
           database = {
             stores: new Map(),
-            transactionTail: Promise.resolve(),
+            transactionTails: new Map(),
             objectStoreNames: { contains: store => database.stores.has(store) },
             createObjectStore(store) { database.stores.set(store, new Map()); },
             transaction(storeNames) {
@@ -38,8 +38,12 @@ function createFakeIndexedDB() {
               let started = false;
               let finish;
               const complete = new Promise(resolve => { finish = resolve; });
-              const previous = database.transactionTail;
-              database.transactionTail = previous.then(() => complete);
+              const scopes = Array.isArray(storeNames) ? storeNames : [storeNames];
+              const previous = Promise.all(scopes.map(storeName =>
+                database.transactionTails.get(storeName) || Promise.resolve()));
+              scopes.forEach(storeName => {
+                database.transactionTails.set(storeName, previous.then(() => complete));
+              });
 
               function start() {
                 if (started) return;
@@ -202,8 +206,8 @@ function createHarness(overrides = {}) {
       calls.push({ url, init });
       return overrides.fetch ? overrides.fetch(url, init, calls) : jsonResponse(204);
     },
-    clock: () => now,
-    online: () => true
+    clock: overrides.clock || (() => now),
+    online: overrides.online || (() => true)
   });
 
   return {
@@ -343,7 +347,7 @@ test('retry attempts are bounded and terminal entries are not sent again', async
   assert.equal(reminderAttempts, 5);
 });
 
-test('repeated sync coalesces reminder and reconcile intents at the newest revision', async () => {
+test('repeated sync keeps the newest reminder intent and the latest reconcile generation', async () => {
   const standard = responsePlan();
   const harness = createHarness({
     fetch: async (url, init, calls) => {
@@ -363,7 +367,69 @@ test('repeated sync coalesces reminder and reconcile intents at the newest revis
   const entries = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values());
   assert.equal(entries.length, 2);
   assert.equal(entries.find(entry => entry.kind === 'upsert').body.revision, 2);
-  assert.equal(entries.find(entry => entry.kind === 'reconcile').body.reminders[0].revision, 2);
+  assert.equal(entries.find(entry => entry.kind === 'reconcile').body.reminders[0].revision, 1);
+  assert.equal(entries.find(entry => entry.kind === 'reconcile').version, 3);
+});
+
+test('empty reconcile uses a persisted sync generation to supersede an old high revision', async () => {
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reconcile$/.test(url)) throw new Error('offline');
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [{
+    id: 'task-high-revision', revision: 999, sourceIdHash: '6'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  }] });
+  await harness.sync.sync({ reminders: [] });
+
+  const reconcile = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'reconcile');
+  assert.deepEqual(reconcile.body.reminders, []);
+  assert.equal(reconcile.version, 2);
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'meta').get('sync-generation'), 2);
+});
+
+test('failed subscription PUTs coalesce by device logical identity', async () => {
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/subscription$/.test(url) && init.method === 'PUT') throw new Error('offline');
+      return standard(url, init, calls);
+    }
+  });
+
+  await harness.sync.enable();
+  await harness.sync.enable();
+
+  const subscriptions = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .filter(entry => entry.kind === 'subscription');
+  assert.equal(subscriptions.length, 1);
+  assert.equal(subscriptions[0].logicalKey, 'subscription:device-1');
+});
+
+test('direct subscription PUT success removes the queued logical intent before drain', async () => {
+  const standard = responsePlan();
+  let failSubscription = true;
+  let subscriptionPuts = 0;
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/subscription$/.test(url) && init.method === 'PUT') {
+        subscriptionPuts += 1;
+        if (failSubscription) throw new Error('offline');
+      }
+      return standard(url, init, calls);
+    }
+  });
+  assert.deepEqual(await harness.sync.enable(), { status: 'pending', deviceId: 'device-1' });
+
+  failSubscription = false;
+  assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-1' });
+  assert.equal(subscriptionPuts, 2);
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
 });
 
 test('queue limit returns a typed error and never persists more than 100 intents', async () => {
@@ -462,6 +528,78 @@ test('overlapping drains across page and worker instances send each queued inten
   assert.equal(reminderCalls, 2);
 });
 
+test('drain renews its lease before each queued server write', { timeout: 2000 }, async () => {
+  const indexedDB = createFakeIndexedDB();
+  const standard = responsePlan();
+  let now = 1000;
+  let offline = true;
+  const observedExpiries = [];
+  const fetch = async (url, init, calls) => {
+    if (/\/reminders\//.test(url)) {
+      if (offline) throw new Error('offline');
+      observedExpiries.push(indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease').expiresAt);
+      now += 40000;
+      return jsonResponse(204);
+    }
+    if (/\/reconcile$/.test(url) && !offline) {
+      observedExpiries.push(indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease').expiresAt);
+    }
+    return standard(url, init, calls);
+  };
+  const harness = createHarness({ indexedDB, fetch, clock: () => now });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [{
+    id: 'task-renew-lease', revision: 1, sourceIdHash: '7'.repeat(64),
+    notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  }] });
+
+  offline = false;
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'ready', deviceId: 'device-1' });
+  assert.equal(observedExpiries.length, 2);
+  assert.ok(observedExpiries[1] > observedExpiries[0]);
+});
+
+test('expired drain lease fences the old deferred response with a monotonic token', { timeout: 2000 }, async () => {
+  const indexedDB = createFakeIndexedDB();
+  const firstRecovery = deferred();
+  const standard = responsePlan();
+  let now = 1000;
+  let offline = true;
+  let reminderCalls = 0;
+  const fetch = async (url, init, calls) => {
+    if (/\/reminders\//.test(url)) {
+      reminderCalls += 1;
+      if (offline) throw new Error('offline');
+      if (reminderCalls === 2) return firstRecovery.promise;
+      return jsonResponse(204);
+    }
+    return standard(url, init, calls);
+  };
+  const page = createHarness({ indexedDB, fetch, clock: () => now });
+  const worker = createHarness({ indexedDB, fetch, clock: () => now });
+  await page.sync.enable();
+  await page.sync.sync({ reminders: [{
+    id: 'task-expired-lease', revision: 1, sourceIdHash: '8'.repeat(64),
+    notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  }] });
+
+  offline = false;
+  const staleDrain = page.sync.handleOnline();
+  await waitFor(() => reminderCalls === 2);
+  const firstLease = { ...indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease') };
+  now += 60001;
+  const winningDrain = worker.sync.handleOnline();
+  await waitFor(() => indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease').ownerId !== firstLease.ownerId);
+  const secondLease = indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease');
+
+  firstRecovery.resolve(jsonResponse(204));
+  await Promise.all([staleDrain, winningDrain]);
+  assert.ok(Number.isSafeInteger(firstLease.fence));
+  assert.ok(secondLease.fence > firstLease.fence);
+  assert.equal(reminderCalls, 3);
+  assert.equal(indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
+});
+
 test('disable waits for server cleanup before unsubscribing and exposes pending cleanup failures', async () => {
   let cleanupFails = true;
   const standard = responsePlan();
@@ -509,6 +647,37 @@ test('disable serializes against overlapping sync and prevents reminder recreati
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
 });
 
+test('cross-instance disable fences an in-flight enable PUT before issuing server cleanup', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const subscriptionPut = deferred();
+  const standard = responsePlan();
+  const orderedWrites = [];
+  const fetch = async (url, init, calls) => {
+    if (/\/subscription$/.test(url) && init.method === 'PUT') {
+      orderedWrites.push('PUT');
+      return subscriptionPut.promise;
+    }
+    if (/\/subscription$/.test(url) && init.method === 'DELETE') orderedWrites.push('DELETE');
+    return standard(url, init, calls);
+  };
+  const page = createHarness({ indexedDB, fetch });
+  const worker = createHarness({ indexedDB, fetch });
+
+  const enabling = page.sync.enable();
+  await waitFor(() => orderedWrites.includes('PUT'));
+  const disabling = worker.sync.disable();
+  await new Promise(resolve => setImmediate(resolve));
+
+  const installation = indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.cleanupPending, true);
+  assert.deepEqual(orderedWrites, ['PUT']);
+
+  subscriptionPut.resolve(jsonResponse(204));
+  assert.notEqual((await enabling).status, 'ready');
+  assert.deepEqual(await disabling, { status: 'disabled' });
+  assert.deepEqual(orderedWrites, ['PUT', 'DELETE']);
+});
+
 test('disable discards queued reminder intents and sends server cleanup before browser unsubscribe', async () => {
   let reminderOffline = true;
   const standard = responsePlan();
@@ -545,6 +714,74 @@ test('disable keeps cleanup pending when credentials are missing but a browser s
   assert.equal(harness.getSubscription().unsubscribed, false);
   assert.equal(installation.enabled, true);
   assert.equal(installation.cleanupPending, true);
+});
+
+test('cleanup authentication rejection preserves the old identity and never auto-enables a replacement device', async () => {
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/subscription$/.test(url) && init.method === 'DELETE') {
+        return jsonResponse(401, { error: { code: 'unauthorized' } });
+      }
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+
+  assert.deepEqual(await harness.sync.disable(), { status: 'error' });
+  const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.cleanupPending, true);
+  assert.equal(installation.deviceId, 'device-1');
+  assert.equal(installation.cleanupDeviceId, 'device-1');
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'error' });
+
+  const deviceCalls = harness.calls.filter(call => call.url === '/api/notifications/devices').length;
+  const subscriptionPuts = harness.calls.filter(call => /\/subscription$/.test(call.url)
+    && call.init.method === 'PUT').length;
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'error' });
+  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
+  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, deviceCalls);
+  assert.equal(harness.calls.filter(call => /\/subscription$/.test(call.url)
+    && call.init.method === 'PUT').length, subscriptionPuts);
+});
+
+test('unsubscribe false keeps cleanup pending and foreground retries only local cleanup', async () => {
+  const harness = createHarness({ fetch: responsePlan() });
+  await harness.sync.enable();
+  const current = harness.getSubscription();
+  let unsubscribeCalls = 0;
+  current.unsubscribe = async () => {
+    unsubscribeCalls += 1;
+    return unsubscribeCalls > 1;
+  };
+
+  assert.deepEqual(await harness.sync.disable(), { status: 'pending', deviceId: 'device-1' });
+  const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.cleanupPending, true);
+  assert.equal(installation.cleanupServerDone, true);
+  assert.equal(installation.enabled, true);
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'pending', deviceId: 'device-1' });
+
+  const networkCalls = harness.calls.length;
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'disabled' });
+  assert.equal(unsubscribeCalls, 2);
+  assert.equal(harness.calls.length, networkCalls);
+});
+
+test('unsubscribe rejection remains pending and can be retried without registering again', async () => {
+  const harness = createHarness({ fetch: responsePlan() });
+  await harness.sync.enable();
+  const current = harness.getSubscription();
+  let rejectCleanup = true;
+  current.unsubscribe = async () => {
+    if (rejectCleanup) throw new Error('browser cleanup failed');
+    return true;
+  };
+
+  assert.deepEqual(await harness.sync.disable(), { status: 'pending', deviceId: 'device-1' });
+  rejectCleanup = false;
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'disabled' });
+  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, 1);
 });
 
 test('authentication failures reset the installation and a later enable renews the subscription without reusing stale credentials', async () => {
