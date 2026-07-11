@@ -123,7 +123,7 @@ Expected: FAIL with `ENOENT` for `migrations/0001_initial.sql`.
 }
 ```
 
-`wrangler.jsonc` must define `name`, `main`, `compatibility_date`, `triggers.crons: ["* * * * *"]`, `ALLOWED_ORIGINS`, and leave D1 creation to Wrangler's `--update-config` command. The migration must use `CREATE TABLE IF NOT EXISTS`, foreign keys, the seven approved reminder states, unique `(device_id, source_id_hash)`, and indexes `(status, notify_at)` plus `(device_id, source_id_hash)`.
+`wrangler.jsonc` must define `name`, `main`, `compatibility_date`, `triggers.crons: ["* * * * *"]`, `ALLOWED_ORIGINS`, and leave D1 creation to Wrangler's `--update-config` command. The migration must use `CREATE TABLE IF NOT EXISTS`, foreign keys, the seven approved reminder states, a unique reminder `id`, and non-unique indexes `(status, notify_at)` plus `(device_id, source_id_hash)` so recurring items may keep multiple future reminder instances.
 
 - [ ] **Step 4: Install dependencies and verify GREEN**
 
