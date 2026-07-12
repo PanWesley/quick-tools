@@ -145,6 +145,41 @@ test('task projection uses a local-calendar 30-day horizon across the New York D
   assert.deepEqual(JSON.parse(result.stdout), ['next-minute', 'day-30']);
 });
 
+test('task projection uses a local-calendar 30-day horizon across the New York DST spring forward', () => {
+  const modelPath = require.resolve('./notification-model');
+  const script = `
+    const { buildReminderRecords } = require(${JSON.stringify(modelPath)});
+    const task = (id, date, startTime) => ({
+      id,
+      title: id,
+      date,
+      area: 'work',
+      status: 'active',
+      startTime,
+      reminder: 'at-time'
+    });
+    buildReminderRecords({
+      tasks: [
+        task('day-30-boundary', '2026-04-06', '09:00'),
+        task('after-boundary', '2026-04-06', '09:01'),
+        task('day-31', '2026-04-07', '09:00')
+      ]
+    }, '2026-03-07', () => false, new Date(2026, 2, 7, 9, 0)).then(records => {
+      process.stdout.write(JSON.stringify(records.map(record => record.encryptedValue.data.id)));
+    }, error => {
+      console.error(error.stack || error);
+      process.exitCode = 1;
+    });
+  `;
+  const result = spawnSync(process.execPath, ['-e', script], {
+    encoding: 'utf8',
+    env: Object.assign({}, process.env, { TZ: 'America/New_York' })
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), ['day-30-boundary']);
+});
+
 test('projection skips invalid reminder offsets and invalid occurrence dates without rejecting valid records', async () => {
   const now = localDate('2026-07-11', '08:00');
   const tasks = [

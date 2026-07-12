@@ -47,3 +47,11 @@ Actual result: 5 passed, 3 failed. The fixed 720-hour horizon excluded 2026-11-0
 
 - Task 7 owns loading `notification-model.js` from `tools/time/index.html`; this review fix does not modify `index.html`.
 - Task 8 owns Service Worker cache changes in `tools/time/sw.js`; this review fix does not modify `sw.js`.
+
+## Task 6 Spring DST Coverage
+
+Added an independent `TZ=America/New_York` child-process test covering the 2026 spring DST transition.
+
+- `2026-04-06 09:00` is included as the 30th local calendar-day boundary from `2026-03-07 09:00`.
+- `2026-04-06 09:01` and `2026-04-07 09:00` are excluded.
+- The after-boundary case distinguishes the local-calendar horizon from an incorrect fixed 720-hour horizon.
