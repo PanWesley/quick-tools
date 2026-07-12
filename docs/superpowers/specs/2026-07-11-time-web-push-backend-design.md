@@ -207,6 +207,8 @@ Service Worker 解密失败时显示通用兜底通知“你有一项提醒”�
 
 本地任务或习惯写入成功后，再异步同步服务端提醒。通知后端失败不得回滚本地数据，也不得阻止关闭编辑弹窗。
 
+通知同步的跨页面/Service Worker 生命周期互斥依赖原生 Web Locks API，锁名为 `today-youxu-notification-lifecycle`。缺少 `navigator.locks` 时后台同步返回 `unsupported`，不使用无法保证竞态安全的本地锁降级；这不会禁用本地 CRUD。
+
 客户端维护通知同步队列，记录：
 
 - 操作类型：upsert、cancel、reconcile
@@ -223,7 +225,7 @@ Service Worker 解密失败时显示通用兜底通知“你有一项提醒”�
 - 创建、修改、完成或删除相关事项
 - 用户重新开启通知
 
-重试使用带上限的退避。认证失败停止自动重试并重新注册设备；订阅失效则重新调用 `PushManager.subscribe()`。设置页显示“已开启”“等待同步”“需要重新授权”“当前设备不支持”等真实状态。
+重试使用带上限的退避。认证失败停止自动重试并重新注册设备；订阅失效则重新调用 `PushManager.subscribe()`。设置页将同步状态映射为 `pending`（等待同步）、`unsupported`（当前设备不支持）和 `error`（需要重新授权），不以本地保存成功掩盖通知后端失败。
 
 应用启动时执行轻量对账，只比较未来 30 天有效提醒的摘要。对账不能上传备注、日记或无提醒任务。
 
@@ -377,6 +379,8 @@ tools/time/js/
 - iOS/iPadOS 主屏 PWA、Android Chromium PWA 和桌面 Chromium 至少各完成一轮能力验证；不支持的平台显示真实状态。
 - Service Worker 更新后旧缓存不会继续运行已废弃的本地补发逻辑。
 
+支持边界：后台通知需要安全上下文以及 Push API、Notifications API、Service Worker、IndexedDB、Web Crypto 和原生 Web Locks。iOS/iPadOS 仅在支持 Web Push 的系统与主屏安装 PWA 上纳入支持矩阵；Android Chromium PWA 和桌面 Chromium 需逐版本真机验证。普通标签页、隐私模式、权限拒绝、企业策略、系统省电策略或缺少任一 API 时，均不得承诺后台投递。
+
 ## 发布与迁移
 
 1. 新增通知 Worker、Notifications D1、迁移和本地测试。
@@ -387,6 +391,28 @@ tools/time/js/
 6. 验证后台推送稳定后，更新 README 和 CHANGELOG 中关于后台能力的准确描述。
 
 部署需要 Cloudflare 账号中的 D1 创建、Worker Secret、Cron 和路由配置。代码可以在本地完成和验证，但生产部署必须确认这些外部配置均已生效。
+
+controller 的部署顺序与命令如下；执行前必须先完成 `wrangler whoami`，并审阅 `--update-config` 写入的真实 D1 UUID，任何 ID 都不得预填或编造：
+
+```bash
+cd workers/notifications
+pnpm exec wrangler d1 create billnest_notifications --binding NOTIFICATIONS_DB --update-config wrangler.jsonc
+pnpm exec wrangler d1 migrations apply NOTIFICATIONS_DB --remote
+pnpm exec wrangler secret put VAPID_PUBLIC_KEY
+pnpm exec wrangler secret put VAPID_PRIVATE_KEY
+pnpm exec wrangler secret put VAPID_SUBJECT
+pnpm exec wrangler deploy
+```
+
+`wrangler.jsonc` 必须保留 `crons: ["* * * * *"]`，并配置 `billnest.top/api/notifications*` 与 `www.billnest.top/api/notifications*` 两条 route；routes 与 Cron 由 deploy 一并发布。部署后验证 `/api/notifications/config`、Cron、stale 过期、密文网络载荷、本地 CRUD 降级以及真机矩阵。
+
+回滚时先使用 `pnpm exec wrangler deployments list` 找到上一版本，再执行 `pnpm exec wrangler rollback <previous-version-id>`。route/Cron 错误通过恢复上一版配置并重新 deploy 回滚。Worker 版本回滚不回滚 D1；迁移问题必须停止写流量并由 controller 使用 D1 自动备份/Time Travel 恢复，不能删除数据库或 secrets 代替回滚。
+
+## 当前验证边界
+
+- 已实现并由本地自动测试覆盖：AES-GCM 密文模型、安装身份持久化、同步队列和状态、Web Locks 生命周期串行化、Worker API/D1 repository/Cron 状态机、Service Worker 解密/兜底/点击定位及本地 CRUD 与通知后端失败解耦。
+- 尚未验证：生产 Cloudflare 认证与账号归属、真实 Notifications D1 binding 和迁移、VAPID secrets、生产 routes/Cron/deploy、远端日志与指标，以及 iOS/iPadOS、Android、桌面真机的后台和关闭状态投递。
+- 因此，本地测试通过只能证明实现和 dry-run readiness，不能声明生产后台通知已经可用。
 
 ## 验收标准
 
