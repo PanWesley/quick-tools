@@ -1056,14 +1056,22 @@
 
   function handleNotificationClick(data) {
     data = data && typeof data === 'object' ? data : {};
-    switchView('today');
     var hasValidDate = isValidNotificationDate(data.date);
-    if (hasValidDate) appState.selectedDateKey = data.date;
+    var targetView = hasValidDate && data.date !== appState.todayKey ? 'calendar' : 'today';
+    if (hasValidDate) {
+      var targetDate = DateUtils.fromDateKey(data.date);
+      appState.selectedDateKey = data.date;
+      appState.calendarYear = targetDate.getFullYear();
+      appState.calendarMonth = targetDate.getMonth();
+    }
+    switchView(targetView);
     render();
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
+        var activeView = document.getElementById('view-' + appState.view);
+        if (!activeView) return;
         var entity = Array.prototype.find.call(
-          document.querySelectorAll('[data-notification-type][data-notification-id][data-notification-date]'),
+          activeView.querySelectorAll('[data-notification-type][data-notification-id][data-notification-date]'),
           function(row) {
             return row.dataset.notificationType === data.type
               && row.dataset.notificationId === data.id

@@ -116,6 +116,30 @@ test('encrypted payloads reject unsupported versions and tampering', async () =>
   await assert.rejects(() => cryptoApi.decryptPayload(key, tampered));
 });
 
+test('decrypt accepts only a plain own-object with exact envelope keys', async () => {
+  const cryptoApi = require('./notification-crypto.js');
+  const key = await cryptoApi.create({ indexedDB: createFakeIndexedDB(), crypto: webcrypto }).getOrCreateKey();
+  const envelope = await cryptoApi.encryptPayload(key, { title: '喝水' });
+  const inheritedCiphertext = Object.create({ ciphertext: envelope.ciphertext });
+  inheritedCiphertext.v = envelope.v;
+  inheritedCiphertext.iv = envelope.iv;
+  const nullPrototype = Object.assign(Object.create(null), envelope);
+  const customPrototype = Object.assign(Object.create({ marker: true }), envelope);
+  const invalidEnvelopes = [
+    { ...envelope, extra: true },
+    { v: envelope.v, iv: envelope.iv },
+    inheritedCiphertext,
+    nullPrototype,
+    customPrototype,
+    [envelope.v, envelope.iv, envelope.ciphertext]
+  ];
+
+  assert.deepEqual(await cryptoApi.decryptPayload(key, envelope), { title: '喝水' });
+  for (const invalid of invalidEnvelopes) {
+    await assert.rejects(() => cryptoApi.decryptPayload(key, invalid), /Unsupported notification payload version/);
+  }
+});
+
 test('getOrCreateKey stores one non-extractable AES-GCM 256-bit key in IndexedDB', async () => {
   const indexedDB = createFakeIndexedDB();
   const generated = [];

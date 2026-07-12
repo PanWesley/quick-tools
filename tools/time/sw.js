@@ -7,10 +7,11 @@ importScripts('/tools/time/js/notification-crypto.js?v=1');
 
 const CACHE_NAME = 'today-youxu-v29';
 const DEFAULT_TARGET_URL = '/tools/time/#today';
+const GENERIC_NOTIFICATION_TAG = 'today-youxu-generic-reminder';
 const GENERIC_NOTIFICATION = {
   title: '你有一项提醒',
   body: '打开今日有序查看详情',
-  tag: 'today-youxu-generic-reminder',
+  tag: GENERIC_NOTIFICATION_TAG,
   data: { url: DEFAULT_TARGET_URL }
 };
 const APP_SHELL = [
@@ -63,6 +64,7 @@ function validateNotificationPayload(payload) {
     || !isBoundedString(payload.title, 1, 120)
     || !isBoundedString(payload.body, 1, 240)
     || !isBoundedString(payload.tag, 1, 256)
+    || payload.tag === GENERIC_NOTIFICATION_TAG
     || !isBoundedString(payload.scheduledAt, 1, 64)
     || !Number.isFinite(Date.parse(payload.scheduledAt))) {
     throw new Error('Invalid notification payload');
@@ -90,7 +92,10 @@ function notificationOptions(payload) {
 }
 
 async function showNotificationOnce(payload) {
-  const visible = await self.registration.getNotifications({ tag: payload.tag });
+  let visible = [];
+  try {
+    visible = await self.registration.getNotifications({ tag: payload.tag });
+  } catch (error) {}
   if (visible.length) return;
   await self.registration.showNotification(payload.title, notificationOptions(payload));
 }
@@ -193,11 +198,6 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
-});
-
-self.addEventListener('notificationclose', (event) => {
-  const data = event.notification.data || {};
-  console.log('[TodayYouxu SW] Notification closed:', data);
 });
 
 self.addEventListener('fetch', (event) => {

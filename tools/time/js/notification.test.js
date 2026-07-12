@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const notificationSource = fs.readFileSync(path.join(__dirname, 'notification.js'), 'utf8');
 
 function loadService() {
   const path = require.resolve('./notification');
@@ -83,4 +87,9 @@ test('scheduleAll keeps foreground timers within 24 hours', (t) => {
 
   assert.equal(delays.length, 1);
   assert.ok(delays[0] <= 24 * 60 * 60 * 1000);
+});
+
+test('initSW keeps registration setup without owning service worker messages', () => {
+  assert.match(notificationSource, /navigator\.serviceWorker\.ready\.then/);
+  assert.doesNotMatch(notificationSource, /serviceWorker\.addEventListener\(['"]message['"]/);
 });

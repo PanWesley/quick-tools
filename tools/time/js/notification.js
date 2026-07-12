@@ -395,11 +395,6 @@
     navigator.serviceWorker.ready.then(function(reg) {
       setServiceWorkerRegistration(reg);
     }).catch(function() {});
-    navigator.serviceWorker.addEventListener('message', function(event) {
-      if (event.data && event.data.type === 'NOTIFICATION_CLICK' && typeof window !== 'undefined') {
-        window.location.hash = 'today';
-      }
-    });
   }
 
   return {

@@ -59,7 +59,11 @@
 
   function validateEnvelope(envelope) {
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)
-      || Object.keys(envelope).length !== 3
+      || Object.getPrototypeOf(envelope) !== Object.prototype
+      || !Object.prototype.hasOwnProperty.call(envelope, 'v')
+      || !Object.prototype.hasOwnProperty.call(envelope, 'iv')
+      || !Object.prototype.hasOwnProperty.call(envelope, 'ciphertext')
+      || Object.keys(envelope).sort().join(',') !== 'ciphertext,iv,v'
       || envelope.v !== 1
       || typeof envelope.iv !== 'string'
       || typeof envelope.ciphertext !== 'string') {

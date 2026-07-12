@@ -56,3 +56,30 @@ Result: all exited 0.
 ## Concern
 
 The VM harness deliberately does not claim coverage of real Service Worker termination or cross-context Web Locks behavior. Task 9 must verify that lifecycle in a real browser.
+
+## Review Fixes
+
+### RED
+
+Command:
+
+```bash
+$NODE --test tools/time/js/service-worker-notification.test.js tools/time/js/notification-crypto.test.js tools/time/js/notification.test.js
+```
+
+Result: 17 passed and 8 failed. The failures reproduced hidden-view notification targeting, stale calendar month selection, plaintext close logging, permissive crypto envelope prototypes and keys, reserved fallback-tag reuse, aborted display after `getNotifications` rejection, and duplicate page message ownership.
+
+### GREEN
+
+Focused command result: 25 passed, 0 failed.
+
+Full time-tool JavaScript suite result: 112 passed, 0 failed.
+
+### Changes
+
+- Valid non-today notification dates switch to Calendar, synchronize year/month/date, render, and query only the active view. Today notifications remain in Today.
+- Push, click, and close handling emit no encrypted or plaintext notification payload logs; the unnecessary close handler was removed.
+- Crypto envelopes must be ordinary own-objects with exactly `v`, `iv`, and `ciphertext`; arrays, inherited fields, custom/null prototypes, missing fields, and extra fields are rejected.
+- The generic fallback tag is reserved. A failed visible-notification lookup no longer suppresses display, while a failed display still rejects the push event after one attempt.
+- `app.js` is the sole `serviceWorker.message` owner. `notification.js` retains ready-registration setup only.
+- Existing notification API network-only behavior, app-shell caching, and sanitized click URL behavior remain covered by the passing full suite.
