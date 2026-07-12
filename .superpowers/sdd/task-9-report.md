@@ -7,7 +7,7 @@ Date: 2026-07-12
 - Updated user, changelog, Worker handoff, and backend design documentation.
 - Performed only read-only Cloudflare readiness checks.
 - Did not modify business code, create Cloudflare resources, apply remote migrations, write secrets, deploy, or run production/physical-device tests.
-- Left `workers/notifications/wrangler.jsonc` unchanged because it contains no real account-specific D1 configuration to preserve or update.
+- Removed the duplicate `compatibility_flags` key from `workers/notifications/wrangler.jsonc` without inventing an account-specific D1 ID.
 
 ## Documentation Evidence
 
@@ -114,7 +114,7 @@ Static `wrangler.jsonc` readiness:
 - Present: Worker name/main, compatibility date, `nodejs_compat`, production allowed origins, and every-minute Cron `* * * * *`.
 - Missing: `d1_databases` entry binding `NOTIFICATIONS_DB` to a real Notifications D1 UUID.
 - Missing: routes for `billnest.top/api/notifications*` and `www.billnest.top/api/notifications*`.
-- Needs correction before deployment: duplicate `compatibility_flags` key.
+- Corrected locally: duplicate `compatibility_flags` key removed.
 - Not inspectable while unauthenticated: remote D1 existence/migrations, Worker secrets, deployed routes/Cron, deployments, logs, and production config endpoint.
 
 No config edit was made: there was no real D1 ID to update, and IDs must not be invented.
@@ -122,12 +122,27 @@ No config edit was made: there was no real D1 ID to update, and IDs must not be 
 ## Outstanding
 
 - Authenticate the intended Cloudflare account and confirm account ownership.
-- Create the isolated Notifications D1 with Wrangler `--update-config`, review the real UUID, and remove the duplicate config key.
+- Create the isolated Notifications D1 with Wrangler `--update-config` and review the real UUID.
 - Add both production routes while retaining the one-minute Cron.
 - Apply the remote migration and set the three VAPID secrets.
 - Deploy only after controller review, then verify config, Cron execution, stale expiration, encrypted network payloads, logs, metrics, and rollback behavior.
-- Run fresh-browser integration for permission, device ID persistence, encrypted test push, API-failure CRUD, queue recovery, and click targeting.
 - Run real background/closed-PWA delivery on iOS/iPadOS Home Screen, Android Chromium PWA, and desktop Chromium. Production background delivery is not verified.
+
+## Local Chromium Integration
+
+Validated against `http://127.0.0.1:4173/tools/time/` with the system Google Chrome controlled through Playwright:
+
+- Desktop 1440x900 and mobile 390x844 layouts loaded without page exceptions or horizontal overflow; notification status and controls remained readable.
+- The page became controlled by the registered Service Worker and `navigator.serviceWorker.ready` resolved.
+- With a deterministic mocked notification API and PushManager, the user-click flow reached `后台提醒已开启`, uploaded the PushSubscription with a bearer token, reconciled, and sent an encrypted backend test.
+- The backend test request contained only `{ v, iv, ciphertext }`; no test title/body appeared in network request plaintext.
+- While all notification API requests were aborted, creating a task still closed the form, showed `事项已创建`, retained the task locally, and displayed `等待同步`. Dispatching `online` after restoring the API returned the UI to `后台提醒已开启`.
+- A future task reminder PUT contained only a hashed source ID, absolute time, revision, and AES-GCM envelope; its Chinese title did not appear in the request body.
+- A real Chromium DevTools `ServiceWorker.deliverPushMessage` event decrypted and displayed the expected notification. Re-delivering the same tag kept one visible notification; malformed ciphertext displayed `你有一项提醒 / 打开今日有序查看详情`.
+- A notification-click message for a future task switched to the calendar view, selected the correct date, and applied the visible non-layout-shifting highlight to the active entity.
+- Terminating a real dedicated Worker while it held the notification lifecycle Web Lock released the lock; the page acquired the same lock within 1.5 seconds.
+
+The local Chromium run used mocked API responses and a mocked PushManager for registration because no authenticated notification Worker or production push service was available. It verifies client lifecycle, encryption boundaries, Service Worker push handling, and recovery, but does not claim production delivery.
 
 ## Files
 

@@ -3,7 +3,6 @@
   "main": "worker.mjs",
   "compatibility_date": "2026-07-11",
   "compatibility_flags": ["nodejs_compat"],
-  "compatibility_flags": ["nodejs_compat"],
   "triggers": {
     "crons": ["* * * * *"]
   },
