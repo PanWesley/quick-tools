@@ -9,11 +9,11 @@
   var DB_VERSION = 1;
   var STORE_NAMES = ['secrets', 'installation', 'queue', 'meta'];
   var INSTALLATION_KEY = 'current';
+  var LIFECYCLE_LOCK = 'today-youxu-notification-lifecycle';
   var RETRY_BASE_MS = 1000;
   var RETRY_MAX_MS = 30 * 60 * 1000;
   var MAX_RETRY_ATTEMPTS = 5;
   var MAX_QUEUE_SIZE = 100;
-  var DRAIN_LEASE_MS = 60 * 1000;
 
   function openDatabase(indexedDBApi) {
     return new Promise(function(resolve, reject) {
@@ -78,23 +78,6 @@
     });
   }
 
-  function deleteRecord(database, storeName, key) {
-    return new Promise(function(resolve, reject) {
-      var transaction;
-      try {
-        transaction = database.transaction(storeName, 'readwrite');
-        transaction.objectStore(storeName).delete(key);
-      } catch (error) {
-        reject(error);
-        return;
-      }
-      transaction.oncomplete = function() { resolve(); };
-      transaction.onerror = transaction.onabort = function() {
-        reject(transaction.error || new Error('IndexedDB delete failed'));
-      };
-    });
-  }
-
   function runTransaction(database, storeNames, mode, execute, failureMessage) {
     return new Promise(function(resolve, reject) {
       var transaction;
@@ -129,7 +112,9 @@
     if (status === 'disabled' || status === 'unsupported' || status === 'permission-required' || status === 'error') {
       return { status: status };
     }
-    return installation && installation.deviceId ? { status: status, deviceId: installation.deviceId } : { status: status };
+    return installation && installation.deviceId
+      ? { status: status, deviceId: installation.deviceId }
+      : { status: status };
   }
 
   function create(options) {
@@ -143,22 +128,15 @@
     var online = options.online || function() {
       return !root || !root.navigator || root.navigator.onLine !== false;
     };
+    var locks = Object.prototype.hasOwnProperty.call(options, 'locks')
+      ? options.locks : root && root.navigator && root.navigator.locks;
     var apiBase = options.apiBase || '';
     var databasePromise;
     var state = 'disabled';
-    var operationChain = Promise.resolve();
     var randomUUID = options.randomUUID
       || (root && root.crypto && typeof root.crypto.randomUUID === 'function'
         ? root.crypto.randomUUID.bind(root.crypto)
         : function() { return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); });
-    var ownerId = randomUUID();
-
-    function serialize(operation, args) {
-      function run() { return operation.apply(null, args); }
-      var result = operationChain.then(run, run);
-      operationChain = result.catch(function() {});
-      return result;
-    }
 
     function now() {
       return typeof clock === 'function' ? clock() : clock.now();
@@ -166,6 +144,10 @@
 
     function isOnline() {
       return typeof online === 'function' ? online() : online !== false;
+    }
+
+    function hasLocks() {
+      return !!locks && typeof locks.request === 'function';
     }
 
     function getDatabase() {
@@ -182,262 +164,85 @@
       return installation;
     }
 
-    async function beginLifecycle(mode) {
-      var database = await getDatabase();
-      var stores = mode === 'disable' ? ['meta', 'installation', 'queue'] : ['meta', 'installation'];
-      return runTransaction(database, stores, 'readwrite', function(transaction, finish) {
-        var metaStore = transaction.objectStore('meta');
-        var installationStore = transaction.objectStore('installation');
-        var requests = [metaStore.get('lifecycle-epoch'), installationStore.get(INSTALLATION_KEY)];
-        if (mode === 'disable') requests.push(transaction.objectStore('queue').getAll());
-        afterReads(requests, function(values) {
-          var installation = values[1];
-          if (mode !== 'disable' && mode !== 'drain' && installation && installation.cleanupPending) {
-            finish({ blocked: true, installation: installation });
-            return;
-          }
-          var lifecycle = {
-            epoch: Number.isSafeInteger(values[0]) ? values[0] + 1 : 1,
-            ownerId: ownerId,
-            mode: mode
-          };
-          metaStore.put(lifecycle.epoch, 'lifecycle-epoch');
-          metaStore.put(lifecycle, 'lifecycle');
-          if (mode === 'disable') {
-            installation = installation || { enabled: true };
-            installation.cleanupPending = true;
-            installation.cleanupDeviceId = installation.cleanupDeviceId || installation.deviceId;
-            installation.cleanupDeviceToken = installation.cleanupDeviceToken || installation.deviceToken;
-            installation.cleanupServerDone = false;
-            installation.cleanupAuthRejected = false;
-            installationStore.put(installation, INSTALLATION_KEY);
-            (values[2] || []).forEach(function(entry) { transaction.objectStore('queue').delete(entry.id); });
-            lifecycle.installation = installation;
-          }
-          finish(lifecycle);
-        });
-      }, 'IndexedDB lifecycle update failed');
-    }
-
-    async function lifecycleIsCurrent(lifecycle, allowCleanup) {
-      if (!lifecycle || lifecycle.blocked) return false;
-      var database = await getDatabase();
-      return runTransaction(database, ['meta', 'installation'], 'readonly', function(transaction, finish) {
-        afterReads([
-          transaction.objectStore('meta').get('lifecycle'),
-          transaction.objectStore('installation').get(INSTALLATION_KEY)
-        ], function(values) {
-          var current = values[0];
-          var installation = values[1];
-          finish(!!current && current.epoch === lifecycle.epoch && current.ownerId === lifecycle.ownerId
-            && (allowCleanup || !installation || !installation.cleanupPending));
-        });
-      }, 'IndexedDB lifecycle validation failed');
-    }
-
-    async function saveInstallationIfCurrent(lifecycle, installation, allowCleanup) {
-      var database = await getDatabase();
-      return runTransaction(database, ['meta', 'installation'], 'readwrite', function(transaction, finish) {
-        var installationStore = transaction.objectStore('installation');
-        afterReads([
-          transaction.objectStore('meta').get('lifecycle'),
-          installationStore.get(INSTALLATION_KEY)
-        ], function(values) {
-          var current = values[0];
-          var stored = values[1];
-          var valid = !!current && current.epoch === lifecycle.epoch && current.ownerId === lifecycle.ownerId
-            && (allowCleanup || !stored || !stored.cleanupPending);
-          if (valid) installationStore.put(installation, INSTALLATION_KEY);
-          finish(valid);
-        });
-      }, 'IndexedDB lifecycle installation write failed');
-    }
-
-    async function commitSubscriptionSuccess(lifecycle, installation, logicalKey, endpoint) {
-      var database = await getDatabase();
-      return runTransaction(database, ['meta', 'installation', 'queue'], 'readwrite', function(transaction, finish) {
-        var installationStore = transaction.objectStore('installation');
-        var queueStore = transaction.objectStore('queue');
-        afterReads([
-          transaction.objectStore('meta').get('lifecycle'),
-          installationStore.get(INSTALLATION_KEY),
-          queueStore.getAll()
-        ], function(values) {
-          var current = values[0];
-          var stored = values[1];
-          var valid = !!current && current.epoch === lifecycle.epoch && current.ownerId === lifecycle.ownerId
-            && !!stored && !stored.cleanupPending;
-          if (valid) {
-            stored.subscriptionEndpoint = endpoint;
-            installationStore.put(stored, INSTALLATION_KEY);
-            (values[2] || []).forEach(function(entry) {
-              if (entry.logicalKey === logicalKey) queueStore.delete(entry.id);
-            });
-          }
-          finish(valid);
-        });
-      }, 'IndexedDB subscription commit failed');
-    }
-
-    async function nextSyncGeneration() {
+    async function incrementMeta(key, failureMessage) {
       var database = await getDatabase();
       return runTransaction(database, 'meta', 'readwrite', function(transaction, finish) {
         var store = transaction.objectStore('meta');
-        var request = store.get('sync-generation');
+        var request = store.get(key);
         request.onsuccess = function() {
-          var generation = Number.isSafeInteger(request.result) ? request.result + 1 : 1;
-          store.put(generation, 'sync-generation');
-          finish(generation);
+          var value = Number.isSafeInteger(request.result) ? request.result + 1 : 1;
+          store.put(value, key);
+          finish(value);
         };
-      }, 'IndexedDB sync generation failed');
+      }, failureMessage);
     }
 
-    async function acquireServerWriteLock() {
-      var database = await getDatabase();
-      while (true) {
-        var lock = await runTransaction(database, 'meta', 'readwrite', function(transaction, finish) {
-          var store = transaction.objectStore('meta');
-          var request = store.get('server-write-lock');
-          request.onsuccess = function() {
-            if (request.result) return;
-            var acquired = { ownerId: ownerId, token: randomUUID() };
-            store.put(acquired, 'server-write-lock');
-            finish(acquired);
-          };
-        }, 'IndexedDB server write lock failed');
-        if (lock) return lock;
-        await new Promise(function(resolve) { setTimeout(resolve, 0); });
-      }
+    function beginLifecycle() {
+      return incrementMeta('lifecycle-epoch', 'IndexedDB lifecycle update failed');
     }
 
-    async function releaseServerWriteLock(lock) {
-      var database = await getDatabase();
-      return runTransaction(database, 'meta', 'readwrite', function(transaction) {
-        var store = transaction.objectStore('meta');
-        var request = store.get('server-write-lock');
-        request.onsuccess = function() {
-          var current = request.result;
-          if (current && current.ownerId === lock.ownerId && current.token === lock.token) {
-            store.delete('server-write-lock');
-          }
-        };
-      }, 'IndexedDB server write unlock failed');
-    }
-
-    async function lifecycleRequest(lifecycle, allowCleanup, send) {
-      var lock = await acquireServerWriteLock();
-      try {
-        if (!await lifecycleIsCurrent(lifecycle, allowCleanup)) return { fenced: true };
-        var response = await send();
-        if (!await lifecycleIsCurrent(lifecycle, allowCleanup)) return { fenced: true, response: response };
-        return { fenced: false, response: response };
-      } finally {
-        await releaseServerWriteLock(lock);
-      }
+    function nextSyncGeneration() {
+      return incrementMeta('sync-generation', 'IndexedDB sync generation failed');
     }
 
     async function queueOperation(kind, method, path, body, queueOptions) {
       queueOptions = queueOptions || {};
       var database = await getDatabase();
-      return new Promise(function(resolve, reject) {
-        var transaction;
-        var queueStore;
-        var metaStore;
-        var installationValue;
-        var entries;
-        var sequenceValue;
-        var entry;
-        var limitError;
-        var reads = 0;
-        var requiredReads = queueOptions.requireEnabled ? 3 : 2;
-
-        function mutate() {
-          if (reads !== requiredReads) return;
+      var stores = queueOptions.requireEnabled ? ['meta', 'queue', 'installation'] : ['meta', 'queue'];
+      var result = await runTransaction(database, stores, 'readwrite', function(transaction, finish) {
+        var queueStore = transaction.objectStore('queue');
+        var metaStore = transaction.objectStore('meta');
+        var requests = [queueStore.getAll(), metaStore.get('queue-sequence')];
+        if (queueOptions.requireEnabled) requests.push(transaction.objectStore('installation').get(INSTALLATION_KEY));
+        afterReads(requests, function(values) {
+          var entries = values[0] || [];
+          var installation = values[2];
           if (queueOptions.requireEnabled
-            && (!installationValue || !installationValue.enabled || installationValue.cleanupPending)) return;
-          if (queueOptions.replaceAll) {
-            entries.forEach(function(queued) { queueStore.delete(queued.id); });
-            entries = [];
+            && (!installation || !installation.enabled || installation.cleanupPending)) {
+            finish({ skipped: true });
+            return;
           }
-          if (queueOptions.logicalKey && !queueOptions.replaceAll) {
-            entry = entries.find(function(queued) { return queued.logicalKey === queueOptions.logicalKey; });
-          }
+          var entry = queueOptions.logicalKey
+            ? entries.find(function(queued) { return queued.logicalKey === queueOptions.logicalKey; })
+            : null;
           if (entry && Number.isSafeInteger(queueOptions.version)
-            && Number.isSafeInteger(entry.version) && entry.version > queueOptions.version) return;
+            && Number.isSafeInteger(entry.version) && entry.version > queueOptions.version) {
+            finish({ entry: entry });
+            return;
+          }
           if (entry) {
             entry.kind = kind;
             entry.method = method;
             entry.path = path;
             entry.body = body || null;
             entry.version = queueOptions.version;
+            entry.generation = Number.isSafeInteger(entry.generation) ? entry.generation + 1 : 1;
             entry.attempts = 0;
             entry.nextRetryAt = now();
             entry.terminal = false;
             queueStore.put(entry, entry.id);
+            finish({ entry: entry });
             return;
           }
           if (entries.length >= MAX_QUEUE_SIZE) {
-            limitError = new Error('Notification queue limit reached');
-            limitError.name = 'QueueLimitError';
+            finish({ limit: true });
             return;
           }
-          var sequence = Number.isSafeInteger(sequenceValue) ? sequenceValue + 1 : 1;
-          entry = {
-            id: 'notification-' + sequence + '-' + randomUUID(),
-            sequence: sequence,
-            logicalKey: queueOptions.logicalKey || null,
-            version: queueOptions.version,
-            kind: kind,
-            method: method,
-            path: path,
-            body: body || null,
-            attempts: 0,
-            nextRetryAt: now(),
-            terminal: false
-          };
+          var sequence = Number.isSafeInteger(values[1]) ? values[1] + 1 : 1;
+          entry = createQueueEntry(sequence, kind, method, path, queueOptions.logicalKey || null);
+          entry.version = queueOptions.version;
+          entry.body = body || null;
           metaStore.put(sequence, 'queue-sequence');
           queueStore.put(entry, entry.id);
-        }
-
-        try {
-          transaction = database.transaction(
-            queueOptions.requireEnabled ? ['meta', 'queue', 'installation'] : ['meta', 'queue'],
-            'readwrite'
-          );
-          queueStore = transaction.objectStore('queue');
-          metaStore = transaction.objectStore('meta');
-          var queueRequest = queueStore.getAll();
-          var sequenceRequest = metaStore.get('queue-sequence');
-          queueRequest.onsuccess = function() {
-            entries = queueRequest.result || [];
-            reads += 1;
-            mutate();
-          };
-          sequenceRequest.onsuccess = function() {
-            sequenceValue = sequenceRequest.result;
-            reads += 1;
-            mutate();
-          };
-          if (queueOptions.requireEnabled) {
-            var installationRequest = transaction.objectStore('installation').get(INSTALLATION_KEY);
-            installationRequest.onsuccess = function() {
-              installationValue = installationRequest.result;
-              reads += 1;
-              mutate();
-            };
-          }
-        } catch (error) {
-          reject(error);
-          return;
-        }
-        transaction.oncomplete = function() {
-          if (limitError) reject(limitError);
-          else resolve(entry);
-        };
-        transaction.onerror = transaction.onabort = function() {
-          reject(transaction.error || new Error('IndexedDB queue write failed'));
-        };
-      });
+          finish({ entry: entry });
+        });
+      }, 'IndexedDB queue write failed');
+      if (result && result.limit) {
+        var error = new Error('Notification queue limit reached');
+        error.name = 'QueueLimitError';
+        throw error;
+      }
+      return result && result.entry;
     }
 
     async function getQueue() {
@@ -447,58 +252,9 @@
       });
     }
 
-    async function acquireDrainLease() {
-      var database = await getDatabase();
-      return runTransaction(database, 'meta', 'readwrite', function(transaction, finish) {
-        var store = transaction.objectStore('meta');
-        afterReads([store.get('drain-lease'), store.get('drain-fence')], function(values) {
-          var current = values[0];
-          if (current && current.ownerId !== ownerId && current.expiresAt > now()) return;
-          var fence = Number.isSafeInteger(values[1]) ? values[1] + 1 : 1;
-          var lease = { ownerId: ownerId, fence: fence, expiresAt: now() + DRAIN_LEASE_MS };
-          store.put(fence, 'drain-fence');
-          store.put(lease, 'drain-lease');
-          finish(lease);
-        });
-      }, 'IndexedDB drain lease failed');
-    }
-
-    async function validateDrainLease(lease, lifecycle, allowCleanup, renew) {
-      var database = await getDatabase();
-      return runTransaction(database, ['meta', 'installation'], renew ? 'readwrite' : 'readonly',
-        function(transaction, finish) {
-          var store = transaction.objectStore('meta');
-          afterReads([
-            store.get('drain-lease'),
-            store.get('lifecycle'),
-            transaction.objectStore('installation').get(INSTALLATION_KEY)
-          ], function(values) {
-            var current = values[0];
-            var currentLifecycle = values[1];
-            var installation = values[2];
-            var valid = !!current && current.ownerId === lease.ownerId && current.fence === lease.fence
-              && current.expiresAt > now() && !!currentLifecycle
-              && currentLifecycle.ownerId === lifecycle.ownerId && currentLifecycle.epoch === lifecycle.epoch
-              && (allowCleanup || !installation || !installation.cleanupPending);
-            if (valid && renew) {
-              lease.expiresAt = now() + DRAIN_LEASE_MS;
-              store.put({ ownerId: lease.ownerId, fence: lease.fence, expiresAt: lease.expiresAt }, 'drain-lease');
-            }
-            finish(valid);
-          });
-        }, 'IndexedDB drain lease validation failed');
-    }
-
-    async function releaseDrainLease(lease) {
-      var database = await getDatabase();
-      return runTransaction(database, 'meta', 'readwrite', function(transaction) {
-        var store = transaction.objectStore('meta');
-        var request = store.get('drain-lease');
-        request.onsuccess = function() {
-          if (request.result && request.result.ownerId === lease.ownerId
-            && request.result.fence === lease.fence) store.delete('drain-lease');
-        };
-      }, 'IndexedDB drain lease release failed');
+    async function getQueuedLogical(logicalKey) {
+      var entries = await getQueue();
+      return entries.find(function(entry) { return entry.logicalKey === logicalKey; });
     }
 
     async function request(method, path, body, installation, authenticated) {
@@ -509,33 +265,103 @@
         if (!installation || !installation.deviceToken) throw new Error('Device credentials are required');
         headers.Authorization = 'Bearer ' + installation.deviceToken;
       }
-      return fetchImpl(apiBase + path, {
-        method: method,
-        headers: headers,
-        body: body === undefined || body === null ? undefined : JSON.stringify(body)
-      });
+      return fetchImpl(apiBase + path, { method: method, headers: headers,
+        body: body === undefined || body === null ? undefined : JSON.stringify(body) });
     }
 
-    async function resetAuthentication(installation) {
-      var database = await getDatabase();
-      var entries = await readAllRecords(database, 'queue');
-      for (var index = 0; index < entries.length; index += 1) {
-        await deleteRecord(database, 'queue', entries[index].id);
-      }
-      if (installation && installation.cleanupPending) {
+    function applyAuthenticationReset(installationStore, queueStore, installation, entries, current) {
+      installation = installation || {};
+      if (installation.cleanupPending) {
         installation.deviceToken = undefined;
-        installation.cleanupDeviceId = installation.cleanupDeviceId || installation.deviceId;
         installation.cleanupAuthRejected = true;
         installation.authenticationReset = true;
-        await saveInstallation(installation);
-        state = 'error';
+        installationStore.put(installation, INSTALLATION_KEY);
+        (entries || []).forEach(function(entry) {
+          if ((current && entry.id === current.id) || (!current && entry.kind === 'disable')) {
+            entry.attempts = MAX_RETRY_ATTEMPTS;
+            entry.nextRetryAt = null;
+            entry.terminal = true;
+            queueStore.put(entry, entry.id);
+          } else {
+            queueStore.delete(entry.id);
+          }
+        });
         return;
       }
-      await saveInstallation({
-        enabled: !!installation.enabled,
-        authenticationReset: true
-      });
+      (entries || []).forEach(function(entry) { queueStore.delete(entry.id); });
+      installationStore.put({ enabled: !!installation.enabled, authenticationReset: true }, INSTALLATION_KEY);
+    }
+
+    async function resetAuthentication() {
+      var database = await getDatabase();
+      await runTransaction(database, ['installation', 'queue'], 'readwrite', function(transaction) {
+        var installationStore = transaction.objectStore('installation');
+        var queueStore = transaction.objectStore('queue');
+        afterReads([installationStore.get(INSTALLATION_KEY), queueStore.getAll()], function(values) {
+          applyAuthenticationReset(installationStore, queueStore, values[0], values[1]);
+        });
+      }, 'IndexedDB authentication reset failed');
       state = 'error';
+    }
+
+    function createQueueEntry(sequence, kind, method, path, logicalKey) {
+      return { id: 'notification-' + sequence + '-' + randomUUID(), sequence: sequence, generation: 1,
+        logicalKey: logicalKey, kind: kind, method: method, path: path, body: null,
+        attempts: 0, nextRetryAt: now(), terminal: false };
+    }
+
+    async function prepareDisable() {
+      var database = await getDatabase();
+      return runTransaction(database, ['meta', 'installation', 'queue'], 'readwrite', function(transaction, finish) {
+        var metaStore = transaction.objectStore('meta');
+        var installationStore = transaction.objectStore('installation');
+        var queueStore = transaction.objectStore('queue');
+        afterReads([metaStore.get('lifecycle-epoch'), metaStore.get('queue-sequence'),
+          installationStore.get(INSTALLATION_KEY), queueStore.getAll()], function(values) {
+          var epoch = Number.isSafeInteger(values[0]) ? values[0] + 1 : 1;
+          var installation = values[2] || { enabled: true };
+          installation.cleanupPending = true;
+          installation.cleanupDeviceId = installation.cleanupDeviceId || installation.deviceId;
+          installation.cleanupServerDone = false;
+          installation.cleanupAuthRejected = false;
+          metaStore.put(epoch, 'lifecycle-epoch');
+          installationStore.put(installation, INSTALLATION_KEY);
+          (values[3] || []).forEach(function(entry) { queueStore.delete(entry.id); });
+          if (installation.cleanupDeviceId) {
+            var sequence = Number.isSafeInteger(values[1]) ? values[1] + 1 : 1;
+            var entry = createQueueEntry(sequence, 'disable', 'DELETE',
+              '/api/notifications/devices/' + encodeURIComponent(installation.cleanupDeviceId) + '/subscription', 'disable');
+            metaStore.put(sequence, 'queue-sequence');
+            queueStore.put(entry, entry.id);
+          }
+          finish(installation);
+        });
+      }, 'IndexedDB disable preparation failed');
+    }
+
+    async function ensureCleanupIntent() {
+      var database = await getDatabase();
+      return runTransaction(database, ['meta', 'installation', 'queue'], 'readwrite', function(transaction, finish) {
+        var metaStore = transaction.objectStore('meta');
+        var installationStore = transaction.objectStore('installation');
+        var queueStore = transaction.objectStore('queue');
+        afterReads([installationStore.get(INSTALLATION_KEY), queueStore.getAll(),
+          metaStore.get('queue-sequence')], function(values) {
+          var installation = values[0];
+          var entries = values[1] || [];
+          if (!installation || !installation.cleanupPending || installation.cleanupServerDone
+            || !installation.cleanupDeviceId || entries.some(function(entry) { return entry.kind === 'disable'; })) {
+            finish(false);
+            return;
+          }
+          var sequence = Number.isSafeInteger(values[2]) ? values[2] + 1 : 1;
+          var entry = createQueueEntry(sequence, 'disable', 'DELETE',
+            '/api/notifications/devices/' + encodeURIComponent(installation.cleanupDeviceId) + '/subscription', 'disable');
+          metaStore.put(sequence, 'queue-sequence');
+          queueStore.put(entry, entry.id);
+          finish(true);
+        });
+      }, 'IndexedDB cleanup recovery failed');
     }
 
     async function unsubscribeBrowser() {
@@ -545,16 +371,15 @@
       return await current.unsubscribe() !== false;
     }
 
-    async function completeDisable(installation) {
-      installation.cleanupServerDone = true;
+    async function completeDisable() {
+      var installation = await getInstallation();
+      if (!installation || !installation.cleanupPending || !installation.cleanupServerDone) return false;
       try {
         if (!await unsubscribeBrowser()) {
-          await saveInstallation(installation);
           state = 'pending';
           return false;
         }
       } catch (error) {
-        await saveInstallation(installation);
         state = 'pending';
         return false;
       }
@@ -569,94 +394,108 @@
       return true;
     }
 
-    async function flushQueue(forceRetry, lifecycle) {
-      lifecycle = lifecycle || await beginLifecycle('drain');
-      if (lifecycle.blocked) {
-        return toPublicStatus(lifecycle.installation.cleanupAuthRejected ? 'error' : 'pending', lifecycle.installation);
-      }
+    async function commitQueueResponse(snapshot, response) {
+      var database = await getDatabase();
+      return runTransaction(database, ['queue', 'installation'], 'readwrite', function(transaction, finish) {
+        var queueStore = transaction.objectStore('queue');
+        var installationStore = transaction.objectStore('installation');
+        afterReads([queueStore.get(snapshot.id), installationStore.get(INSTALLATION_KEY),
+          queueStore.getAll()], function(values) {
+          var current = values[0];
+          var installation = values[1] || {};
+          if (!current || current.generation !== snapshot.generation) {
+            finish({ stale: true });
+            return;
+          }
+          if (response && response.ok) {
+            queueStore.delete(current.id);
+            if (current.kind === 'disable') {
+              installation.cleanupServerDone = true;
+              installationStore.put(installation, INSTALLATION_KEY);
+            }
+            finish({ success: true, disable: current.kind === 'disable' });
+            return;
+          }
+          if (response && (response.status === 401 || response.status === 403)) {
+            applyAuthenticationReset(installationStore, queueStore, installation, values[2], current);
+            finish({ authenticationError: true });
+            return;
+          }
+          current.attempts += 1;
+          current.terminal = current.attempts >= MAX_RETRY_ATTEMPTS;
+          current.nextRetryAt = current.terminal
+            ? null
+            : now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, current.attempts - 1));
+          queueStore.put(current, current.id);
+          finish({ failed: true, terminal: current.terminal });
+        });
+      }, 'IndexedDB queue response commit failed');
+    }
+
+    async function flushQueue(forceRetry) {
       var installation = await getInstallation();
+      if (installation && installation.cleanupPending) {
+        if (installation.cleanupAuthRejected) return toPublicStatus('error');
+        if (installation.cleanupServerDone) {
+          if (await completeDisable()) return toPublicStatus('disabled');
+          return toPublicStatus('pending', installation);
+        }
+        await ensureCleanupIntent();
+      }
       var entries = await getQueue();
       if (!entries.length) {
         if (installation && installation.cleanupPending) {
-          if (installation.cleanupAuthRejected) return toPublicStatus('error');
-          if (installation.cleanupServerDone && await completeDisable(installation)) return toPublicStatus('disabled');
-          return toPublicStatus('pending', installation);
+          state = installation.cleanupDeviceId && installation.deviceToken ? 'pending' : 'error';
+          return toPublicStatus(state, installation);
         }
         return toPublicStatus(installation && installation.enabled ? 'ready' : 'disabled', installation);
       }
-      var drainLease = await acquireDrainLease();
-      if (!drainLease) {
-        var blockedStatus = entries.some(function(entry) { return entry.terminal; }) ? 'error' : 'pending';
-        state = blockedStatus;
-        return toPublicStatus(blockedStatus, installation);
+      if (!installation || !installation.deviceToken) {
+        state = 'error';
+        return toPublicStatus('error');
       }
-      try {
-        if (!installation || !installation.deviceToken) {
+      if (!isOnline()) {
+        state = 'pending';
+        return toPublicStatus('pending', installation);
+      }
+
+      for (var index = 0; index < entries.length; index += 1) {
+        var entry = entries[index];
+        if (entry.terminal || (!forceRetry && entry.nextRetryAt > now())) continue;
+        var response;
+        try {
+          response = await request(entry.method, entry.path, entry.body, installation, true);
+        } catch (error) {
+          response = null;
+        }
+        var committed = await commitQueueResponse(entry, response);
+        if (committed.authenticationError) {
           state = 'error';
           return toPublicStatus('error');
         }
-        if (!isOnline()) {
-          state = 'pending';
-          return toPublicStatus('pending', installation);
+        if (committed.disable) {
+          if (await completeDisable()) return toPublicStatus('disabled');
+          return toPublicStatus('pending', await getInstallation());
         }
-
-        for (var index = 0; index < entries.length; index += 1) {
-          var entry = entries[index];
-          if (entry.terminal) {
-            state = 'error';
-            return toPublicStatus('error');
-          }
-          if (!forceRetry && entry.nextRetryAt > now()) continue;
-          var allowCleanup = entry.kind === 'disable';
-          if (!await validateDrainLease(drainLease, lifecycle, allowCleanup, true)) return getStatus();
-          var response;
-          try {
-            var write = await lifecycleRequest(lifecycle, allowCleanup, function() {
-              return request(entry.method, entry.path, entry.body, installation, true);
-            });
-            if (write.fenced) return getStatus();
-            response = write.response;
-          } catch (error) {
-            response = null;
-          }
-          if (!await validateDrainLease(drainLease, lifecycle, allowCleanup, false)) return getStatus();
-          if (response && response.ok) {
-            if (entry.kind === 'disable') await completeDisable(installation);
-            await deleteRecord(await getDatabase(), 'queue', entry.id);
-            continue;
-          }
-          if (response && (response.status === 401 || response.status === 403)) {
-            await resetAuthentication(installation);
-            return toPublicStatus('error');
-          }
-          entry.attempts += 1;
-          entry.terminal = entry.attempts >= MAX_RETRY_ATTEMPTS;
-          entry.nextRetryAt = entry.terminal
-            ? null
-            : now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, entry.attempts - 1));
-          await writeRecord(await getDatabase(), 'queue', entry.id, entry);
-          state = entry.terminal ? 'error' : 'pending';
-          break;
-        }
-
-        entries = await getQueue();
-        if (entries.length) {
-          if (entries.some(function(queued) { return queued.terminal; })) {
-            state = 'error';
-            return toPublicStatus('error');
-          }
-          state = 'pending';
-          return toPublicStatus('pending', installation);
-        }
-        if (installation.cleanupPending) {
-          state = installation.cleanupAuthRejected ? 'error' : 'pending';
-          return toPublicStatus(state, installation);
-        }
-        state = installation.enabled ? 'ready' : 'disabled';
-        return toPublicStatus(state, installation);
-      } finally {
-        await releaseDrainLease(drainLease);
+        if (committed.failed && !committed.terminal) break;
       }
+
+      installation = await getInstallation();
+      entries = await getQueue();
+      if (installation && installation.cleanupPending) {
+        state = installation.cleanupAuthRejected ? 'error' : 'pending';
+        return toPublicStatus(state, installation);
+      }
+      if (entries.some(function(entry) { return entry.terminal; })) {
+        state = 'error';
+        return toPublicStatus('error');
+      }
+      if (entries.length) {
+        state = 'pending';
+        return toPublicStatus('pending', installation);
+      }
+      state = installation && installation.enabled ? 'ready' : 'disabled';
+      return toPublicStatus(state, installation);
     }
 
     function permissionStatus() {
@@ -664,17 +503,13 @@
       return notificationApi.permission;
     }
 
-    function subscriptionJson(subscription) {
-      return subscription && typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription;
-    }
-
     async function setupImpl(nextRegistration) {
       if (nextRegistration) registration = nextRegistration;
-      await beginLifecycle('setup');
-      return getStatus();
+      await beginLifecycle();
+      return getStatusImpl();
     }
 
-    async function getStatus() {
+    async function getStatusImpl() {
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
         return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
@@ -689,13 +524,33 @@
       return toPublicStatus(state === 'syncing' || state === 'subscribing' ? state : 'ready', installation);
     }
 
+    async function commitSubscriptionSuccess(installation, queued, endpoint) {
+      var database = await getDatabase();
+      return runTransaction(database, ['installation', 'queue'], 'readwrite', function(transaction, finish) {
+        var installationStore = transaction.objectStore('installation');
+        var queueStore = transaction.objectStore('queue');
+        var requests = [installationStore.get(INSTALLATION_KEY)];
+        if (queued) requests.push(queueStore.get(queued.id));
+        afterReads(requests, function(values) {
+          var stored = values[0];
+          if (!stored || stored.cleanupPending || stored.deviceId !== installation.deviceId) {
+            finish(false);
+            return;
+          }
+          stored.subscriptionEndpoint = endpoint;
+          installationStore.put(stored, INSTALLATION_KEY);
+          if (queued && values[1] && values[1].generation === queued.generation) queueStore.delete(queued.id);
+          finish(true);
+        });
+      }, 'IndexedDB subscription commit failed');
+    }
+
     async function enableImpl() {
-      var pendingInstallation = await getInstallation();
-      if (pendingInstallation && pendingInstallation.cleanupPending) {
-        return toPublicStatus(pendingInstallation.cleanupAuthRejected ? 'error' : 'pending', pendingInstallation);
+      var installation = await getInstallation();
+      if (installation && installation.cleanupPending) {
+        return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
       }
-      var lifecycle = await beginLifecycle('enable');
-      if (lifecycle.blocked) return toPublicStatus('pending', lifecycle.installation);
+      await beginLifecycle();
       if (!registration || !registration.pushManager || typeof registration.pushManager.getSubscription !== 'function') {
         state = 'unsupported';
         return toPublicStatus('unsupported');
@@ -707,7 +562,7 @@
       state = 'subscribing';
       if (!isOnline()) {
         state = 'pending';
-        return toPublicStatus('pending', await getInstallation());
+        return toPublicStatus('pending', installation);
       }
 
       var config;
@@ -717,93 +572,100 @@
         config = await configResponse.json();
       } catch (error) {
         state = 'pending';
-        return toPublicStatus('pending', await getInstallation());
+        return toPublicStatus('pending', installation);
       }
 
-      var installation = await getInstallation();
+      installation = await getInstallation();
       if (!installation || !installation.deviceId || !installation.deviceToken || installation.authenticationReset) {
         try {
-          var registrationWrite = await lifecycleRequest(lifecycle, false, function() {
-            return request('POST', '/api/notifications/devices', {
-              platform: 'web',
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-            }, null, false);
-          });
-          if (registrationWrite.fenced) return getStatus();
-          var registrationResponse = registrationWrite.response;
+          var registrationResponse = await request('POST', '/api/notifications/devices', {
+            platform: 'web',
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          }, null, false);
           if (!registrationResponse.ok) throw new Error('Device registration failed');
           var credentials = await registrationResponse.json();
-          installation = { deviceId: credentials.deviceId, deviceToken: credentials.deviceToken, enabled: true, authenticationReset: false };
-          if (!await saveInstallationIfCurrent(lifecycle, installation, false)) return getStatus();
+          installation = {
+            deviceId: credentials.deviceId,
+            deviceToken: credentials.deviceToken,
+            enabled: true,
+            authenticationReset: false
+          };
+          await saveInstallation(installation);
         } catch (error) {
           state = 'pending';
           return toPublicStatus('pending', installation);
         }
       } else {
         installation.enabled = true;
-        if (!await saveInstallationIfCurrent(lifecycle, installation, false)) return getStatus();
+        await saveInstallation(installation);
       }
 
       var subscription;
+      var subscriptionValue;
       try {
         subscription = await registration.pushManager.getSubscription();
         if (subscription && Number.isFinite(subscription.expirationTime) && subscription.expirationTime <= now()) {
-          await subscription.unsubscribe();
+          if (await subscription.unsubscribe() === false) throw new Error('Expired subscription cleanup failed');
           subscription = null;
         }
         if (!subscription) {
-          var applicationServerKey = notificationCrypto.base64UrlDecode(config.vapidPublicKey);
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: applicationServerKey
+            applicationServerKey: notificationCrypto.base64UrlDecode(config.vapidPublicKey)
           });
         }
+        subscriptionValue = subscription && typeof subscription.toJSON === 'function'
+          ? subscription.toJSON()
+          : subscription;
       } catch (error) {
         state = 'error';
         return toPublicStatus('error');
       }
-      var subscriptionValue = subscriptionJson(subscription);
+
+      var logicalKey = 'subscription:' + installation.deviceId;
+      var queued = await getQueuedLogical(logicalKey);
       try {
-        var subscriptionWrite = await lifecycleRequest(lifecycle, false, function() {
-          return request(
-            'PUT',
-            '/api/notifications/devices/' + encodeURIComponent(installation.deviceId) + '/subscription',
-            subscriptionValue,
-            installation,
-            true
-          );
-        });
-        if (subscriptionWrite.fenced) return getStatus();
-        var subscriptionResponse = subscriptionWrite.response;
-        if (subscriptionResponse.status === 401 || subscriptionResponse.status === 403) {
-          await resetAuthentication(installation);
-          return toPublicStatus('error');
-        }
-        if (!subscriptionResponse.ok) throw new Error('Subscription update failed');
-        var subscriptionLogicalKey = 'subscription:' + installation.deviceId;
-        if (!await commitSubscriptionSuccess(
-          lifecycle, installation, subscriptionLogicalKey, subscriptionValue.endpoint || ''
-        )) return getStatus();
-      } catch (error) {
-        await queueOperation(
-          'subscription',
+        var subscriptionResponse = await request(
           'PUT',
           '/api/notifications/devices/' + encodeURIComponent(installation.deviceId) + '/subscription',
           subscriptionValue,
-          { logicalKey: 'subscription:' + installation.deviceId, requireEnabled: true }
+          installation,
+          true
         );
+        if (subscriptionResponse.status === 401 || subscriptionResponse.status === 403) {
+          await resetAuthentication();
+          return toPublicStatus('error');
+        }
+        if (!subscriptionResponse.ok) throw new Error('Subscription update failed');
+        if (!await commitSubscriptionSuccess(installation, queued, subscriptionValue.endpoint || '')) {
+          return getStatusImpl();
+        }
+      } catch (error) {
+        try {
+          await queueOperation(
+            'subscription',
+            'PUT',
+            '/api/notifications/devices/' + encodeURIComponent(installation.deviceId) + '/subscription',
+            subscriptionValue,
+            { logicalKey: logicalKey, requireEnabled: true }
+          );
+        } catch (queueError) {
+          state = 'error';
+          return toPublicStatus('error');
+        }
         state = 'pending';
         return toPublicStatus('pending', installation);
       }
       state = 'syncing';
-      return flushQueue(true, lifecycle);
+      return flushQueue(true);
     }
 
     async function syncImpl(data, todayKey) {
-      var lifecycle = await beginLifecycle('sync');
-      if (lifecycle.blocked) return getStatus();
+      await beginLifecycle();
       var installation = await getInstallation();
-      if (!installation || !installation.enabled || !installation.deviceToken) return getStatus();
+      if (!installation || !installation.enabled || !installation.deviceToken || installation.cleanupPending) {
+        return getStatusImpl();
+      }
       try {
         state = 'syncing';
         await writeRecord(await getDatabase(), 'meta', 'sync', {
@@ -820,7 +682,9 @@
           if (reminder.cancelled) {
             await queueOperation('cancel', 'DELETE', '/api/notifications/reminders/' + encodeURIComponent(reminder.id),
               { revision: reminder.revision }, {
-                logicalKey: 'reminder:' + reminder.id, version: reminder.revision, requireEnabled: true
+                logicalKey: 'reminder:' + reminder.id,
+                version: reminder.revision,
+                requireEnabled: true
               });
             continue;
           }
@@ -836,11 +700,18 @@
             encryptedPayload: encryptedPayload,
             encryptionVersion: 1,
             revision: reminder.revision
-          }, { logicalKey: 'reminder:' + reminder.id, version: reminder.revision, requireEnabled: true });
+          }, {
+            logicalKey: 'reminder:' + reminder.id,
+            version: reminder.revision,
+            requireEnabled: true
+          });
         }
-        await queueOperation('reconcile', 'POST', '/api/notifications/reconcile', { reminders: summaries },
-          { logicalKey: 'reconcile', version: reconcileVersion, requireEnabled: true });
-        return flushQueue(false, lifecycle);
+        await queueOperation('reconcile', 'POST', '/api/notifications/reconcile', { reminders: summaries }, {
+          logicalKey: 'reconcile',
+          version: reconcileVersion,
+          requireEnabled: true
+        });
+        return flushQueue(false);
       } catch (error) {
         state = 'error';
         return toPublicStatus('error');
@@ -848,8 +719,12 @@
     }
 
     async function sendTestImpl(value) {
+      await beginLifecycle();
       var installation = await getInstallation();
-      if (!installation || !installation.enabled || !installation.deviceToken) return getStatus();
+      if (installation && installation.cleanupPending) {
+        return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
+      }
+      if (!installation || !installation.enabled || !installation.deviceToken) return getStatusImpl();
       try {
         var key = await notificationCrypto.getOrCreateKey();
         var encryptedPayload = await notificationCrypto.encryptPayload(key, value || {
@@ -860,7 +735,7 @@
           encryptionVersion: 1
         }, installation, true);
         if (response.status === 401 || response.status === 403) {
-          await resetAuthentication(installation);
+          await resetAuthentication();
           return toPublicStatus('error');
         }
         if (!response.ok) {
@@ -876,8 +751,17 @@
     }
 
     async function disableImpl() {
-      var lifecycle = await beginLifecycle('disable');
-      var installation = lifecycle.installation || await getInstallation();
+      var installation = await getInstallation();
+      if (installation && installation.cleanupPending) {
+        if (installation.cleanupAuthRejected) return toPublicStatus('error');
+        if (installation.cleanupServerDone) {
+          if (await completeDisable()) return toPublicStatus('disabled');
+          return toPublicStatus('pending', installation);
+        }
+        await ensureCleanupIntent();
+        return flushQueue(false);
+      }
+
       if (!installation || !installation.deviceId || !installation.deviceToken) {
         var currentSubscription;
         try {
@@ -889,9 +773,7 @@
           currentSubscription = true;
         }
         if (currentSubscription) {
-          installation = installation || { enabled: true };
-          installation.cleanupPending = true;
-          await saveInstallation(installation);
+          await prepareDisable();
           state = 'error';
           return toPublicStatus('error');
         }
@@ -903,41 +785,56 @@
         state = 'disabled';
         return toPublicStatus('disabled');
       }
-      installation.cleanupPending = true;
-      installation.cleanupDeviceId = installation.deviceId;
-      installation.cleanupServerDone = false;
-      installation.cleanupAuthRejected = false;
-      await saveInstallation(installation);
-      await queueOperation(
-        'disable',
-        'DELETE',
-        '/api/notifications/devices/' + encodeURIComponent(installation.deviceId) + '/subscription',
-        null,
-        { logicalKey: 'disable', replaceAll: true }
-      );
+
+      installation = await prepareDisable();
       state = 'pending';
-      return flushQueue(false, lifecycle);
+      return flushQueue(false);
     }
 
     async function handleOnlineImpl() {
+      await beginLifecycle();
       var installation = await getInstallation();
-      if (installation && installation.authenticationReset && !installation.cleanupPending) return getStatus();
+      if (installation && installation.authenticationReset && !installation.cleanupPending) return getStatusImpl();
+      if (installation && installation.cleanupPending) {
+        if (installation.cleanupAuthRejected) return toPublicStatus('error');
+        if (installation.cleanupServerDone) {
+          if (await completeDisable()) return toPublicStatus('disabled');
+          return toPublicStatus('pending', installation);
+        }
+        await ensureCleanupIntent();
+      }
       return flushQueue(true);
     }
 
-    async function handleForegroundImpl() {
-      return handleOnlineImpl();
+    function runLocked(operation, args) {
+      if (!hasLocks()) return Promise.resolve(toPublicStatus('unsupported'));
+      return Promise.resolve().then(function() {
+        return locks.request(LIFECYCLE_LOCK, function() {
+          return operation.apply(null, args);
+        });
+      }).catch(function() {
+        state = 'error';
+        return toPublicStatus('error');
+      });
+    }
+
+    function getStatus() {
+      if (!hasLocks()) return Promise.resolve(toPublicStatus('unsupported'));
+      return getStatusImpl().catch(function() {
+        state = 'error';
+        return toPublicStatus('error');
+      });
     }
 
     return {
-      setup: function() { return serialize(setupImpl, arguments); },
+      setup: function() { return runLocked(setupImpl, arguments); },
       getStatus: getStatus,
-      enable: function() { return serialize(enableImpl, arguments); },
-      disable: function() { return serialize(disableImpl, arguments); },
-      sync: function() { return serialize(syncImpl, arguments); },
-      sendTest: function() { return serialize(sendTestImpl, arguments); },
-      handleOnline: function() { return serialize(handleOnlineImpl, arguments); },
-      handleForeground: function() { return serialize(handleForegroundImpl, arguments); }
+      enable: function() { return runLocked(enableImpl, arguments); },
+      disable: function() { return runLocked(disableImpl, arguments); },
+      sync: function() { return runLocked(syncImpl, arguments); },
+      sendTest: function() { return runLocked(sendTestImpl, arguments); },
+      handleOnline: function() { return runLocked(handleOnlineImpl, arguments); },
+      handleForeground: function() { return runLocked(handleOnlineImpl, arguments); }
     };
   }
 

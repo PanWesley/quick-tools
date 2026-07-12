@@ -15,7 +15,11 @@ function createRequest(run) {
   return request;
 }
 
-function createFakeIndexedDB() {
+function clone(value) {
+  return value === undefined ? undefined : structuredClone(value);
+}
+
+function createFakeIndexedDB(options = {}) {
   const databases = new Map();
 
   return {
@@ -32,11 +36,13 @@ function createFakeIndexedDB() {
             transactionTails: new Map(),
             objectStoreNames: { contains: store => database.stores.has(store) },
             createObjectStore(store) { database.stores.set(store, new Map()); },
-            transaction(storeNames) {
+            transaction(storeNames, mode = 'readonly') {
               const transaction = {};
               const pending = [];
               let started = false;
+              let aborted = false;
               let finish;
+              let workingStores;
               const complete = new Promise(resolve => { finish = resolve; });
               const scopes = Array.isArray(storeNames) ? storeNames : [storeNames];
               const previous = Promise.all(scopes.map(storeName =>
@@ -49,7 +55,12 @@ function createFakeIndexedDB() {
                 if (started) return;
                 started = true;
                 previous.then(() => {
+                  workingStores = new Map(scopes.map(storeName => [
+                    storeName,
+                    new Map(Array.from(database.stores.get(storeName).entries(), ([key, value]) => [key, clone(value)]))
+                  ]));
                   function next() {
+                    if (aborted) return;
                     if (pending.length) {
                       const operation = pending.shift();
                       try {
@@ -65,9 +76,10 @@ function createFakeIndexedDB() {
                           });
                         }
                         if (!prevented) {
+                          aborted = true;
                           transaction.error = error;
-                          if (transaction.onerror) transaction.onerror();
                           if (transaction.onabort) transaction.onabort();
+                          else if (transaction.onerror) transaction.onerror();
                           finish();
                           return;
                         }
@@ -76,7 +88,11 @@ function createFakeIndexedDB() {
                       return;
                     }
                     queueMicrotask(() => {
+                      if (aborted) return;
                       if (pending.length) return next();
+                      if (mode === 'readwrite') {
+                        scopes.forEach(storeName => database.stores.set(storeName, workingStores.get(storeName)));
+                      }
                       if (transaction.oncomplete) transaction.oncomplete();
                       finish();
                     });
@@ -93,19 +109,24 @@ function createFakeIndexedDB() {
               }
 
               transaction.objectStore = storeName => {
-                const records = database.stores.get(storeName);
+                const records = () => workingStores.get(storeName);
                 return {
-                  get: key => enqueue(() => records.get(key)),
-                  getAll: () => enqueue(() => Array.from(records.values())),
-                  put: (value, key) => enqueue(() => records.set(key, value)),
-                  delete: key => enqueue(() => records.delete(key)),
+                  get: key => enqueue(() => clone(records().get(key))),
+                  getAll: () => enqueue(() => Array.from(records().values(), clone)),
+                  put: (value, key) => enqueue(() => {
+                    if (options.failPut && options.failPut(storeName, key, value)) {
+                      throw new Error('Injected IndexedDB put failure');
+                    }
+                    records().set(key, clone(value));
+                  }),
+                  delete: key => enqueue(() => records().delete(key)),
                   add: (value, key) => enqueue(() => {
-                    if (records.has(key)) {
+                    if (records().has(key)) {
                       const error = new Error('Key already exists');
                       error.name = 'ConstraintError';
                       throw error;
                     }
-                    records.set(key, value);
+                    records().set(key, clone(value));
                     return key;
                   })
                 };
@@ -124,6 +145,30 @@ function createFakeIndexedDB() {
       return request;
     }
   };
+}
+
+function createFakeLockManager() {
+  const tails = new Map();
+  return {
+    request(name, callback) {
+      const previous = tails.get(name) || Promise.resolve();
+      let release;
+      const held = new Promise(resolve => { release = resolve; });
+      const tail = previous.catch(() => {}).then(() => held);
+      tails.set(name, tail);
+      return previous.catch(() => {}).then(() => callback({ name, mode: 'exclusive' })).finally(() => {
+        release();
+        if (tails.get(name) === tail) tails.delete(name);
+      });
+    }
+  };
+}
+
+const lockManagers = new WeakMap();
+
+function locksFor(indexedDB) {
+  if (!lockManagers.has(indexedDB)) lockManagers.set(indexedDB, createFakeLockManager());
+  return lockManagers.get(indexedDB);
 }
 
 function jsonResponse(status, body) {
@@ -164,6 +209,9 @@ function subscription(endpoint) {
 
 function createHarness(overrides = {}) {
   const indexedDB = overrides.indexedDB || createFakeIndexedDB();
+  const locks = Object.prototype.hasOwnProperty.call(overrides, 'locks')
+    ? overrides.locks
+    : locksFor(indexedDB);
   const calls = [];
   const storage = {
     writes: [],
@@ -174,7 +222,7 @@ function createHarness(overrides = {}) {
   let currentSubscription = Object.prototype.hasOwnProperty.call(overrides, 'subscription')
     ? overrides.subscription
     : subscription('https://push.example/original');
-  const registration = {
+  const registration = overrides.registration || {
     pushManager: {
       async getSubscription() {
         if (overrides.getSubscriptionError) throw overrides.getSubscriptionError;
@@ -183,6 +231,7 @@ function createHarness(overrides = {}) {
       async subscribe(options) {
         if (overrides.subscribeError) throw overrides.subscribeError;
         calls.push({ subscribe: options });
+        if (overrides.subscribe) return overrides.subscribe(options, value => { currentSubscription = value; });
         currentSubscription = subscription('https://push.example/created');
         return currentSubscription;
       }
@@ -198,6 +247,7 @@ function createHarness(overrides = {}) {
   };
   const sync = require('./notification-sync.js').create({
     indexedDB,
+    locks,
     storage,
     crypto,
     registration,
@@ -235,6 +285,90 @@ function responsePlan() {
     return jsonResponse(204);
   };
 }
+
+test('fake IndexedDB clones values on put and get', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const database = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('clone-test');
+    request.onupgradeneeded = () => request.result.createObjectStore('records');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const original = { nested: { value: 1 } };
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction('records', 'readwrite');
+    transaction.objectStore('records').put(original, 'item');
+    transaction.oncomplete = resolve;
+    transaction.onabort = () => reject(transaction.error);
+  });
+  original.nested.value = 2;
+  const firstRead = await new Promise((resolve, reject) => {
+    const request = database.transaction('records', 'readonly').objectStore('records').get('item');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  firstRead.nested.value = 3;
+  const secondRead = await new Promise((resolve, reject) => {
+    const request = database.transaction('records', 'readonly').objectStore('records').get('item');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  assert.equal(secondRead.nested.value, 1);
+});
+
+test('fake LockManager releases an exclusive lock after callback throw and rejection', async () => {
+  const locks = createFakeLockManager();
+  const order = [];
+  const thrown = locks.request('notification-lifecycle', () => {
+    order.push('throw');
+    throw new Error('callback threw');
+  });
+  const rejected = locks.request('notification-lifecycle', async () => {
+    order.push('reject');
+    throw new Error('callback rejected');
+  });
+  const next = locks.request('notification-lifecycle', async () => {
+    order.push('next');
+    return 'acquired';
+  });
+
+  await assert.rejects(thrown, /callback threw/);
+  await assert.rejects(rejected, /callback rejected/);
+  assert.equal(await next, 'acquired');
+  assert.deepEqual(order, ['throw', 'reject', 'next']);
+});
+
+test('lifecycle methods return unsupported when Web Locks are unavailable', async () => {
+  const harness = createHarness({ locks: null, fetch: responsePlan() });
+
+  assert.deepEqual(await harness.sync.setup(harness.registration), { status: 'unsupported' });
+  assert.deepEqual(await harness.sync.enable(), { status: 'unsupported' });
+  assert.deepEqual(await harness.sync.sync({ reminders: [] }), { status: 'unsupported' });
+  assert.deepEqual(await harness.sync.sendTest(), { status: 'unsupported' });
+  assert.deepEqual(await harness.sync.disable(), { status: 'unsupported' });
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'unsupported' });
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'unsupported' });
+});
+
+test('a rejected lifecycle callback releases the Web Lock for the next instance', async () => {
+  let failLifecycleWrite = true;
+  const indexedDB = createFakeIndexedDB({
+    failPut(storeName, key) {
+      if (failLifecycleWrite && storeName === 'meta' && key === 'lifecycle-epoch') {
+        failLifecycleWrite = false;
+        return true;
+      }
+      return false;
+    }
+  });
+  const locks = createFakeLockManager();
+  const first = createHarness({ indexedDB, locks, fetch: responsePlan() });
+  const second = createHarness({ indexedDB, locks, fetch: responsePlan() });
+
+  assert.deepEqual(await first.sync.enable(), { status: 'error' });
+  assert.equal((await second.sync.enable()).status, 'ready');
+});
 
 test('enable reuses its IndexedDB installation, sends bearer credentials, and keeps the token out of storage/status', async () => {
   const harness = createHarness({ fetch: responsePlan() });
@@ -287,6 +421,14 @@ test('enable converts PushManager and malformed VAPID failures to typed errors',
 
   const subscribeFailure = createHarness({ subscription: null, fetch: responsePlan(), subscribeError: new Error('denied') });
   assert.deepEqual(await subscribeFailure.sync.enable(), { status: 'error' });
+});
+
+test('subscription toJSON failures are converted to a typed error', async () => {
+  const broken = subscription('https://push.example/broken-json');
+  broken.toJSON = () => { throw new Error('serialization failed'); };
+  const harness = createHarness({ subscription: broken, fetch: responsePlan() });
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
 });
 
 test('sync queues a failed server write and retries it with exponential delay when online', async () => {
@@ -528,76 +670,74 @@ test('overlapping drains across page and worker instances send each queued inten
   assert.equal(reminderCalls, 2);
 });
 
-test('drain renews its lease before each queued server write', { timeout: 2000 }, async () => {
-  const indexedDB = createFakeIndexedDB();
+test('a stale response does not delete a newer generation of the same logical intent', async () => {
+  const response = deferred();
   const standard = responsePlan();
-  let now = 1000;
-  let offline = true;
-  const observedExpiries = [];
-  const fetch = async (url, init, calls) => {
-    if (/\/reminders\//.test(url)) {
-      if (offline) throw new Error('offline');
-      observedExpiries.push(indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease').expiresAt);
-      now += 40000;
-      return jsonResponse(204);
-    }
-    if (/\/reconcile$/.test(url) && !offline) {
-      observedExpiries.push(indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease').expiresAt);
-    }
-    return standard(url, init, calls);
-  };
-  const harness = createHarness({ indexedDB, fetch, clock: () => now });
-  await harness.sync.enable();
-  await harness.sync.sync({ reminders: [{
-    id: 'task-renew-lease', revision: 1, sourceIdHash: '7'.repeat(64),
-    notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
-  }] });
-
-  offline = false;
-  assert.deepEqual(await harness.sync.handleOnline(), { status: 'ready', deviceId: 'device-1' });
-  assert.equal(observedExpiries.length, 2);
-  assert.ok(observedExpiries[1] > observedExpiries[0]);
-});
-
-test('expired drain lease fences the old deferred response with a monotonic token', { timeout: 2000 }, async () => {
-  const indexedDB = createFakeIndexedDB();
-  const firstRecovery = deferred();
-  const standard = responsePlan();
-  let now = 1000;
   let offline = true;
   let reminderCalls = 0;
-  const fetch = async (url, init, calls) => {
-    if (/\/reminders\//.test(url)) {
-      reminderCalls += 1;
-      if (offline) throw new Error('offline');
-      if (reminderCalls === 2) return firstRecovery.promise;
-      return jsonResponse(204);
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reminders\//.test(url)) {
+        reminderCalls += 1;
+        if (offline) throw new Error('offline');
+        return response.promise;
+      }
+      return standard(url, init, calls);
     }
-    return standard(url, init, calls);
-  };
-  const page = createHarness({ indexedDB, fetch, clock: () => now });
-  const worker = createHarness({ indexedDB, fetch, clock: () => now });
-  await page.sync.enable();
-  await page.sync.sync({ reminders: [{
-    id: 'task-expired-lease', revision: 1, sourceIdHash: '8'.repeat(64),
-    notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [{
+    id: 'task-stale-response', revision: 1, sourceIdHash: '8'.repeat(64),
+    notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'old' }
   }] });
 
   offline = false;
-  const staleDrain = page.sync.handleOnline();
+  const recovery = harness.sync.handleOnline();
   await waitFor(() => reminderCalls === 2);
-  const firstLease = { ...indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease') };
-  now += 60001;
-  const winningDrain = worker.sync.handleOnline();
-  await waitFor(() => indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease').ownerId !== firstLease.ownerId);
-  const secondLease = indexedDB.dump('todayYouxuNotificationDB', 'meta').get('drain-lease');
+  const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
+  const current = Array.from(queue.values()).find(entry => entry.kind === 'upsert');
+  queue.set(current.id, {
+    ...current,
+    generation: (current.generation || 0) + 1,
+    version: 2,
+    body: { ...current.body, revision: 2, encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'new' } }
+  });
+  response.resolve(jsonResponse(204));
+  await recovery;
 
-  firstRecovery.resolve(jsonResponse(204));
-  await Promise.all([staleDrain, winningDrain]);
-  assert.ok(Number.isSafeInteger(firstLease.fence));
-  assert.ok(secondLease.fence > firstLease.fence);
-  assert.equal(reminderCalls, 3);
-  assert.equal(indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
+  const persisted = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').get(current.id);
+  assert.equal(persisted.generation, (current.generation || 0) + 1);
+  assert.equal(persisted.body.revision, 2);
+});
+
+test('a terminal queue entry is skipped so a later logical intent can be delivered', async () => {
+  const standard = responsePlan();
+  let failOld = true;
+  let newReminderCalls = 0;
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url.endsWith('/task-terminal')) {
+        if (failOld) throw new Error('offline');
+      }
+      if (url.endsWith('/task-after-terminal')) newReminderCalls += 1;
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [{
+    id: 'task-terminal', revision: 1, sourceIdHash: '7'.repeat(64),
+    notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'terminal' }
+  }] });
+  for (let attempt = 1; attempt < 5; attempt += 1) await harness.sync.handleOnline();
+  failOld = false;
+
+  assert.equal((await harness.sync.sync({ reminders: [{
+    id: 'task-after-terminal', revision: 1, sourceIdHash: '9'.repeat(64),
+    notifyAt: '2026-07-11T14:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'new' }
+  }] })).status, 'error');
+  assert.equal(newReminderCalls, 1);
+  assert.equal(Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .some(entry => entry.logicalKey === 'reminder:task-after-terminal'), false);
 });
 
 test('disable waits for server cleanup before unsubscribing and exposes pending cleanup failures', async () => {
@@ -647,35 +787,90 @@ test('disable serializes against overlapping sync and prevents reminder recreati
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
 });
 
-test('cross-instance disable fences an in-flight enable PUT before issuing server cleanup', async () => {
+test('cross-instance disable waits for a deferred subscribe and removes the created browser subscription', async () => {
   const indexedDB = createFakeIndexedDB();
-  const subscriptionPut = deferred();
+  const subscribeResult = deferred();
   const standard = responsePlan();
   const orderedWrites = [];
-  const fetch = async (url, init, calls) => {
-    if (/\/subscription$/.test(url) && init.method === 'PUT') {
-      orderedWrites.push('PUT');
-      return subscriptionPut.promise;
+  let currentSubscription = null;
+  let subscribeStarted = false;
+  const registration = {
+    pushManager: {
+      async getSubscription() { return currentSubscription; },
+      async subscribe() {
+        subscribeStarted = true;
+        currentSubscription = await subscribeResult.promise;
+        return currentSubscription;
+      }
     }
+  };
+  const fetch = async (url, init, calls) => {
+    if (/\/subscription$/.test(url) && init.method === 'PUT') orderedWrites.push('PUT');
     if (/\/subscription$/.test(url) && init.method === 'DELETE') orderedWrites.push('DELETE');
     return standard(url, init, calls);
   };
-  const page = createHarness({ indexedDB, fetch });
-  const worker = createHarness({ indexedDB, fetch });
+  const page = createHarness({
+    indexedDB,
+    fetch,
+    registration
+  });
+  const worker = createHarness({ indexedDB, fetch, registration });
 
   const enabling = page.sync.enable();
-  await waitFor(() => orderedWrites.includes('PUT'));
+  await waitFor(() => subscribeStarted);
   const disabling = worker.sync.disable();
   await new Promise(resolve => setImmediate(resolve));
 
   const installation = indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
-  assert.equal(installation.cleanupPending, true);
-  assert.deepEqual(orderedWrites, ['PUT']);
+  assert.equal(Boolean(installation.cleanupPending), false);
+  assert.deepEqual(orderedWrites, []);
 
-  subscriptionPut.resolve(jsonResponse(204));
-  assert.notEqual((await enabling).status, 'ready');
+  const created = subscription('https://push.example/deferred');
+  subscribeResult.resolve(created);
+  assert.equal((await enabling).status, 'ready');
   assert.deepEqual(await disabling, { status: 'disabled' });
   assert.deepEqual(orderedWrites, ['PUT', 'DELETE']);
+  assert.equal(created.unsubscribed, true);
+});
+
+test('disable atomically rolls back cleanup state when persisting its DELETE intent fails', async () => {
+  let failDisableIntent = true;
+  const indexedDB = createFakeIndexedDB({
+    failPut(storeName, key, value) {
+      if (failDisableIntent && storeName === 'queue' && value && value.kind === 'disable') {
+        failDisableIntent = false;
+        return true;
+      }
+      return false;
+    }
+  });
+  const harness = createHarness({ indexedDB, fetch: responsePlan() });
+  await harness.sync.enable();
+
+  assert.deepEqual(await harness.sync.disable(), { status: 'error' });
+  const installation = indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.cleanupPending, undefined);
+  assert.equal(Array.from(indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .some(entry => entry.kind === 'disable'), false);
+});
+
+test('cleanup recovery rebuilds a missing durable DELETE intent', async () => {
+  let cleanupFails = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/subscription$/.test(url) && init.method === 'DELETE' && cleanupFails) throw new Error('offline');
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  assert.equal((await harness.sync.disable()).status, 'pending');
+  const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
+  for (const [id, entry] of queue) if (entry.kind === 'disable') queue.delete(id);
+
+  cleanupFails = false;
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'disabled' });
+  assert.equal(harness.getSubscription().unsubscribed, true);
 });
 
 test('disable discards queued reminder intents and sends server cleanup before browser unsubscribe', async () => {
@@ -712,8 +907,19 @@ test('disable keeps cleanup pending when credentials are missing but a browser s
 
   assert.deepEqual(await harness.sync.disable(), { status: 'error' });
   assert.equal(harness.getSubscription().unsubscribed, false);
-  assert.equal(installation.enabled, true);
-  assert.equal(installation.cleanupPending, true);
+  const persisted = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(persisted.enabled, true);
+  assert.equal(persisted.cleanupPending, true);
+});
+
+test('cleanup with no recoverable device identity never reports ready or unsubscribes', async () => {
+  const harness = createHarness({ fetch: responsePlan() });
+
+  assert.deepEqual(await harness.sync.disable(), { status: 'error' });
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'error' });
+  assert.equal(harness.getSubscription().unsubscribed, false);
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation')
+    .get('current').cleanupPending, true);
 });
 
 test('cleanup authentication rejection preserves the old identity and never auto-enables a replacement device', async () => {
@@ -782,6 +988,25 @@ test('unsubscribe rejection remains pending and can be retried without registeri
   rejectCleanup = false;
   assert.deepEqual(await harness.sync.handleOnline(), { status: 'disabled' });
   assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, 1);
+});
+
+test('sendTest is blocked while cleanup is pending and cannot reset cleanup authentication', async () => {
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/subscription$/.test(url) && init.method === 'DELETE') throw new Error('offline');
+      if (url === '/api/notifications/test') return jsonResponse(401, { error: { code: 'unauthorized' } });
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  assert.equal((await harness.sync.disable()).status, 'pending');
+
+  assert.deepEqual(await harness.sync.sendTest(), { status: 'pending', deviceId: 'device-1' });
+  const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.cleanupPending, true);
+  assert.equal(installation.cleanupAuthRejected, false);
+  assert.equal(harness.calls.some(call => call.url === '/api/notifications/test'), false);
 });
 
 test('authentication failures reset the installation and a later enable renews the subscription without reusing stale credentials', async () => {
