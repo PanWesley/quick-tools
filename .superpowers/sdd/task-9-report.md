@@ -117,7 +117,7 @@ Static `wrangler.jsonc` readiness:
 - Corrected locally: duplicate `compatibility_flags` key removed.
 - Not inspectable while unauthenticated: remote D1 existence/migrations, Worker secrets, deployed routes/Cron, deployments, logs, and production config endpoint.
 
-No config edit was made: there was no real D1 ID to update, and IDs must not be invented.
+No account-specific D1 binding or route edit was made: there was no real D1 ID to update, and IDs must not be invented.
 
 ## Outstanding
 
@@ -134,7 +134,9 @@ Validated against `http://127.0.0.1:4173/tools/time/` with the system Google Chr
 
 - Desktop 1440x900 and mobile 390x844 layouts loaded without page exceptions or horizontal overflow; notification status and controls remained readable.
 - The page became controlled by the registered Service Worker and `navigator.serviceWorker.ready` resolved.
+- Before user interaction, permission remained `default`, the UI showed `未开启`, and the instrumented `Notification.requestPermission` call count was zero. One click made exactly one request; a denied result displayed `需要重新授权`.
 - With a deterministic mocked notification API and PushManager, the user-click flow reached `后台提醒已开启`, uploaded the PushSubscription with a bearer token, reconciled, and sent an encrypted backend test.
+- The anonymous installation kept the same `device_id` across a full page reload without another device registration request. Clearing all origin storage and enabling again issued one new registration and returned a different `device_id`, matching the documented installation boundary.
 - The backend test request contained only `{ v, iv, ciphertext }`; no test title/body appeared in network request plaintext.
 - While all notification API requests were aborted, creating a task still closed the form, showed `事项已创建`, retained the task locally, and displayed `等待同步`. Dispatching `online` after restoring the API returned the UI to `后台提醒已开启`.
 - A future task reminder PUT contained only a hashed source ID, absolute time, revision, and AES-GCM envelope; its Chinese title did not appear in the request body.

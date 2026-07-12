@@ -80,7 +80,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
    pnpm exec wrangler secret put VAPID_SUBJECT
    ```
 
-5. 先 dry-run，再部署。当前 `wrangler.jsonc` 的 `* * * * *` Cron 与 routes 会随部署生效：
+5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署。当前 `wrangler.jsonc` 只有 `* * * * *` Cron，尚不能接管生产 API 路径：
 
    ```bash
    env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy pnpm check
