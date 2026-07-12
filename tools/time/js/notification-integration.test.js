@@ -23,6 +23,7 @@ function createHarness(overrides = {}) {
     className: '',
     value: '',
     checked: false,
+    disabled: false,
     dataset: {},
     style: {},
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
@@ -90,8 +91,14 @@ function createHarness(overrides = {}) {
       queueNotificationSync: queueNotificationSync,
       setNotificationBackendStatus: setNotificationBackendStatus,
       setNotificationSync: function(value) { NotificationSync = value; },
+      setAppData: function(value) { appState.data = value; },
       getNotificationBackendStatus: function() { return notificationBackendStatus; },
-      setElements: function() { els.toast = document.getElementById('toast'); }
+      setElements: function() {
+        els.toast = document.getElementById('toast');
+        els.notificationStatus = document.getElementById('notification-status');
+        els.notificationDesc = document.getElementById('notification-desc');
+        els.notificationButton = document.getElementById('notification-setup-button');
+      }
     };`
   );
   const context = {
@@ -236,6 +243,37 @@ test('permission request remains inside the runtime click path', async () => {
   assert.equal(requested, 1);
 });
 
+test('schedules the current reminders before a backend enable failure', async () => {
+  const scheduled = [];
+  const notification = {
+    permission: 'default',
+    requestPermission: async () => {
+      notification.permission = 'granted';
+      return 'granted';
+    }
+  };
+  const sync = { enable: async () => { throw new Error('backend unavailable'); } };
+  const harness = createHarness({
+    Notification: notification,
+    sync,
+    legacy: {
+      getPermissionStatus: () => notification.permission,
+      setEnabled() {},
+      scheduleAll(data, todayKey, habitDueOn) { scheduled.push({ data, todayKey, habitDueOn }); },
+      getMissedCount: () => 0
+    }
+  });
+  const data = { marker: 'current snapshot' };
+  harness.hooks.setAppData(data);
+  harness.hooks.setNotificationSync(sync);
+
+  await harness.hooks.handleNotificationAction();
+
+  assert.deepEqual(scheduled.map(call => call.data), [data]);
+  assert.equal(scheduled[0].todayKey, '2026-07-12');
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'error');
+});
+
 test('online and foreground recovery drain then refetch and sync', async () => {
   const calls = [];
   const sync = {
@@ -253,22 +291,98 @@ test('online and foreground recovery drain then refetch and sync', async () => {
   assert.deepEqual(calls, ['foreground', 'getAllData', 'sync']);
 });
 
-test('registers one sync service and exposes Web Locks unsupported status', async () => {
+test('local recovery reads do not replace a ready backend status with authorization copy', async () => {
+  const calls = [];
+  const sync = {
+    handleOnline: async () => { calls.push('online'); return { status: 'ready' }; },
+    handleForeground: async () => { calls.push('foreground'); return { status: 'ready' }; }
+  };
+  const db = {
+    getAllData: async () => {
+      calls.push('getAllData');
+      throw new Error('indexeddb unavailable');
+    }
+  };
+  const harness = createHarness({ sync, db });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  await harness.hooks.recoverNotificationOnline();
+  await harness.hooks.recoverNotificationForeground();
+
+  assert.deepEqual(calls, ['online', 'getAllData', 'foreground', 'getAllData']);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.match(harness.elements.get('toast').textContent, /^本地数据库读取失败：indexeddb unavailable$/);
+});
+
+test('backend lifecycle recovery failures still reach the backend failure handler', async () => {
+  const sync = { handleOnline: async () => { throw new Error('backend unavailable'); } };
+  const harness = createHarness({ sync });
+  harness.hooks.setNotificationSync(sync);
+
+  await assert.rejects(harness.hooks.recoverNotificationOnline(), /backend unavailable/);
+});
+
+test('waits for service worker ready, shares one setup promise, and disables early notification clicks', async () => {
+  let resolveRegister;
+  let resolveReady;
+  const registered = new Promise(resolve => { resolveRegister = resolve; });
+  const ready = new Promise(resolve => { resolveReady = resolve; });
   let creates = 0;
-  const registration = {};
-  const sync = { setup: async () => ({ status: 'unsupported' }) };
+  let setupCalls = 0;
+  let setupRegistration = null;
+  let serviceRegistration = null;
+  let registerCalls = 0;
+  const registration = { source: 'register' };
+  const readyRegistration = { source: 'ready' };
+  const sync = {
+    setup: async reg => {
+      setupCalls += 1;
+      setupRegistration = reg;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' })
+  };
   const navigator = {
-    serviceWorker: { register: async () => registration }
+    serviceWorker: {
+      register() { registerCalls += 1; return registered; },
+      ready
+    }
   };
   const harness = createHarness({
     sync,
     navigator,
-    syncFactory: { create() { creates += 1; return sync; } }
+    syncFactory: { create() { creates += 1; return sync; } },
+    legacy: {
+      getPermissionStatus: () => 'default',
+      setServiceWorkerRegistration(reg) { serviceRegistration = reg; },
+      scheduleAll() {},
+      getMissedCount: () => 0
+    }
   });
-  await harness.hooks.registerServiceWorker();
-  await harness.hooks.registerServiceWorker();
+  const first = harness.hooks.registerServiceWorker();
+  const second = harness.hooks.registerServiceWorker();
+
+  assert.strictEqual(first, second);
+  assert.equal(registerCalls, 1);
+  assert.equal(creates, 0);
+  assert.equal(harness.elements.get('notification-setup-button').disabled, true);
+  assert.equal(harness.elements.get('notification-status').textContent, '正在连接');
+
+  resolveRegister(registration);
+  await Promise.resolve();
+  assert.equal(creates, 0);
+
+  resolveReady(readyRegistration);
+  await first;
+  await new Promise(resolve => setTimeout(resolve, 0));
+
   assert.equal(creates, 1);
-  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'unsupported');
+  assert.equal(setupCalls, 1);
+  assert.strictEqual(setupRegistration, readyRegistration);
+  assert.strictEqual(serviceRegistration, readyRegistration);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(harness.elements.get('notification-setup-button').disabled, false);
 });
 
 test('successful setup projects the current snapshot missed before registration', async () => {
@@ -278,7 +392,7 @@ test('successful setup projects the current snapshot missed before registration'
     setup: async () => ({ status: 'ready' }),
     sync: async () => { synced += 1; return { status: 'ready' }; }
   };
-  const navigator = { serviceWorker: { register: async () => registration } };
+  const navigator = { serviceWorker: { register: async () => registration, ready: Promise.resolve(registration) } };
   const harness = createHarness({ sync, navigator });
   await harness.hooks.registerServiceWorker();
   await new Promise(resolve => setTimeout(resolve, 0));

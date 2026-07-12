@@ -43,6 +43,7 @@
   var journalSaveTimer = null;
   var swipeState = null;
   var notificationBackendStatus = { status: 'disabled' };
+  var notificationSetupPromise = null;
   var pendingNotificationSnapshot = null;
   var notificationSyncPromise = null;
   var missedReminderToastShown = false;
@@ -1584,7 +1585,7 @@
     var permission = NotificationService ? NotificationService.getPermissionStatus() : 'unsupported';
     if (!NotificationService || !NotificationSyncFactory || permission === 'unsupported') status = 'unsupported';
     else if (permission === 'denied') status = 'error';
-    else if (permission === 'default' && status !== 'subscribing') status = 'permission-required';
+    else if (permission === 'default' && status !== 'subscribing' && status !== 'error') status = 'permission-required';
     else if (!NOTIFICATION_STATUS_COPY[status]) status = 'error';
     return {
       status: status,
@@ -1621,9 +1622,11 @@
   }
 
   async function handleNotificationAction() {
-    if (!NotificationService || !NotificationSync) return;
-    var info = getNotificationStatusInfo();
+    if (!NotificationService) return;
     try {
+      if (notificationSetupPromise) await notificationSetupPromise;
+      if (!NotificationSync) return;
+      var info = getNotificationStatusInfo();
       if (info.status === 'ready') {
         setNotificationBackendStatus({ status: 'syncing' });
         setNotificationBackendStatus(await NotificationSync.sendTest());
@@ -1639,6 +1642,7 @@
         }
       }
       NotificationService.setEnabled(true);
+      NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
       setNotificationBackendStatus({ status: 'subscribing' });
       var enabledStatus = await NotificationSync.enable();
       setNotificationBackendStatus(enabledStatus);
@@ -2442,11 +2446,14 @@
   function recoverNotificationLifecycle(method) {
     if (!NotificationSync) return Promise.resolve(notificationBackendStatus);
     return NotificationSync[method]().then(setNotificationBackendStatus).then(function() {
-      return DB.getAllData();
-    }).then(function(data) {
-      appState.data = data;
-      if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
-      return queueNotificationSync(data);
+      return DB.getAllData().then(function(data) {
+        appState.data = data;
+        if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
+        return queueNotificationSync(data);
+      }, function(error) {
+        showToast('本地数据库读取失败：' + error.message);
+        return notificationBackendStatus;
+      });
     });
   }
 
@@ -2459,28 +2466,41 @@
   }
 
   function registerServiceWorker() {
+    if (notificationSetupPromise) return notificationSetupPromise;
     if (!('serviceWorker' in navigator)) {
       setNotificationBackendStatus({ status: 'unsupported' });
-      return Promise.resolve(notificationBackendStatus);
+      notificationSetupPromise = Promise.resolve(notificationBackendStatus);
+      return notificationSetupPromise;
     }
-    return navigator.serviceWorker.register('/tools/time/sw.js').then(function(reg) {
-      if (NotificationService) {
-        NotificationService.setServiceWorkerRegistration(reg);
-      }
-      if (!NotificationSync && NotificationSyncFactory && NotificationSyncFactory.create) {
-        NotificationSync = NotificationSyncFactory.create();
-      }
-      if (!NotificationSync) return setNotificationBackendStatus({ status: 'unsupported' });
-      setNotificationBackendStatus({ status: 'subscribing' });
-      return NotificationSync.setup(reg).then(setNotificationBackendStatus).then(function(status) {
-        syncNotificationsWithoutBlocking(appState.data);
-        return status;
+    setNotificationBackendStatus({ status: 'subscribing' });
+    try {
+      notificationSetupPromise = navigator.serviceWorker.register('/tools/time/sw.js').then(function() {
+        return navigator.serviceWorker.ready;
+      }).then(function(reg) {
+        if (NotificationService) {
+          NotificationService.setServiceWorkerRegistration(reg);
+        }
+        if (!NotificationSync && NotificationSyncFactory && NotificationSyncFactory.create) {
+          NotificationSync = NotificationSyncFactory.create();
+        }
+        if (!NotificationSync) return setNotificationBackendStatus({ status: 'unsupported' });
+        return NotificationSync.setup(reg).then(setNotificationBackendStatus).then(function(status) {
+          if (status.status === 'ready' || status.status === 'pending') {
+            syncNotificationsWithoutBlocking(appState.data);
+          }
+          return status;
+        });
+      }).catch(function(error) {
+        console.warn('[TodayYouxu] Service worker registration failed:', error);
+        setNotificationBackendStatus({ status: 'error' });
+        return notificationBackendStatus;
       });
-    }).catch(function(error) {
+    } catch (error) {
       console.warn('[TodayYouxu] Service worker registration failed:', error);
       setNotificationBackendStatus({ status: 'error' });
-      return notificationBackendStatus;
-    });
+      notificationSetupPromise = Promise.resolve(notificationBackendStatus);
+    }
+    return notificationSetupPromise;
   }
 
   function init() {
