@@ -1,10 +1,10 @@
 (function(root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(require('./notification-model'));
   } else {
-    root.TodayYouxuNotification = factory();
+    root.TodayYouxuNotification = factory(root.TodayYouxuNotificationModel);
   }
-})(typeof self !== 'undefined' ? self : this, function() {
+})(typeof self !== 'undefined' ? self : this, function(NotificationModel) {
   var NOTIFICATION_STORAGE_KEY = 'today-youxu-notification-state';
   var NOTIFIED_LOG_KEY = 'today-youxu-notified-log';
   var MAX_SCHEDULE_AHEAD_HOURS = 24;
@@ -114,7 +114,14 @@
     if (!dateKey) return null;
     var parts = String(dateKey).split('-').map(Number);
     if (parts.length !== 3) return null;
-    return new Date(parts[0], parts[1] - 1, parts[2], 9, 0, 0, 0);
+    var hours = 9;
+    var minutes = 0;
+    var match = /^(\d{2}):(\d{2})$/.exec(String(habit && habit.startTime || ''));
+    if (match && Number(match[1]) < 24 && Number(match[2]) < 60) {
+      hours = Number(match[1]);
+      minutes = Number(match[2]);
+    }
+    return new Date(parts[0], parts[1] - 1, parts[2], hours, minutes, 0, 0);
   }
 
   function calculateNotifyTime(baseTime, reminderValue, customReminder) {
@@ -126,29 +133,8 @@
     return type + ':' + id + ':' + notifyTimeMs;
   }
 
-  function formatNotificationBody(item, type, notifyTime, dueTime) {
-    var title = item.title || '未命名';
-    var areaMap = { life: '生活', study: '学习', work: '工作', health: '健康', housework: '家务', memory: '纪念', other: '其他' };
-    var area = areaMap[item.area] || '生活';
-    var typeLabel = type === 'habit' ? '习惯打卡' : '任务提醒';
-    var dueStr = '';
-    if (dueTime) {
-      var now = new Date();
-      var diff = dueTime.getTime() - now.getTime();
-      if (Math.abs(diff) < 60 * 1000) {
-        dueStr = '时间到了';
-      } else if (diff > 0) {
-        var mins = Math.round(diff / 60 / 1000);
-        if (mins < 60) dueStr = mins + ' 分钟后';
-        else {
-          var hrs = Math.round(mins / 60);
-          dueStr = hrs + ' 小时后';
-        }
-      } else {
-        dueStr = '已到期';
-      }
-    }
-    return area + ' · ' + typeLabel + (dueStr ? ' · ' + dueStr : '');
+  function buildNotificationCopy(type, item, dueTime, notifyTime) {
+    return NotificationModel.buildNotificationCopy(type, item, dueTime, notifyTime);
   }
 
   function showNotificationViaSW(title, options) {
@@ -192,11 +178,10 @@
   function fireNotification(type, item, notifyTime, dueTime) {
     var logKey = buildNotificationId(type, item.id, dueTime.getTime());
     if (wasNotified(logKey)) return;
-    var notificationTitle = item.title || (type === 'habit' ? '习惯打卡' : '任务提醒');
-    var body = formatNotificationBody(item, type, notifyTime, dueTime);
+    var copy = buildNotificationCopy(type, item, dueTime, notifyTime);
     var tagKey = buildNotificationId(type, item.id, notifyTime.getTime());
-    showNotification(notificationTitle, {
-      body: body,
+    showNotification(copy.title, {
+      body: copy.body,
       tag: tagKey,
       data: {
         type: type,
@@ -288,11 +273,10 @@
     return y + '-' + m + '-' + d;
   }
 
-  function checkMissedReminders(data, todayKey, habitDueChecker) {
-    if (!isEnabled()) return;
-    var now = new Date();
+  function getMissedCount(data, todayKey, habitDueChecker, now) {
+    now = now instanceof Date ? now : new Date();
     var windowStart = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-    var toFire = [];
+    var count = 0;
 
     (data.tasks || []).forEach(function(task) {
       if (task.status !== 'active') return;
@@ -306,7 +290,7 @@
       var notifyTime = calculateNotifyTime(baseTime, task.reminder, task.customReminder);
       var key = buildNotificationId('task', task.id, baseTime.getTime());
       if (notifyTime <= now && !wasNotified(key)) {
-        toFire.push({ type: 'task', item: task, notifyTime: notifyTime, dueTime: baseTime, logKey: key });
+        count += 1;
       }
     });
 
@@ -321,17 +305,17 @@
           var notifyTime = calculateNotifyTime(baseTime, habit.reminder, habit.customReminder);
           var key = buildNotificationId('habit', habit.id, baseTime.getTime());
           if (notifyTime <= now && !wasNotified(key)) {
-            toFire.push({ type: 'habit', item: habit, notifyTime: notifyTime, dueTime: baseTime, logKey: key });
+            count += 1;
           }
         }
       }
     });
 
-    if (toFire.length > 0) {
-      toFire.forEach(function(m) {
-        fireNotification(m.type, m.item, m.notifyTime, m.dueTime);
-      });
-    }
+    return count;
+  }
+
+  function checkMissedReminders(data, todayKey, habitDueChecker, now) {
+    return getMissedCount(data, todayKey, habitDueChecker, now);
   }
 
   function requestPermission() {
@@ -428,12 +412,15 @@
     setServiceWorkerRegistration: setServiceWorkerRegistration,
     scheduleAll: scheduleAll,
     checkMissedReminders: checkMissedReminders,
+    getMissedCount: getMissedCount,
     clearAllScheduled: clearAllScheduled,
     startPeriodicCheck: startPeriodicCheck,
     stopPeriodicCheck: stopPeriodicCheck,
     parseReminderOffset: parseReminderOffset,
     getTaskDateTime: getTaskDateTime,
+    getHabitDateTime: getHabitDateTime,
     calculateNotifyTime: calculateNotifyTime,
+    buildNotificationCopy: buildNotificationCopy,
     handleNotificationClick: handleNotificationClick,
     initSW: initSW
   };
