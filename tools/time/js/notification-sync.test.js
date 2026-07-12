@@ -351,12 +351,12 @@ test('lifecycle methods return unsupported when Web Locks are unavailable', asyn
   assert.deepEqual(await harness.sync.handleForeground(), { status: 'unsupported' });
 });
 
-test('a rejected lifecycle callback releases the Web Lock for the next instance', async () => {
-  let failLifecycleWrite = true;
+test('a failed lifecycle operation releases the Web Lock for the next instance', async () => {
+  let failInstallationWrite = true;
   const indexedDB = createFakeIndexedDB({
     failPut(storeName, key) {
-      if (failLifecycleWrite && storeName === 'meta' && key === 'lifecycle-epoch') {
-        failLifecycleWrite = false;
+      if (failInstallationWrite && storeName === 'installation' && key === 'current') {
+        failInstallationWrite = false;
         return true;
       }
       return false;
@@ -366,7 +366,7 @@ test('a rejected lifecycle callback releases the Web Lock for the next instance'
   const first = createHarness({ indexedDB, locks, fetch: responsePlan() });
   const second = createHarness({ indexedDB, locks, fetch: responsePlan() });
 
-  assert.deepEqual(await first.sync.enable(), { status: 'error' });
+  assert.equal((await first.sync.enable()).status, 'pending');
   assert.equal((await second.sync.enable()).status, 'ready');
 });
 
@@ -421,6 +421,15 @@ test('enable converts PushManager and malformed VAPID failures to typed errors',
 
   const subscribeFailure = createHarness({ subscription: null, fetch: responsePlan(), subscribeError: new Error('denied') });
   assert.deepEqual(await subscribeFailure.sync.enable(), { status: 'error' });
+  assert.deepEqual(await subscribeFailure.sync.getStatus(), { status: 'error' });
+  const installation = subscribeFailure.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enabled, false);
+  assert.equal(installation.subscriptionReady, false);
+  await subscribeFailure.sync.sync({ reminders: [{
+    id: 'subscribe-rejected', revision: 1, sourceIdHash: '5'.repeat(64),
+    notifyAt: '2026-07-11T10:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'blocked' }
+  }] });
+  assert.equal(subscribeFailure.calls.some(call => /\/reminders\//.test(call.url || '')), false);
 });
 
 test('subscription toJSON failures are converted to a typed error', async () => {
@@ -429,6 +438,43 @@ test('subscription toJSON failures are converted to a typed error', async () => 
   const harness = createHarness({ subscription: broken, fetch: responsePlan() });
 
   assert.deepEqual(await harness.sync.enable(), { status: 'error' });
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'error' });
+  const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enabled, false);
+  assert.equal(installation.subscriptionReady, false);
+});
+
+test('queued subscription PUT recovery atomically marks the installation ready before reminder sync', async () => {
+  let subscriptionOffline = true;
+  let reminderCalls = 0;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/subscription$/.test(url) && init.method === 'PUT' && subscriptionOffline) {
+        throw new Error('offline');
+      }
+      if (/\/reminders\//.test(url)) reminderCalls += 1;
+      return standard(url, init, calls);
+    }
+  });
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'pending', deviceId: 'device-1' });
+  let installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enabled, false);
+  assert.equal(installation.subscriptionReady, false);
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'pending', deviceId: 'device-1' });
+
+  assert.equal((await harness.sync.sync({ reminders: [{
+    id: 'blocked-until-ready', revision: 1, sourceIdHash: 'f'.repeat(64),
+    notifyAt: '2026-07-11T10:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  }] })).status, 'pending');
+  assert.equal(reminderCalls, 0);
+
+  subscriptionOffline = false;
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'ready', deviceId: 'device-1' });
+  installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enabled, true);
+  assert.equal(installation.subscriptionReady, true);
 });
 
 test('sync queues a failed server write and retries it with exponential delay when online', async () => {
@@ -590,6 +636,37 @@ test('queue limit returns a typed error and never persists more than 100 intents
 
   assert.deepEqual(await harness.sync.sync({ reminders }), { status: 'error' });
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 100);
+});
+
+test('terminal records are compacted so a new intent can be queued and sent without hiding the error state', async () => {
+  let reminderCalls = 0;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url.endsWith('/after-capacity')) reminderCalls += 1;
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
+  for (let index = 1; index <= 100; index += 1) {
+    queue.set(`terminal-${index}`, {
+      id: `terminal-${index}`, sequence: index, generation: 1,
+      logicalKey: `terminal:${index}`, kind: 'upsert', method: 'PUT', path: `/terminal/${index}`,
+      body: null, attempts: 5, nextRetryAt: null, terminal: true
+    });
+  }
+
+  assert.equal((await harness.sync.sync({ reminders: [{
+    id: 'after-capacity', revision: 1, sourceIdHash: '6'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'new' }
+  }] })).status, 'error');
+  assert.equal(reminderCalls, 1);
+  const persistedQueue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
+  assert.ok(persistedQueue.size <= 100);
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'meta').get('queue-compact-error'), true);
+  for (const [id, entry] of persistedQueue) if (entry.terminal) persistedQueue.delete(id);
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'error' });
 });
 
 test('sync records its metadata in the dedicated IndexedDB meta store', async () => {
@@ -761,6 +838,50 @@ test('disable waits for server cleanup before unsubscribing and exposes pending 
   assert.equal(harness.getSubscription().unsubscribed, true);
 });
 
+test('terminal disable cleanup gets a fresh five-attempt generation from every recovery lifecycle', async t => {
+  for (const lifecycleMethod of ['handleOnline', 'handleForeground', 'disable']) {
+    await t.test(lifecycleMethod, async () => {
+      let cleanupFails = true;
+      let deleteAttempts = 0;
+      const recoveredCleanup = deferred();
+      const standard = responsePlan();
+      const harness = createHarness({
+        fetch: async (url, init, calls) => {
+          if (/\/subscription$/.test(url) && init.method === 'DELETE') {
+            deleteAttempts += 1;
+            if (cleanupFails) throw new Error('offline');
+            return recoveredCleanup.promise;
+          }
+          return standard(url, init, calls);
+        }
+      });
+      await harness.sync.enable();
+
+      assert.equal((await harness.sync.disable()).status, 'pending');
+      for (let attempt = 1; attempt < 5; attempt += 1) await harness.sync.handleOnline();
+      assert.equal(deleteAttempts, 5);
+      const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
+      const terminal = Array.from(queue.values()).find(entry => entry.kind === 'disable');
+      assert.equal(terminal.attempts, 5);
+      assert.equal(terminal.terminal, true);
+
+      cleanupFails = false;
+      const recovery = harness.sync[lifecycleMethod]();
+      await waitFor(() => deleteAttempts === 6);
+      const replacement = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+        .find(entry => entry.kind === 'disable');
+      assert.equal(replacement.generation, terminal.generation + 1);
+      assert.equal(replacement.attempts, 0);
+      assert.equal(replacement.terminal, false);
+      recoveredCleanup.resolve(jsonResponse(204));
+      assert.deepEqual(await recovery, { status: 'disabled' });
+      assert.equal(deleteAttempts, 6);
+      assert.equal(harness.getSubscription().unsubscribed, true);
+      assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
+    });
+  }
+});
+
 test('disable serializes against overlapping sync and prevents reminder recreation after cleanup starts', async () => {
   const cleanup = deferred();
   const standard = responsePlan();
@@ -927,7 +1048,7 @@ test('cleanup authentication rejection preserves the old identity and never auto
   const harness = createHarness({
     fetch: async (url, init, calls) => {
       if (/\/subscription$/.test(url) && init.method === 'DELETE') {
-        return jsonResponse(401, { error: { code: 'unauthorized' } });
+        return jsonResponse(403, { error: { code: 'forbidden' } });
       }
       return standard(url, init, calls);
     }
@@ -946,9 +1067,13 @@ test('cleanup authentication rejection preserves the old identity and never auto
     && call.init.method === 'PUT').length;
   assert.deepEqual(await harness.sync.handleOnline(), { status: 'error' });
   assert.deepEqual(await harness.sync.enable(), { status: 'error' });
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'error' });
+  assert.deepEqual(await harness.sync.disable(), { status: 'error' });
   assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, deviceCalls);
   assert.equal(harness.calls.filter(call => /\/subscription$/.test(call.url)
     && call.init.method === 'PUT').length, subscriptionPuts);
+  assert.equal(harness.calls.filter(call => /\/subscription$/.test(call.url)
+    && call.init.method === 'DELETE').length, 1);
 });
 
 test('unsubscribe false keeps cleanup pending and foreground retries only local cleanup', async () => {
