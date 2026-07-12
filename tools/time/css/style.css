@@ -516,6 +516,10 @@ button {
 .task-row.is-overdue-row { --task-accent: var(--danger); }
 .task-row.is-completed .task-content { background-color: var(--surface); background-image: none; }
 
+.task-row.notification-highlight {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 42%, transparent);
+}
+
 .task-row.actions-open .task-content {
   margin-right: 104px;
   margin-left: -104px;

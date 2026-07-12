@@ -143,6 +143,11 @@
       return databasePromise;
     }
 
+    async function getKey() {
+      var database = await getDatabase();
+      return await readRecord(database, KEY_STORE, KEY_ID) || null;
+    }
+
     async function getOrCreateKey() {
       if (!cryptoApi || !cryptoApi.subtle || typeof cryptoApi.subtle.generateKey !== 'function') {
         throw new Error('Web Crypto is not available');
@@ -161,7 +166,7 @@
       return winner;
     }
 
-    return { getOrCreateKey: getOrCreateKey };
+    return { getKey: getKey, getOrCreateKey: getOrCreateKey };
   }
 
   async function encryptPayload(key, value) {
@@ -189,8 +194,11 @@
     }
   }
 
+  var defaultStore = create();
+
   return {
-    getOrCreateKey: create().getOrCreateKey,
+    getKey: defaultStore.getKey,
+    getOrCreateKey: defaultStore.getOrCreateKey,
     encryptPayload: encryptPayload,
     decryptPayload: decryptPayload,
     base64UrlEncode: base64UrlEncode,

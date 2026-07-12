@@ -342,7 +342,7 @@
 
     var isOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row>',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -367,7 +367,7 @@
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + '>',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -402,7 +402,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row>',
+      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(dateKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -447,7 +447,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row>',
+      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(appState.todayKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -817,7 +817,7 @@
     }
 
     return [
-      '<article class="task-row list-task-row' + rowClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '">',
+      '<article class="task-row list-task-row' + rowClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -1046,6 +1046,38 @@
     if (window.location.hash !== '#' + view) {
       window.location.hash = view;
     }
+  }
+
+  function isValidNotificationDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+    var date = DateUtils.fromDateKey(value);
+    return date instanceof Date && Number.isFinite(date.getTime()) && DateUtils.toDateKey(date) === value;
+  }
+
+  function handleNotificationClick(data) {
+    data = data && typeof data === 'object' ? data : {};
+    switchView('today');
+    var hasValidDate = isValidNotificationDate(data.date);
+    if (hasValidDate) appState.selectedDateKey = data.date;
+    render();
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        var entity = Array.prototype.find.call(
+          document.querySelectorAll('[data-notification-type][data-notification-id][data-notification-date]'),
+          function(row) {
+            return row.dataset.notificationType === data.type
+              && row.dataset.notificationId === data.id
+              && (!hasValidDate || row.dataset.notificationDate === data.date);
+          }
+        );
+        if (!entity) return;
+        entity.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        entity.classList.add('notification-highlight');
+        setTimeout(function() {
+          entity.classList.remove('notification-highlight');
+        }, 1800);
+      });
+    });
   }
 
   function setChoiceValue(targetId, value) {
@@ -2251,6 +2283,13 @@
   }
 
   function bindEvents() {
+    if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+      navigator.serviceWorker.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+          handleNotificationClick(event.data.data);
+        }
+      });
+    }
     document.querySelectorAll('.nav-item').forEach(function(button) {
       button.addEventListener('click', function() {
         switchView(button.dataset.view);
