@@ -5,8 +5,12 @@
     root.TodayYouxuNotificationModel = factory(root.crypto);
   }
 })(typeof self !== 'undefined' ? self : this, function(defaultCrypto) {
-  var DAY_MS = 24 * 60 * 60 * 1000;
-  var HORIZON_MS = 30 * DAY_MS;
+  var HORIZON_DAYS = 30;
+  var MAX_CUSTOM_REMINDER_DAYS = 7;
+  var MAX_CUSTOM_REMINDER_HOURS = 23;
+  var MAX_CUSTOM_REMINDER_MINUTES = 59;
+  var MAX_REMINDER_OFFSET_MINUTES = MAX_CUSTOM_REMINDER_DAYS * 24 * 60
+    + MAX_CUSTOM_REMINDER_HOURS * 60 + MAX_CUSTOM_REMINDER_MINUTES;
   var AREA_LABELS = {
     life: '生活',
     study: '学习',
@@ -44,14 +48,64 @@
     ].join('-');
   }
 
+  function isValidDate(date) {
+    return date instanceof Date && Number.isFinite(date.getTime());
+  }
+
+  function isValidInteger(value, minimum, maximum) {
+    return typeof value === 'number' && Number.isSafeInteger(value)
+      && value >= minimum && value <= maximum;
+  }
+
   function reminderOffset(reminder, customReminder) {
-    if (!reminder || reminder === 'none' || reminder === 'at-time') return 0;
-    if (/^\d+$/.test(String(reminder))) return Number(reminder) * 60 * 1000;
-    if (reminder !== 'custom' || !customReminder) return 0;
-    var days = Number(customReminder.days) || 0;
-    var hours = Number(customReminder.hours) || 0;
-    var minutes = Number(customReminder.minutes) || 0;
-    return Math.max(0, (days * 24 * 60 + hours * 60 + minutes) * 60 * 1000);
+    if (reminder === 'none' || reminder === 'at-time' || reminder === 0 || reminder === '0') return 0;
+    if (/^\d+$/.test(String(reminder))) {
+      var offsetMinutes = Number(reminder);
+      return isValidInteger(offsetMinutes, 0, MAX_REMINDER_OFFSET_MINUTES)
+        ? offsetMinutes * 60 * 1000
+        : null;
+    }
+    if (reminder !== 'custom' || !customReminder) return null;
+    var days = customReminder.days;
+    var hours = customReminder.hours;
+    var minutes = customReminder.minutes;
+    if (!isValidInteger(days, 0, MAX_CUSTOM_REMINDER_DAYS)
+      || !isValidInteger(hours, 0, MAX_CUSTOM_REMINDER_HOURS)
+      || !isValidInteger(minutes, 0, MAX_CUSTOM_REMINDER_MINUTES)) {
+      return null;
+    }
+    return (days * 24 * 60 + hours * 60 + minutes) * 60 * 1000;
+  }
+
+  function notifyTimeFor(dueTime, reminder, customReminder) {
+    if (!isValidDate(dueTime)) return null;
+    var offset = reminderOffset(reminder, customReminder);
+    if (offset === null) return null;
+    var notifyTime = new Date(dueTime.getTime() - offset);
+    return isValidDate(notifyTime) ? notifyTime : null;
+  }
+
+  function hasReminder(item) {
+    return item && item.reminder !== undefined && item.reminder !== null
+      && item.reminder !== '' && item.reminder !== 'none';
+  }
+
+  function normalizeNow(now) {
+    var value = now === undefined ? new Date() : new Date(now);
+    if (!isValidDate(value)) throw new TypeError('now must be a valid Date');
+    return value;
+  }
+
+  function addLocalDays(date, days) {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate() + days,
+      date.getHours(),
+      date.getMinutes(),
+      date.getSeconds(),
+      date.getMilliseconds()
+    );
   }
 
   function cleanTitle(value, fallback) {
@@ -146,17 +200,18 @@
     };
   }
 
-  async function buildReminderRecords(data, todayKey, habitDueChecker, now, cryptoApi) {
+  function buildReminderRecords(data, todayKey, habitDueChecker, now, cryptoApi) {
     data = data || {};
-    now = now instanceof Date ? now : new Date(now || Date.now());
-    var maxNotifyAt = now.getTime() + HORIZON_MS;
+    now = normalizeNow(now);
+    var maxNotifyAt = addLocalDays(now, HORIZON_DAYS).getTime();
     var pending = [];
 
     (data.tasks || []).forEach(function(item) {
-      if (!item || item.status !== 'active' || !item.id || !item.date || !item.reminder || item.reminder === 'none') return;
+      if (!item || item.status !== 'active' || !item.id || !item.date || !hasReminder(item)) return;
       var dueTime = dateFromKey(item.date, item.startTime);
       if (!dueTime) return;
-      var notifyTime = new Date(dueTime.getTime() - reminderOffset(item.reminder, item.customReminder));
+      var notifyTime = notifyTimeFor(dueTime, item.reminder, item.customReminder);
+      if (!notifyTime) return;
       if (notifyTime.getTime() <= now.getTime() || notifyTime.getTime() > maxNotifyAt) return;
       pending.push(makeRecord('task', item, item.date, dueTime, notifyTime, cryptoApi));
     });
@@ -164,13 +219,14 @@
     var firstDate = dateFromKey(todayKey, '00:00');
     if (firstDate) {
       (data.habits || []).forEach(function(item) {
-        if (!isHabitActive(item) || !item.id || !item.reminder || item.reminder === 'none') return;
+        if (!isHabitActive(item) || !item.id || !hasReminder(item)) return;
         for (var day = 0; day <= 30; day += 1) {
           var occurrence = new Date(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate() + day);
           var dateKey = dateToKey(occurrence);
           if (!habitDueChecker || !habitDueChecker(item, dateKey) || isHabitLogged(data.habitLogs, item.id, dateKey)) continue;
           var dueTime = dateFromKey(dateKey, item.startTime);
-          var notifyTime = new Date(dueTime.getTime() - reminderOffset(item.reminder, item.customReminder));
+          var notifyTime = notifyTimeFor(dueTime, item.reminder, item.customReminder);
+          if (!notifyTime) continue;
           if (notifyTime.getTime() <= now.getTime() || notifyTime.getTime() > maxNotifyAt) continue;
           pending.push(makeRecord('habit', item, dateKey, dueTime, notifyTime, cryptoApi));
         }

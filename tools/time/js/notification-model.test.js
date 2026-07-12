@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 
 const {
   buildNotificationCopy,
@@ -106,6 +107,74 @@ test('task projection filters status, missing fields, past notifications, and ap
   ];
   const records = await buildReminderRecords({ tasks }, '2026-07-11', () => false, now);
   assert.deepEqual(records.map(record => record.encryptedValue.data.id), ['inside', 'boundary']);
+});
+
+test('task projection uses a local-calendar 30-day horizon across the New York DST fallback', () => {
+  const modelPath = require.resolve('./notification-model');
+  const script = `
+    const { buildReminderRecords } = require(${JSON.stringify(modelPath)});
+    const task = (id, date, startTime) => ({
+      id,
+      title: id,
+      date,
+      area: 'work',
+      status: 'active',
+      startTime,
+      reminder: 'at-time'
+    });
+    buildReminderRecords({
+      tasks: [
+        task('next-minute', '2026-10-02', '09:01'),
+        task('day-30', '2026-11-01', '09:00'),
+        task('after-boundary', '2026-11-01', '09:01'),
+        task('day-31', '2026-11-02', '09:00')
+      ]
+    }, '2026-10-02', () => false, new Date(2026, 9, 2, 9, 0)).then(records => {
+      process.stdout.write(JSON.stringify(records.map(record => record.encryptedValue.data.id)));
+    }, error => {
+      console.error(error.stack || error);
+      process.exitCode = 1;
+    });
+  `;
+  const result = spawnSync(process.execPath, ['-e', script], {
+    encoding: 'utf8',
+    env: Object.assign({}, process.env, { TZ: 'America/New_York' })
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), ['next-minute', 'day-30']);
+});
+
+test('projection skips invalid reminder offsets and invalid occurrence dates without rejecting valid records', async () => {
+  const now = localDate('2026-07-11', '08:00');
+  const tasks = [
+    task({ id: 'valid-at-time' }),
+    task({ id: 'valid-custom', reminder: 'custom', customReminder: { days: 0, hours: 0, minutes: 5 } }),
+    task({ id: 'reminder-infinity', reminder: Infinity }),
+    task({ id: 'reminder-nan', reminder: NaN }),
+    task({ id: 'reminder-negative', reminder: '-5' }),
+    task({ id: 'reminder-extreme', reminder: '1000000' }),
+    task({ id: 'custom-infinity', reminder: 'custom', customReminder: { days: Infinity, hours: 0, minutes: 0 } }),
+    task({ id: 'custom-nan', reminder: 'custom', customReminder: { days: NaN, hours: 0, minutes: 0 } }),
+    task({ id: 'custom-negative', reminder: 'custom', customReminder: { days: -1, hours: 0, minutes: 0 } }),
+    task({ id: 'custom-extreme', reminder: 'custom', customReminder: { days: 8, hours: 0, minutes: 0 } }),
+    task({ id: 'invalid-date', date: '2026-02-29' })
+  ];
+
+  const records = await buildReminderRecords({ tasks }, '2026-07-11', () => false, now);
+  assert.deepEqual(records.map(record => record.encryptedValue.data.id), ['valid-at-time', 'valid-custom']);
+});
+
+test('projection immediately throws TypeError for an invalid now value', () => {
+  assert.throws(() => buildReminderRecords(
+    { tasks: [task()] },
+    '2026-07-11',
+    () => false,
+    new Date('invalid')
+  ), {
+    name: 'TypeError',
+    message: 'now must be a valid Date'
+  });
 });
 
 test('habit projection follows recurrence, strict startTime, statuses, and done or skipped logs', async () => {
