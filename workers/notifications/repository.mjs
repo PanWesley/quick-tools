@@ -125,7 +125,8 @@ export function createD1Repository(db) {
         `).bind(at, at, deviceId),
         db.prepare(`
           UPDATE reminders
-          SET status = 'cancelled', lease_until = NULL, updated_at = ?
+          SET status = 'cancelled', lease_until = NULL,
+              last_error_code = 'subscription_disabled', updated_at = ?
           WHERE device_id = ? AND status IN ('pending', 'processing', 'retry')
         `).bind(at, deviceId)
       ]);
@@ -162,7 +163,14 @@ export function createD1Repository(db) {
           updated_at = excluded.updated_at,
           sent_at = NULL
         WHERE reminders.device_id = excluded.device_id
-          AND excluded.revision > reminders.revision
+          AND (
+            excluded.revision > reminders.revision
+            OR (
+              excluded.revision = reminders.revision
+              AND reminders.status = 'cancelled'
+              AND reminders.last_error_code = 'subscription_disabled'
+            )
+          )
       `).bind(
         id,
         deviceId,
@@ -191,7 +199,8 @@ export function createD1Repository(db) {
     async cancelReminder(deviceId, id, revision, at) {
       const result = await db.prepare(`
         UPDATE reminders
-        SET revision = ?, status = 'cancelled', lease_until = NULL, updated_at = ?
+        SET revision = ?, status = 'cancelled', lease_until = NULL,
+            last_error_code = NULL, updated_at = ?
         WHERE id = ? AND device_id = ? AND ? > revision
       `).bind(revision, at, id, deviceId, revision).run();
       const row = await db.prepare(`
@@ -223,15 +232,29 @@ export function createD1Repository(db) {
         SELECT id, revision, status
         FROM reminders
         WHERE device_id = ? AND notify_at >= ? AND notify_at <= ? AND status != 'expired'
+        ORDER BY id
       `).bind(deviceId, from, through).all();
       const stored = rows(result);
       const server = new Map(stored.map((item) => [item.id, item]));
       const client = new Map(summaries.map((item) => [item.id, item.revision]));
+      const unknown = [];
+      for (const item of stored) {
+        if (client.has(item.id) || !['pending', 'processing', 'retry'].includes(item.status)) continue;
+        const cancelled = await db.prepare(`
+          UPDATE reminders
+          SET status = 'cancelled', lease_until = NULL,
+              last_error_code = NULL, updated_at = ?
+          WHERE id = ? AND device_id = ? AND revision = ?
+            AND notify_at >= ? AND notify_at <= ?
+            AND status IN ('pending', 'processing', 'retry')
+        `).bind(from, item.id, deviceId, item.revision, from, through).run();
+        if (changes(cancelled) > 0) unknown.push(item.id);
+      }
       return {
         missing: summaries.filter((item) => !server.has(item.id)).map((item) => item.id),
         stale: summaries.filter((item) => server.has(item.id) && item.revision < server.get(item.id).revision).map((item) => item.id),
         cancelled: stored.filter((item) => item.status === 'cancelled' && client.has(item.id)).map((item) => item.id),
-        unknown: stored.filter((item) => item.status !== 'cancelled' && !client.has(item.id)).map((item) => item.id)
+        unknown
       };
     },
 

@@ -29,6 +29,8 @@ It does not store bill amounts, notes, tag names, or imported file contents. DAU
 
 `device_id` 是浏览器/PWA 安装实例标识，不是硬件 ID；清除站点数据或重装后会变化。`devices.user_id` 与 `reminders.user_id` 保持 nullable，供未来账号绑定。
 
+Notifications JSON 请求体上限为 128 KiB；reconcile 每次最多接受 500 条、每个 ID 最多 128 字符的摘要。客户端仍只投影本地日历 30 天，Worker 的 reminder validation 与 reconcile window 使用 `31 * 24h` 包络吸收全球时区和 DST 边界，不扩大客户端 horizon。
+
 ### 本地验证
 
 ```bash

@@ -10,9 +10,10 @@ import {
   validateSubscription
 } from './core.mjs';
 
-const MAX_BODY_BYTES = 16 * 1024;
+const MAX_BODY_BYTES = 128 * 1024;
 const MAX_RECONCILE_REMINDERS = 500;
-const RECONCILE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+// Client projection remains 30 local-calendar days; this is a DST-safe server envelope.
+const RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 const TEST_PUSH_INTERVAL_MS = 60 * 1000;
 const STALE_REMINDER_MS = 15 * 60 * 1000;
 const DELIVERY_LEASE_MS = 5 * 60 * 1000;
@@ -153,6 +154,12 @@ function validatePreflight(request, route) {
 function responseStatus(result) {
   if (typeof result === 'number') return result;
   return result?.status;
+}
+
+function reminderTtlSeconds(notifyAt, at) {
+  const expiresAt = Date.parse(notifyAt) + STALE_REMINDER_MS;
+  if (!Number.isFinite(expiresAt)) return 0;
+  return Math.max(0, Math.min(900, Math.ceil((expiresAt - at.getTime()) / 1000)));
 }
 
 export function createNotificationApp({ repository, sendPush, now = () => new Date(), crypto = globalThis.crypto }) {
@@ -316,6 +323,7 @@ export function createNotificationApp({ repository, sendPush, now = () => new Da
           subscription: reminder.subscription,
           encryptedPayload: reminder.encryptedPayload,
           topic: await topicFor(reminder.id),
+          ttlSeconds: reminderTtlSeconds(reminder.notifyAt, at),
           env
         });
         status = responseStatus(result);

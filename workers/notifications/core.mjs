@@ -1,5 +1,7 @@
 const DEVICE_TOKEN_BYTES = 32;
-const MAX_REMINDER_DELAY_MS = 30 * 24 * 60 * 60 * 1000;
+// The client horizon remains 30 local-calendar days. This 31-day validation
+// envelope only absorbs timezone and DST differences at the HTTP boundary.
+const MAX_REMINDER_DELAY_MS = 31 * 24 * 60 * 60 * 1000;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000];
 
 function failure(code, message) {
@@ -124,7 +126,7 @@ export function validateReminder(value, now) {
   }
 
   if (typeof value.notifyAt !== 'string') {
-    return failure('invalid_reminder', 'Reminder time must be within the next 30 days.');
+    return failure('invalid_reminder', 'Reminder time is outside the server validation envelope.');
   }
 
   const notifyAt = new Date(value.notifyAt);
@@ -134,7 +136,7 @@ export function validateReminder(value, now) {
     || Number.isNaN(now.getTime())
     || notifyAt.getTime() < now.getTime()
     || notifyAt.getTime() - now.getTime() > MAX_REMINDER_DELAY_MS) {
-    return failure('invalid_reminder', 'Reminder time must be within the next 30 days.');
+    return failure('invalid_reminder', 'Reminder time is outside the server validation envelope.');
   }
 
   if (!Number.isSafeInteger(value.encryptionVersion) || value.encryptionVersion !== 1) {

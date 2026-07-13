@@ -18,6 +18,7 @@ export async function sendWebPush({
   subscription,
   encryptedPayload,
   topic,
+  ttlSeconds = 900,
   env,
   fetchImpl = globalThis.fetch,
   buildPayload = buildPushPayload
@@ -32,6 +33,9 @@ export async function sendWebPush({
     throw new TypeError('Encrypted Web Push payload is invalid.');
   }
   if (!TOPIC_PATTERN.test(topic)) throw new TypeError('Web Push topic is invalid.');
+  if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 0 || ttlSeconds > 900) {
+    throw new TypeError('Web Push TTL must be an integer from 0 through 900 seconds.');
+  }
   if (!env || typeof env.VAPID_SUBJECT !== 'string' || !env.VAPID_SUBJECT
     || typeof env.VAPID_PUBLIC_KEY !== 'string' || !env.VAPID_PUBLIC_KEY
     || typeof env.VAPID_PRIVATE_KEY !== 'string' || !env.VAPID_PRIVATE_KEY) {
@@ -44,7 +48,7 @@ export async function sendWebPush({
   const requestInit = await buildPayload(
     {
       data: JSON.stringify(encryptedPayload),
-      options: { ttl: 900, urgency: 'normal', topic }
+      options: { ttl: ttlSeconds, urgency: 'normal', topic }
     },
     normalizedSubscription,
     {

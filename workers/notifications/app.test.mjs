@@ -43,7 +43,9 @@ function createMemoryRepository() {
         let remindersCancelled = 0;
         for (const reminder of this.reminders) {
           if (reminder.deviceId === deviceId && ['pending', 'processing', 'retry'].includes(reminder.status)) {
-            Object.assign(reminder, { status: 'cancelled', updatedAt: at, leaseUntil: null });
+            Object.assign(reminder, {
+              status: 'cancelled', updatedAt: at, leaseUntil: null, lastErrorCode: 'subscription_disabled'
+            });
             remindersCancelled += 1;
           }
         }
@@ -58,8 +60,13 @@ function createMemoryRepository() {
     async upsertReminder(deviceId, id, reminder, at) {
       const existing = this.reminders.find((item) => item.id === id && item.deviceId === deviceId);
       if (existing && reminder.revision < existing.revision) return { outcome: 'conflict', reminder: existing };
-      if (existing && reminder.revision === existing.revision) return { outcome: 'unchanged', reminder: existing };
-      const next = { id, deviceId, ...structuredClone(reminder), status: 'pending', updatedAt: at };
+      if (existing && reminder.revision === existing.revision
+        && !(existing.status === 'cancelled' && existing.lastErrorCode === 'subscription_disabled')) {
+        return { outcome: 'unchanged', reminder: existing };
+      }
+      const next = {
+        id, deviceId, ...structuredClone(reminder), status: 'pending', lastErrorCode: null, updatedAt: at
+      };
       if (existing) Object.assign(existing, next);
       else this.reminders.push(next);
       return { outcome: existing ? 'updated' : 'created', reminder: next };
@@ -71,7 +78,7 @@ function createMemoryRepository() {
       if (revision < reminder.revision) return { outcome: 'conflict', reminder };
       if (revision === reminder.revision && reminder.status === 'cancelled') return { outcome: 'unchanged', reminder };
       if (revision === reminder.revision && reminder.status !== 'cancelled') return { outcome: 'conflict', reminder };
-      Object.assign(reminder, { revision, status: 'cancelled', updatedAt: at });
+      Object.assign(reminder, { revision, status: 'cancelled', updatedAt: at, lastErrorCode: null });
       return { outcome: 'cancelled', reminder };
     },
 
@@ -79,8 +86,14 @@ function createMemoryRepository() {
       this.lastReconcileFrom = from;
       this.lastReconcileThrough = through;
       const server = this.reminders.filter((item) => item.deviceId === deviceId
-        && item.notifyAt <= through && item.status !== 'expired');
+        && item.notifyAt >= from && item.notifyAt <= through && item.status !== 'expired');
       const client = new Map(summaries.map((item) => [item.id, item.revision]));
+      const unknown = [];
+      for (const item of server) {
+        if (client.has(item.id) || !['pending', 'processing', 'retry'].includes(item.status)) continue;
+        Object.assign(item, { status: 'cancelled', leaseUntil: null, lastErrorCode: null, updatedAt: from });
+        unknown.push(item.id);
+      }
       return {
         missing: summaries.filter((item) => !server.some((stored) => stored.id === item.id)).map((item) => item.id),
         stale: summaries.filter((item) => {
@@ -88,7 +101,7 @@ function createMemoryRepository() {
           return stored && item.revision < stored.revision;
         }).map((item) => item.id),
         cancelled: server.filter((item) => item.status === 'cancelled' && client.has(item.id)).map((item) => item.id),
-        unknown: server.filter((item) => !client.has(item.id) && item.status !== 'cancelled').map((item) => item.id)
+        unknown
       };
     },
 
@@ -113,7 +126,7 @@ function jsonRequest(path, method, body, token, headers = {}) {
   });
 }
 
-function fixture({ sendPush } = {}) {
+function fixture({ sendPush, now } = {}) {
   const repository = createMemoryRepository();
   const pushes = [];
   const app = createNotificationApp({
@@ -122,7 +135,7 @@ function fixture({ sendPush } = {}) {
       pushes.push(message);
       return { status: 201 };
     }),
-    now: () => new Date(NOW),
+    now: now ?? (() => new Date(NOW)),
     crypto: webcrypto
   });
   const env = {
@@ -253,7 +266,28 @@ test('cancellation requires a newer revision and a newer upsert restores pending
   assert.equal(context.repository.reminders[0].status, 'pending');
 });
 
-test('reconcile compares bounded 30-day reminder summaries without payloads', async () => {
+test('HTTP disable and re-enable restores only bulk-disabled reminders at the same revision', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const subscriptionPath = `/api/notifications/devices/${credentials.deviceId}/subscription`;
+  const reminderPath = '/api/notifications/reminders/device-scoped-reminder';
+  await context.app.fetch(jsonRequest(subscriptionPath, 'PUT', subscription(), credentials.deviceToken), context.env);
+  await context.app.fetch(jsonRequest(reminderPath, 'PUT', reminder(4), credentials.deviceToken), context.env);
+
+  await context.app.fetch(jsonRequest(subscriptionPath, 'DELETE', undefined, credentials.deviceToken), context.env);
+  await context.app.fetch(jsonRequest(subscriptionPath, 'PUT', subscription(), credentials.deviceToken), context.env);
+  const restored = await context.app.fetch(jsonRequest(reminderPath, 'PUT', reminder(4), credentials.deviceToken), context.env);
+  assert.equal(restored.status, 200);
+  assert.equal((await restored.json()).status, 'pending');
+  assert.equal(context.repository.reminders[0].lastErrorCode, null);
+
+  await context.app.fetch(jsonRequest(reminderPath, 'DELETE', { revision: 5 }, credentials.deviceToken), context.env);
+  const explicit = await context.app.fetch(jsonRequest(reminderPath, 'PUT', reminder(5), credentials.deviceToken), context.env);
+  assert.equal(explicit.status, 200);
+  assert.equal((await explicit.json()).status, 'cancelled');
+});
+
+test('reconcile compares bounded reminder summaries within the 31-day server envelope', async () => {
   const context = fixture();
   const credentials = await register(context);
   await context.app.fetch(jsonRequest('/api/notifications/reminders/server-only', 'PUT', reminder(2), credentials.deviceToken), context.env);
@@ -266,9 +300,85 @@ test('reconcile compares bounded 30-day reminder summaries without payloads', as
   });
   const tooMany = Array.from({ length: 501 }, (_, index) => ({ id: `r-${index}`, revision: 1 }));
   assert.equal((await context.app.fetch(jsonRequest('/api/notifications/reconcile', 'POST', { reminders: tooMany }, credentials.deviceToken), context.env)).status, 400);
-  const through = new Date(NOW.getTime() + 30 * DAY_MS).toISOString();
+  const through = new Date(NOW.getTime() + 31 * DAY_MS).toISOString();
   assert.equal(context.repository.lastReconcileFrom, NOW.toISOString());
   assert.equal(context.repository.lastReconcileThrough, through);
+});
+
+test('HTTP reconcile cancels completed deleted and rescheduled server-only reminders authoritatively', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  for (const id of ['completed-old', 'deleted-old', 'rescheduled-old']) {
+    await context.app.fetch(jsonRequest(
+      `/api/notifications/reminders/${id}`,
+      'PUT',
+      reminder(7),
+      credentials.deviceToken
+    ), context.env);
+  }
+
+  const response = await context.app.fetch(jsonRequest('/api/notifications/reconcile', 'POST', {
+    reminders: [{ id: 'rescheduled-new', revision: 8 }]
+  }, credentials.deviceToken), context.env);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).unknown, [
+    'completed-old', 'deleted-old', 'rescheduled-old'
+  ]);
+  assert.deepEqual(
+    context.repository.reminders.map((item) => [item.id, item.status]),
+    [
+      ['completed-old', 'cancelled'],
+      ['deleted-old', 'cancelled'],
+      ['rescheduled-old', 'cancelled']
+    ]
+  );
+});
+
+test('HTTP accepts the New York fallback 30-local-day reminder inside the 31-day validation envelope', async () => {
+  const fallbackNow = new Date('2026-10-02T13:00:00.000Z');
+  const context = fixture({ now: () => new Date(fallbackNow) });
+  const credentials = await register(context);
+  const path = '/api/notifications/reminders/fallback-boundary';
+
+  const put = await context.app.fetch(jsonRequest(
+    path,
+    'PUT',
+    reminder(1, '2026-11-01T14:00:00.000Z'),
+    credentials.deviceToken
+  ), context.env);
+  assert.equal(put.status, 201);
+
+  const reconcile = await context.app.fetch(jsonRequest('/api/notifications/reconcile', 'POST', {
+    reminders: [{ id: 'fallback-boundary', revision: 1 }]
+  }, credentials.deviceToken), context.env);
+  assert.equal(reconcile.status, 200);
+  assert.deepEqual(await reconcile.json(), { missing: [], stale: [], cancelled: [], unknown: [] });
+  assert.equal(
+    context.repository.lastReconcileThrough,
+    new Date(fallbackNow.getTime() + 31 * DAY_MS).toISOString()
+  );
+});
+
+test('HTTP reconcile accepts 500 maximum-length summaries and rejects 501', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const summaries = Array.from({ length: 500 }, (_, index) => ({
+    id: `${String(index).padStart(3, '0')}-${'x'.repeat(124)}`,
+    revision: index
+  }));
+
+  const accepted = await context.app.fetch(jsonRequest('/api/notifications/reconcile', 'POST', {
+    reminders: summaries
+  }, credentials.deviceToken), context.env);
+  assert.equal(accepted.status, 200);
+  assert.equal((await accepted.json()).missing.length, 500);
+
+  const rejected = await context.app.fetch(jsonRequest('/api/notifications/reconcile', 'POST', {
+    reminders: summaries.concat({ id: `500-${'y'.repeat(124)}`, revision: 500 })
+  }, credentials.deviceToken), context.env);
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error.code, 'invalid_reconcile');
 });
 
 test('test endpoint accepts encrypted payload only and rate limits through repository state', async () => {
@@ -375,7 +485,7 @@ test('every JSON-consuming endpoint requires an application/json media type', as
 
 test('requests reject oversized bodies and origins outside the allowlist', async () => {
   const { app, env, repository } = fixture();
-  const oversized = { platform: 'mobile', timezone: 'Asia/Shanghai', clientVersion: 'x'.repeat(20_000) };
+  const oversized = { platform: 'mobile', timezone: 'Asia/Shanghai', clientVersion: 'x'.repeat(140_000) };
   assert.equal((await app.fetch(jsonRequest('/api/notifications/devices', 'POST', oversized), env)).status, 413);
   const evil = jsonRequest('/api/notifications/devices', 'POST', {
     platform: 'mobile', timezone: 'Asia/Shanghai', clientVersion: '0.7.0'
@@ -405,11 +515,12 @@ function scheduledRepository(claimed) {
   };
 }
 
-function claimedReminder(id, attemptCount = 1) {
+function claimedReminder(id, attemptCount = 1, notifyAt = NOW.toISOString()) {
   return {
     id,
     deviceId: `device-${id}`,
     attemptCount,
+    notifyAt,
     encryptedPayload: { v: 1, iv: `iv-${id}`, ciphertext: `cipher-${id}` },
     subscription: {
       endpoint: `https://push.example/${id}`,
@@ -482,4 +593,29 @@ test('scheduled delivery handles transport errors and sends only rows returned b
   assert.equal(result.processed, 1);
   assert.ok(repository.calls.some((call) => call[0] === 'markRetry' && call[1] === 'claimed'));
   assert.equal(repository.calls.some((call) => call.includes('cancelled')), false);
+});
+
+test('scheduled retries derive Web Push TTL from the original notifyAt stale deadline', async () => {
+  let current = new Date('2026-07-11T10:00:00.000Z');
+  const originalNotifyAt = '2026-07-11T09:45:01.000Z';
+  const repository = scheduledRepository([
+    claimedReminder('near-stale', 1, originalNotifyAt)
+  ]);
+  const pushes = [];
+  const app = createNotificationApp({
+    repository,
+    sendPush: async (message) => {
+      pushes.push(message);
+      return { status: 503 };
+    },
+    now: () => new Date(current),
+    crypto: webcrypto
+  });
+
+  await app.runScheduled({});
+  current = new Date('2026-07-11T10:00:00.500Z');
+  await app.runScheduled({});
+
+  assert.deepEqual(pushes.map((message) => message.ttlSeconds), [1, 1]);
+  assert.equal(pushes.every((message) => message.encryptedPayload.ciphertext === 'cipher-near-stale'), true);
 });

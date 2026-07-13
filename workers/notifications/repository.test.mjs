@@ -9,14 +9,15 @@ const AT = '2026-07-11T10:00:00.000Z';
 const DUE = '2026-07-11T09:59:00.000Z';
 
 class BoundStatement {
-  constructor(database, sql, values = []) {
+  constructor(database, sql, values = [], owner = null) {
     this.database = database;
     this.sql = sql;
     this.values = values;
+    this.owner = owner;
   }
 
   bind(...values) {
-    return new BoundStatement(this.database, this.sql, values);
+    return new BoundStatement(this.database, this.sql, values, this.owner);
   }
 
   async first() {
@@ -32,6 +33,7 @@ class BoundStatement {
   }
 
   runSync() {
+    if (this.owner?.beforeRun) this.owner.beforeRun(this.sql, this.values, this.database);
     const result = this.database.prepare(this.sql).run(...this.values);
     return { meta: { changes: Number(result.changes) } };
   }
@@ -42,8 +44,9 @@ function createDatabase() {
   database.exec(readFileSync(new URL('./migrations/0001_initial.sql', import.meta.url), 'utf8'));
   const db = {
     failBatchAt: null,
+    beforeRun: null,
     prepare(sql) {
-      return new BoundStatement(database, sql);
+      return new BoundStatement(database, sql, [], this);
     },
     async batch(statements) {
       database.exec('BEGIN IMMEDIATE');
@@ -197,4 +200,99 @@ test('claimDue never returns cancelled reminders', async () => {
   await repository.upsertReminder('device-1', 'cancelled', reminder(1), AT);
   await repository.cancelReminder('device-1', 'cancelled', 2, AT);
   assert.deepEqual(await repository.claimDue(AT, '2026-07-11T10:05:00.000Z', 100), []);
+});
+
+test('reconcile authoritatively cancels completed deleted and rescheduled server-only reminders before claimDue', async () => {
+  const { db, repository } = await createFixture();
+  await subscribe(repository);
+  const notifyAt = '2026-07-11T10:05:00.000Z';
+  for (const id of ['completed-old', 'deleted-old', 'rescheduled-old']) {
+    await repository.upsertReminder('device-1', id, reminder(7, notifyAt), AT);
+  }
+
+  const result = await repository.reconcile('device-1', [
+    { id: 'rescheduled-new', revision: 8 }
+  ], AT, '2026-08-11T10:00:00.000Z');
+
+  assert.deepEqual(result, {
+    missing: ['rescheduled-new'],
+    stale: [],
+    cancelled: [],
+    unknown: ['completed-old', 'deleted-old', 'rescheduled-old']
+  });
+  assert.deepEqual(
+    db.database.prepare('SELECT id, status FROM reminders ORDER BY id').all().map((row) => ({ ...row })),
+    [
+      { id: 'completed-old', status: 'cancelled' },
+      { id: 'deleted-old', status: 'cancelled' },
+      { id: 'rescheduled-old', status: 'cancelled' }
+    ]
+  );
+  assert.deepEqual(await repository.claimDue(
+    '2026-07-11T10:06:00.000Z',
+    '2026-07-11T10:11:00.000Z',
+    10
+  ), []);
+});
+
+test('reconcile cancellation cannot cancel a newer revision written after its read', async () => {
+  const { db, repository } = await createFixture();
+  await repository.upsertReminder('device-1', 'raced', reminder(3, '2026-07-11T10:05:00.000Z'), AT);
+  db.beforeRun = (sql, _values, database) => {
+    if (!/UPDATE reminders\s+SET status = 'cancelled'/m.test(sql)) return;
+    db.beforeRun = null;
+    database.prepare(`
+      UPDATE reminders
+      SET revision = 4, encrypted_payload = ?, updated_at = ?
+      WHERE id = 'raced'
+    `).run(JSON.stringify({ v: 1, iv: 'new', ciphertext: 'newer' }), '2026-07-11T10:00:01.000Z');
+  };
+
+  const result = await repository.reconcile(
+    'device-1',
+    [],
+    AT,
+    '2026-08-11T10:00:00.000Z'
+  );
+
+  assert.deepEqual(result.unknown, []);
+  assert.deepEqual(
+    { ...db.database.prepare('SELECT revision, status FROM reminders WHERE id = ?').get('raced') },
+    { revision: 4, status: 'pending' }
+  );
+});
+
+test('same revision restores only reminders cancelled by bulk subscription disable', async () => {
+  const { db, repository } = await createFixture();
+  await subscribe(repository);
+  await repository.upsertReminder('device-1', 'bulk-disabled', reminder(9), AT);
+
+  await repository.removeSubscriptionAndCancelReminders('device-1', '2026-07-11T10:01:00.000Z');
+  assert.deepEqual(
+    { ...db.database.prepare(`
+      SELECT revision, status, last_error_code
+      FROM reminders WHERE id = 'bulk-disabled'
+    `).get() },
+    { revision: 9, status: 'cancelled', last_error_code: 'subscription_disabled' }
+  );
+
+  const restored = await repository.upsertReminder(
+    'device-1',
+    'bulk-disabled',
+    reminder(9),
+    '2026-07-11T10:02:00.000Z'
+  );
+  assert.equal(restored.outcome, 'updated');
+  assert.equal(restored.reminder.status, 'pending');
+
+  await repository.cancelReminder('device-1', 'bulk-disabled', 10, '2026-07-11T10:03:00.000Z');
+  const explicit = await repository.upsertReminder(
+    'device-1',
+    'bulk-disabled',
+    reminder(10),
+    '2026-07-11T10:04:00.000Z'
+  );
+  assert.equal(explicit.outcome, 'unchanged');
+  assert.equal(explicit.reminder.status, 'cancelled');
+  assert.notEqual(explicit.reminder.lastErrorCode, 'subscription_disabled');
 });

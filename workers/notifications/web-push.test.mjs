@@ -61,3 +61,34 @@ test('sender validates runtime dependencies without exposing secrets', async () 
     /subscription/i
   );
 });
+
+test('sender accepts a validated remaining TTL and rejects values outside 0 through 900 seconds', async () => {
+  const subscription = {
+    endpoint: 'https://push.example/subscription',
+    p256dh: 'a'.repeat(87),
+    auth: 'b'.repeat(22)
+  };
+  const messages = [];
+  const options = {
+    subscription,
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' },
+    topic: 'ttl-test',
+    ttlSeconds: 1,
+    env: {
+      VAPID_SUBJECT: 'mailto:ops@billnest.top',
+      VAPID_PUBLIC_KEY: 'public-key',
+      VAPID_PRIVATE_KEY: 'private-key'
+    },
+    buildPayload: async (message) => {
+      messages.push(message);
+      return { method: 'POST' };
+    },
+    fetchImpl: async () => new Response('', { status: 201 })
+  };
+
+  await sendWebPush(options);
+  assert.equal(messages[0].options.ttl, 1);
+  for (const ttlSeconds of [-1, 901, 1.5, NaN]) {
+    await assert.rejects(sendWebPush({ ...options, ttlSeconds }), /TTL/i);
+  }
+});

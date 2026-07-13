@@ -123,14 +123,27 @@ test('reminders accept ciphertext but reject plaintext fields', () => {
   assert.equal(validateReminder({ ...valid.value, encryptedPayload: hiddenPayload }, now).ok, false);
 });
 
-test('reminders reject schedules beyond 30 days and non-integer revisions', () => {
+test('reminders reject schedules beyond the 31-day server envelope and non-integer revisions', () => {
   const now = new Date('2026-07-11T10:00:00.000Z');
   const reminder = {
-    tool: 'time', sourceIdHash: 'a'.repeat(64), notifyAt: '2026-08-10T10:00:00.001Z',
+    tool: 'time', sourceIdHash: 'a'.repeat(64), notifyAt: '2026-08-11T10:00:00.001Z',
     encryptedPayload: { v: 1, iv: 'abc', ciphertext: 'def' }, encryptionVersion: 1, revision: 3
   };
   assert.equal(validateReminder(reminder, now).ok, false);
   assert.equal(validateReminder({ ...reminder, notifyAt: '2026-07-11T10:30:00.000Z', revision: 3.5 }, now).ok, false);
+});
+
+test('reminder validation envelope accepts the 721-hour New York fallback boundary but remains bounded at 31 days', () => {
+  const now = new Date('2026-10-02T13:00:00.000Z');
+  const reminder = {
+    tool: 'time', sourceIdHash: 'a'.repeat(64), notifyAt: '2026-11-01T14:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'abc', ciphertext: 'def' }, encryptionVersion: 1, revision: 3
+  };
+  assert.equal(validateReminder(reminder, now).ok, true);
+  assert.equal(validateReminder({
+    ...reminder,
+    notifyAt: new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000 + 1).toISOString()
+  }, now).ok, false);
 });
 
 test('reminders reject non-string notifyAt values without throwing', () => {
@@ -145,7 +158,7 @@ test('reminders reject non-string notifyAt values without throwing', () => {
       assert.deepEqual(validateReminder({ ...reminder, notifyAt }, now), {
         ok: false,
         code: 'invalid_reminder',
-        message: 'Reminder time must be within the next 30 days.'
+        message: 'Reminder time is outside the server validation envelope.'
       });
     });
   }
