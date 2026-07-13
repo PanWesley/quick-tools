@@ -142,6 +142,11 @@
     };
   }
 
+  function buildNotificationTag(type, sourceId, dueTime) {
+    if (!isValidDate(dueTime)) throw new TypeError('dueTime must be a valid Date');
+    return String(type) + ':' + String(sourceId) + ':' + dueTime.getTime();
+  }
+
   function encode(value) {
     return new TextEncoder().encode(value);
   }
@@ -192,7 +197,7 @@
       encryptedValue: {
         title: copy.title,
         body: copy.body,
-        tag: id,
+        tag: buildNotificationTag(type, item.id, dueTime),
         data: { type: type, id: item.id, date: dateKey, url: '/tools/time/#today' },
         scheduledAt: notifyAt,
         v: 1
@@ -238,6 +243,7 @@
 
   return {
     buildNotificationCopy: buildNotificationCopy,
+    buildNotificationTag: buildNotificationTag,
     buildReminderRecords: buildReminderRecords
   };
 });

@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const NotificationModel = require('./notification-model');
 
 function createRequest(run) {
   const request = {};
@@ -251,7 +252,9 @@ function createHarness(overrides = {}) {
     storage,
     crypto,
     registration,
-    notification: { permission: 'granted' },
+    notification: Object.prototype.hasOwnProperty.call(overrides, 'notification')
+      ? overrides.notification
+      : { permission: 'granted' },
     fetch: async (url, init) => {
       calls.push({ url, init });
       return overrides.fetch ? overrides.fetch(url, init, calls) : jsonResponse(204);
@@ -351,6 +354,24 @@ test('lifecycle methods return unsupported when Web Locks are unavailable', asyn
   assert.deepEqual(await harness.sync.handleForeground(), { status: 'unsupported' });
 });
 
+test('setup and getStatus report unsupported before disabled when Push or Notification capability is missing', async () => {
+  let permissionReads = 0;
+  const notification = {};
+  Object.defineProperty(notification, 'permission', {
+    get() { permissionReads += 1; return 'default'; }
+  });
+  const noPush = createHarness({ registration: {}, notification, fetch: responsePlan() });
+
+  assert.deepEqual(await noPush.sync.setup(noPush.registration), { status: 'unsupported' });
+  assert.deepEqual(await noPush.sync.getStatus(), { status: 'unsupported' });
+  assert.equal(permissionReads, 0);
+  assert.equal(noPush.calls.length, 0);
+
+  const noNotification = createHarness({ notification: null, fetch: responsePlan() });
+  assert.deepEqual(await noNotification.sync.setup(noNotification.registration), { status: 'unsupported' });
+  assert.deepEqual(await noNotification.sync.getStatus(), { status: 'unsupported' });
+});
+
 test('a failed lifecycle operation releases the Web Lock for the next instance', async () => {
   let failInstallationWrite = true;
   const indexedDB = createFakeIndexedDB({
@@ -366,7 +387,7 @@ test('a failed lifecycle operation releases the Web Lock for the next instance',
   const first = createHarness({ indexedDB, locks, fetch: responsePlan() });
   const second = createHarness({ indexedDB, locks, fetch: responsePlan() });
 
-  assert.equal((await first.sync.enable()).status, 'pending');
+  assert.equal((await first.sync.enable()).status, 'error');
   assert.equal((await second.sync.enable()).status, 'ready');
 });
 
@@ -385,6 +406,53 @@ test('enable reuses its IndexedDB installation, sends bearer credentials, and ke
   assert.equal('deviceToken' in await harness.sync.getStatus(), false);
   assert.equal(harness.storage.writes.length, 0);
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').deviceToken, 'secret-token-1');
+});
+
+test('first enable persists pending intent before config failure and online recovery completes enable', async () => {
+  let configOffline = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/config' && configOffline) throw new Error('config offline');
+      return standard(url, init, calls);
+    }
+  });
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'pending' });
+  let installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enablePending, true);
+  assert.equal(installation.enabled, false);
+  assert.equal(installation.subscriptionReady, false);
+
+  configOffline = false;
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'ready', deviceId: 'device-1' });
+  installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enablePending, false);
+  assert.equal(installation.enabled, true);
+  assert.equal(installation.subscriptionReady, true);
+});
+
+test('first enable persists pending intent before device failure and foreground recovery completes enable', async () => {
+  let deviceOffline = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/devices' && deviceOffline) throw new Error('device offline');
+      return standard(url, init, calls);
+    }
+  });
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'pending' });
+  let installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enablePending, true);
+  assert.equal(installation.deviceId, undefined);
+
+  deviceOffline = false;
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
+  installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enablePending, false);
+  assert.equal(installation.enabled, true);
+  assert.equal(installation.subscriptionReady, true);
 });
 
 test('enable converts the VAPID key and requests a visible Push subscription', async () => {
@@ -503,7 +571,8 @@ test('sync queues a failed server write and retries it with exponential delay wh
   harness.advance(1000);
   assert.deepEqual(await harness.sync.handleOnline(), { status: 'ready', deviceId: 'device-1' });
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
-  const reminderCall = harness.calls.find(call => call.url === '/api/notifications/reminders/task-1' && call.init.headers.Authorization === 'Bearer secret-token-1');
+  const reminderCall = harness.calls.find(call => call.url === '/api/notifications/reminders/'
+    + encodeURIComponent('device-1:task-1') && call.init.headers.Authorization === 'Bearer secret-token-1');
   assert.ok(reminderCall);
 });
 
@@ -524,7 +593,10 @@ test('retry attempts are bounded and terminal entries are not sent again', async
     id: 'task-retry', revision: 1, sourceIdHash: 'd'.repeat(64),
     notifyAt: '2026-07-11T14:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
   }] });
-  for (let attempt = 1; attempt < 5; attempt += 1) await harness.sync.handleOnline();
+  for (let attempt = 1; attempt < 5; attempt += 1) {
+    harness.advance(30 * 60 * 1000);
+    await harness.sync.handleOnline();
+  }
 
   const reminder = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
     .find(entry => entry.kind === 'upsert');
@@ -557,6 +629,145 @@ test('repeated sync keeps the newest reminder intent and the latest reconcile ge
   assert.equal(entries.find(entry => entry.kind === 'upsert').body.revision, 2);
   assert.equal(entries.find(entry => entry.kind === 'reconcile').body.reminders[0].revision, 1);
   assert.equal(entries.find(entry => entry.kind === 'reconcile').version, 3);
+});
+
+test('same revision preserves retry state and ciphertext refresh while higher revision resets backoff', async () => {
+  let reminderAttempts = 0;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reminders\//.test(url)) {
+        reminderAttempts += 1;
+        throw new Error('offline');
+      }
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  const reminder = (revision, ciphertext) => ({
+    id: 'same-revision', revision, sourceIdHash: '5'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext }
+  });
+
+  await harness.sync.sync({ reminders: [reminder(4, 'first')] });
+  let queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'upsert');
+  assert.deepEqual(
+    { attempts: queued.attempts, nextRetryAt: queued.nextRetryAt, terminal: queued.terminal },
+    { attempts: 1, nextRetryAt: 2000, terminal: false }
+  );
+
+  await harness.sync.sync({ reminders: [reminder(4, 'reencrypted')] });
+  await harness.sync.handleOnline();
+  await harness.sync.handleForeground();
+  queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'upsert');
+  assert.equal(reminderAttempts, 1);
+  assert.equal(queued.attempts, 1);
+  assert.equal(queued.nextRetryAt, 2000);
+  assert.equal(queued.body.encryptedPayload.ciphertext, 'reencrypted');
+
+  await harness.sync.sync({ reminders: [reminder(5, 'higher-revision')] });
+  assert.equal(reminderAttempts, 2);
+  queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'upsert');
+  assert.equal(queued.body.revision, 5);
+  assert.equal(queued.attempts, 1);
+  assert.equal(queued.nextRetryAt, 2000);
+});
+
+test('full foreground recovery followed by same-revision sync remains bounded to five attempts', async () => {
+  let reminderAttempts = 0;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reminders\//.test(url)) {
+        reminderAttempts += 1;
+        throw new Error('offline');
+      }
+      return standard(url, init, calls);
+    }
+  });
+  const reminder = {
+    id: 'recovery-bounded', revision: 2, sourceIdHash: '4'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  };
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [reminder] });
+
+  for (let cycle = 0; cycle < 10; cycle += 1) {
+    harness.advance(30 * 60 * 1000);
+    await harness.sync.handleForeground();
+    await harness.sync.sync({ reminders: [{
+      ...reminder,
+      encryptedPayload: { ...reminder.encryptedPayload, ciphertext: `ciphertext-${cycle}` }
+    }] });
+  }
+
+  const queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'upsert');
+  assert.equal(reminderAttempts, 5);
+  assert.equal(queued.attempts, 5);
+  assert.equal(queued.terminal, true);
+  assert.equal(queued.nextRetryAt, null);
+});
+
+test('reminder transport scopes path summary and logical key to the current device', async () => {
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reminders\/|\/reconcile$/.test(url)) throw new Error('offline');
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [{
+    id: 'reminder-opaque', revision: 1, sourceIdHash: '3'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  }] });
+
+  const entries = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values());
+  const upsert = entries.find(entry => entry.kind === 'upsert');
+  const reconcile = entries.find(entry => entry.kind === 'reconcile');
+  const serverId = 'device-1:reminder-opaque';
+  assert.equal(upsert.path, '/api/notifications/reminders/' + encodeURIComponent(serverId));
+  assert.equal(upsert.logicalKey, 'reminder:' + serverId);
+  assert.deepEqual(reconcile.body.reminders, [{ id: serverId, revision: 1 }]);
+  assert.ok(serverId.length <= 128);
+});
+
+test('auth reset uses a new device-scoped reminder ID without changing the model reminder identity', async () => {
+  let rejectTest = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/test' && rejectTest) return jsonResponse(401, {});
+      return standard(url, init, calls);
+    }
+  });
+  const reminder = {
+    id: 'reminder-stable', revision: 1, sourceIdHash: '2'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  };
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [reminder] });
+  assert.equal((await harness.sync.sendTest()).status, 'error');
+
+  rejectTest = false;
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [reminder] });
+
+  const paths = harness.calls.filter(call => /\/reminders\//.test(call.url || ''))
+    .map(call => call.url);
+  assert.deepEqual(paths, [
+    '/api/notifications/reminders/' + encodeURIComponent('device-1:reminder-stable'),
+    '/api/notifications/reminders/' + encodeURIComponent('device-2:reminder-stable')
+  ]);
+  assert.equal(reminder.id, 'reminder-stable');
 });
 
 test('empty reconcile uses a persisted sync generation to supersede an old high revision', async () => {
@@ -620,7 +831,23 @@ test('direct subscription PUT success removes the queued logical intent before d
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
 });
 
-test('queue limit returns a typed error and never persists more than 100 intents', async () => {
+test('four daily habits project and queue 120 reminders without a queue limit error', async () => {
+  const habits = Array.from({ length: 4 }, (_, index) => ({
+    id: `daily-${index}`,
+    title: `Daily ${index}`,
+    status: 'active',
+    startTime: '09:00',
+    reminder: 'at-time',
+    updatedAt: '2026-07-01T00:00:00.000Z'
+  }));
+  const records = await NotificationModel.buildReminderRecords(
+    { habits, habitLogs: [] },
+    '2026-07-11',
+    () => true,
+    new Date(2026, 6, 11, 10, 0)
+  );
+  assert.equal(records.length, 120);
+
   const standard = responsePlan();
   const harness = createHarness({
     fetch: async (url, init, calls) => {
@@ -629,13 +856,36 @@ test('queue limit returns a typed error and never persists more than 100 intents
     }
   });
   await harness.sync.enable();
-  const reminders = Array.from({ length: 101 }, (_, index) => ({
+  const status = await harness.sync.sync({
+    reminders: records.map(record => ({
+      id: record.id,
+      revision: record.revision,
+      sourceIdHash: record.sourceIdHash,
+      notifyAt: record.notifyAt,
+      encryptedPayload: { v: 1, iv: 'iv', ciphertext: record.id }
+    }))
+  });
+
+  assert.equal(status.status, 'pending');
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 121);
+});
+
+test('queue limit returns a typed error and never persists more than 500 intents', async () => {
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reminders\//.test(url)) throw new Error('offline');
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  const reminders = Array.from({ length: 501 }, (_, index) => ({
     id: `task-limit-${index}`, revision: 1, sourceIdHash: String(index).padStart(64, 'f'),
     notifyAt: '2026-07-11T16:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: `ciphertext-${index}` }
   }));
 
   assert.deepEqual(await harness.sync.sync({ reminders }), { status: 'error' });
-  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 100);
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 500);
 });
 
 test('terminal records are compacted so a new intent can be queued and sent without hiding the error state', async () => {
@@ -643,13 +893,13 @@ test('terminal records are compacted so a new intent can be queued and sent with
   const standard = responsePlan();
   const harness = createHarness({
     fetch: async (url, init, calls) => {
-      if (url.endsWith('/after-capacity')) reminderCalls += 1;
+      if (url.endsWith(encodeURIComponent('device-1:after-capacity'))) reminderCalls += 1;
       return standard(url, init, calls);
     }
   });
   await harness.sync.enable();
   const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
-  for (let index = 1; index <= 100; index += 1) {
+  for (let index = 1; index <= 500; index += 1) {
     queue.set(`terminal-${index}`, {
       id: `terminal-${index}`, sequence: index, generation: 1,
       logicalKey: `terminal:${index}`, kind: 'upsert', method: 'PUT', path: `/terminal/${index}`,
@@ -663,7 +913,7 @@ test('terminal records are compacted so a new intent can be queued and sent with
   }] })).status, 'error');
   assert.equal(reminderCalls, 1);
   const persistedQueue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
-  assert.ok(persistedQueue.size <= 100);
+  assert.ok(persistedQueue.size <= 500);
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'meta').get('queue-compact-error'), true);
   for (const [id, entry] of persistedQueue) if (entry.terminal) persistedQueue.delete(id);
   assert.deepEqual(await harness.sync.getStatus(), { status: 'error' });
@@ -736,6 +986,7 @@ test('overlapping drains across page and worker instances send each queued inten
     notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
   }] });
   mode = 'defer';
+  page.advance(1000);
   const firstDrain = page.sync.handleOnline();
   await waitFor(() => reminderCalls === 2);
   const secondDrain = worker.sync.handleOnline();
@@ -769,6 +1020,7 @@ test('a stale response does not delete a newer generation of the same logical in
   }] });
 
   offline = false;
+  harness.advance(1000);
   const recovery = harness.sync.handleOnline();
   await waitFor(() => reminderCalls === 2);
   const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
@@ -793,10 +1045,10 @@ test('a terminal queue entry is skipped so a later logical intent can be deliver
   let newReminderCalls = 0;
   const harness = createHarness({
     fetch: async (url, init, calls) => {
-      if (url.endsWith('/task-terminal')) {
+      if (url.endsWith(encodeURIComponent('device-1:task-terminal'))) {
         if (failOld) throw new Error('offline');
       }
-      if (url.endsWith('/task-after-terminal')) newReminderCalls += 1;
+      if (url.endsWith(encodeURIComponent('device-1:task-after-terminal'))) newReminderCalls += 1;
       return standard(url, init, calls);
     }
   });
@@ -805,7 +1057,10 @@ test('a terminal queue entry is skipped so a later logical intent can be deliver
     id: 'task-terminal', revision: 1, sourceIdHash: '7'.repeat(64),
     notifyAt: '2026-07-11T13:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'terminal' }
   }] });
-  for (let attempt = 1; attempt < 5; attempt += 1) await harness.sync.handleOnline();
+  for (let attempt = 1; attempt < 5; attempt += 1) {
+    harness.advance(30 * 60 * 1000);
+    await harness.sync.handleOnline();
+  }
   failOld = false;
 
   assert.equal((await harness.sync.sync({ reminders: [{
@@ -814,7 +1069,7 @@ test('a terminal queue entry is skipped so a later logical intent can be deliver
   }] })).status, 'error');
   assert.equal(newReminderCalls, 1);
   assert.equal(Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
-    .some(entry => entry.logicalKey === 'reminder:task-after-terminal'), false);
+    .some(entry => entry.logicalKey === 'reminder:device-1:task-after-terminal'), false);
 });
 
 test('disable waits for server cleanup before unsubscribing and exposes pending cleanup failures', async () => {
@@ -834,6 +1089,7 @@ test('disable waits for server cleanup before unsubscribing and exposes pending 
   assert.deepEqual(await harness.sync.getStatus(), { status: 'pending', deviceId: 'device-1' });
 
   cleanupFails = false;
+  harness.advance(1000);
   assert.deepEqual(await harness.sync.handleOnline(), { status: 'disabled' });
   assert.equal(harness.getSubscription().unsubscribed, true);
 });
@@ -858,7 +1114,10 @@ test('terminal disable cleanup gets a fresh five-attempt generation from every r
       await harness.sync.enable();
 
       assert.equal((await harness.sync.disable()).status, 'pending');
-      for (let attempt = 1; attempt < 5; attempt += 1) await harness.sync.handleOnline();
+      for (let attempt = 1; attempt < 5; attempt += 1) {
+        harness.advance(30 * 60 * 1000);
+        await harness.sync.handleOnline();
+      }
       assert.equal(deleteAttempts, 5);
       const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
       const terminal = Array.from(queue.values()).find(entry => entry.kind === 'disable');
@@ -1018,6 +1277,28 @@ test('disable discards queued reminder intents and sends server cleanup before b
     'DELETE', '/api/notifications/devices/device-1/subscription'
   ]]);
   assert.equal(harness.getSubscription().unsubscribed, true);
+});
+
+test('enable sync disable and re-enable sync reuse the device scope without colliding reminder IDs', async () => {
+  const harness = createHarness({ fetch: responsePlan() });
+  const reminder = {
+    id: 'lifecycle-reminder', revision: 6, sourceIdHash: '1'.repeat(64),
+    notifyAt: '2026-07-11T12:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
+  };
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [reminder] });
+  assert.deepEqual(await harness.sync.disable(), { status: 'disabled' });
+
+  harness.setSubscription(subscription('https://push.example/re-enabled'));
+  assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-1' });
+  await harness.sync.sync({ reminders: [reminder] });
+
+  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, 1);
+  assert.deepEqual(
+    harness.calls.filter(call => /\/reminders\//.test(call.url || '')).map(call => call.url),
+    Array(2).fill('/api/notifications/reminders/' + encodeURIComponent('device-1:lifecycle-reminder'))
+  );
 });
 
 test('disable keeps cleanup pending when credentials are missing but a browser subscription remains', async () => {

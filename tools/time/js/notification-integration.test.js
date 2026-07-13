@@ -80,10 +80,11 @@ function createHarness(overrides = {}) {
     open() {}
   };
   window.window = window;
-  const source = appSource.replace('      render();\n', '').replace(
+  const source = appSource.replace('      render();\n      updateNotificationUI();', '      updateNotificationUI();').replace(
     "document.addEventListener('DOMContentLoaded', init);",
     `window.__notificationTestHooks = {
       handleNotificationAction: handleNotificationAction,
+      handleNotificationDisable: typeof handleNotificationDisable === 'function' ? handleNotificationDisable : null,
       loadData: loadData,
       registerServiceWorker: registerServiceWorker,
       recoverNotificationOnline: recoverNotificationOnline,
@@ -98,6 +99,7 @@ function createHarness(overrides = {}) {
         els.notificationStatus = document.getElementById('notification-status');
         els.notificationDesc = document.getElementById('notification-desc');
         els.notificationButton = document.getElementById('notification-setup-button');
+        els.notificationDisableButton = document.getElementById('notification-disable-button');
       }
     };`
   );
@@ -223,6 +225,42 @@ test('ready click sends only the encrypted backend test', async () => {
   await harness.hooks.handleNotificationAction();
   assert.equal(sent, 1);
   assert.equal(legacyScheduled, 0);
+});
+
+test('ready notification row keeps test reminder and offers inline disable with pending state', async () => {
+  let disables = 0;
+  const localEnabled = [];
+  const sync = {
+    disable: async () => {
+      disables += 1;
+      return { status: 'pending', deviceId: 'device-1' };
+    }
+  };
+  const harness = createHarness({
+    sync,
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    legacy: {
+      getPermissionStatus: () => 'granted',
+      setEnabled(value) { localEnabled.push(value); },
+      scheduleAll() {},
+      getMissedCount: () => 0
+    }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  assert.match(index, /id="notification-disable-button"[^>]+data-action="notification-disable"[^>]*>关闭<\/button>/);
+  assert.equal(typeof harness.hooks.handleNotificationDisable, 'function');
+  assert.equal(harness.elements.get('notification-setup-button').textContent, '测试提醒');
+  assert.equal(harness.elements.get('notification-disable-button').hidden, false);
+
+  await harness.hooks.handleNotificationDisable();
+
+  assert.equal(disables, 1);
+  assert.deepEqual(localEnabled, [false]);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'pending');
+  assert.equal(harness.elements.get('notification-status').textContent, '等待同步');
+  assert.equal(harness.elements.get('notification-disable-button').hidden, true);
 });
 
 test('permission request remains inside the runtime click path', async () => {
@@ -429,4 +467,11 @@ test('coalesces concurrent projections to the latest snapshot', async () => {
   assert.equal(maxActive, 1);
   assert.deepEqual(projected, ['first', 'latest']);
   assert.deepEqual(synced, ['first', 'latest']);
+});
+
+test('a missing future notification entity switches back to Today and renders again', () => {
+  const start = appSource.indexOf('function handleNotificationClick(data)');
+  const end = appSource.indexOf('\n  function ', start + 1);
+  const handler = appSource.slice(start, end);
+  assert.match(handler, /if \(!entity\) \{\s*if \(targetView === 'calendar'\) \{\s*switchView\('today'\);\s*render\(\);\s*\}\s*return;\s*\}/);
 });

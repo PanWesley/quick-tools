@@ -89,6 +89,57 @@ test('scheduleAll keeps foreground timers within 24 hours', (t) => {
   assert.ok(delays[0] <= 24 * 60 * 60 * 1000);
 });
 
+test('foreground timer and encrypted push payload use the same notification tag without renotify', async (t) => {
+  installBrowserGlobals();
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const originalDate = global.Date;
+  const originalNotification = global.Notification;
+  const callbacks = [];
+  const shown = [];
+  const fixedNow = new originalDate(2026, 6, 11, 9, 59);
+  global.Date = class extends originalDate {
+    constructor(...args) { super(...(args.length ? args : [fixedNow.getTime()])); }
+    static now() { return fixedNow.getTime(); }
+  };
+  global.setTimeout = callback => { callbacks.push(callback); return callbacks.length; };
+  global.clearTimeout = () => {};
+  global.Notification = function Notification(title, options) { shown.push({ title, options }); };
+  global.Notification.permission = 'granted';
+  global.window.Notification = global.Notification;
+  t.after(() => {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+    global.Date = originalDate;
+    global.Notification = originalNotification;
+    global.window.Notification = originalNotification;
+  });
+
+  const item = {
+    id: 'task-shared-tag', title: '项目周会', date: '2026-07-11', area: 'work',
+    status: 'active', startTime: '10:00', reminder: 'at-time',
+    updatedAt: '2026-07-01T00:00:00.000Z'
+  };
+  const model = require('./notification-model');
+  const records = await model.buildReminderRecords(
+    { tasks: [item], habits: [], habitLogs: [] },
+    '2026-07-11',
+    () => false,
+    fixedNow
+  );
+  const service = loadService();
+  service.scheduleAll({ tasks: [item], habits: [] }, '2026-07-11', () => false);
+  assert.equal(typeof model.buildNotificationTag, 'function');
+  assert.equal(callbacks.length, 1);
+  callbacks[0]();
+  await Promise.resolve();
+
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].options.tag, records[0].encryptedValue.tag);
+  assert.equal(shown[0].options.tag, model.buildNotificationTag('task', item.id, new Date(2026, 6, 11, 10, 0)));
+  assert.equal(shown[0].options.renotify, false);
+});
+
 test('initSW keeps registration setup without owning service worker messages', () => {
   assert.match(notificationSource, /navigator\.serviceWorker\.ready\.then/);
   assert.doesNotMatch(notificationSource, /serviceWorker\.addEventListener\(['"]message['"]/);

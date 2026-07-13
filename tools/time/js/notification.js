@@ -160,7 +160,7 @@
     options.badge = options.badge || '/icons/today-youxu-icon-72x72.png';
     options.vibrate = options.vibrate || [200, 100, 200];
     options.tag = options.tag || 'today-youxu-reminder';
-    options.renotify = true;
+    options.renotify = false;
     options.requireInteraction = false;
     options.silent = false;
 
@@ -179,7 +179,7 @@
     var logKey = buildNotificationId(type, item.id, dueTime.getTime());
     if (wasNotified(logKey)) return;
     var copy = buildNotificationCopy(type, item, dueTime, notifyTime);
-    var tagKey = buildNotificationId(type, item.id, notifyTime.getTime());
+    var tagKey = NotificationModel.buildNotificationTag(type, item.id, dueTime);
     showNotification(copy.title, {
       body: copy.body,
       tag: tagKey,

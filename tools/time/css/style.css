@@ -2914,6 +2914,12 @@ textarea {
   min-width: 88px;
 }
 
+.notification-setting-row .notification-disable-button {
+  min-width: auto;
+  padding-inline: 6px;
+  color: var(--text-muted);
+}
+
 .notification-status-granted {
   background: var(--mint-soft);
   color: #247d67;

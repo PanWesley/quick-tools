@@ -1078,7 +1078,13 @@
               && (!hasValidDate || row.dataset.notificationDate === data.date);
           }
         );
-        if (!entity) return;
+        if (!entity) {
+          if (targetView === 'calendar') {
+            switchView('today');
+            render();
+          }
+          return;
+        }
         entity.scrollIntoView({ block: 'center', behavior: 'smooth' });
         entity.classList.add('notification-highlight');
         setTimeout(function() {
@@ -1461,6 +1467,8 @@
       renderCalendar();
     } else if (action === 'notification-setup') {
       handleNotificationAction();
+    } else if (action === 'notification-disable') {
+      handleNotificationDisable();
     }
   }
 
@@ -1652,6 +1660,10 @@
         else els.notificationButton.textContent = '开启提醒';
       }
     }
+    if (els.notificationDisableButton) {
+      els.notificationDisableButton.hidden = info.status !== 'ready';
+      els.notificationDisableButton.disabled = info.status !== 'ready';
+    }
     if (els.quickReminderHint) {
       if (info.status === 'ready') {
         els.quickReminderHint.textContent = '授权后，到达提醒时间会弹出系统通知。';
@@ -1691,6 +1703,19 @@
       if (syncedStatus.status === 'ready') {
         setNotificationBackendStatus(await NotificationSync.sendTest());
       }
+    } catch (error) {
+      handleNotificationBackendFailure(error);
+    }
+  }
+
+  async function handleNotificationDisable() {
+    if (!NotificationService) return;
+    try {
+      if (notificationSetupPromise) await notificationSetupPromise;
+      if (!NotificationSync || getNotificationStatusInfo().status !== 'ready') return;
+      NotificationService.setEnabled(false);
+      setNotificationBackendStatus({ status: 'pending' });
+      setNotificationBackendStatus(await NotificationSync.disable());
     } catch (error) {
       handleNotificationBackendFailure(error);
     }
@@ -2287,6 +2312,7 @@
     els.notificationStatus = $('notification-status');
     els.notificationDesc = $('notification-desc');
     els.notificationButton = $('notification-setup-button');
+    els.notificationDisableButton = $('notification-disable-button');
     els.toast = $('toast');
   }
 

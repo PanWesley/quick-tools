@@ -13,7 +13,7 @@
   var RETRY_BASE_MS = 1000;
   var RETRY_MAX_MS = 30 * 60 * 1000;
   var MAX_RETRY_ATTEMPTS = 5;
-  var MAX_QUEUE_SIZE = 100;
+  var MAX_QUEUE_SIZE = 500;
 
   function openDatabase(indexedDBApi) {
     return new Promise(function(resolve, reject) {
@@ -123,7 +123,8 @@
     var notificationCrypto = options.crypto || defaultCrypto;
     var fetchImpl = options.fetch || root && root.fetch;
     var registration = options.registration || null;
-    var notificationApi = options.notification || root && root.Notification;
+    var notificationApi = Object.prototype.hasOwnProperty.call(options, 'notification')
+      ? options.notification : root && root.Notification;
     var clock = options.clock || function() { return Date.now(); };
     var online = options.online || function() {
       return !root || !root.navigator || root.navigator.onLine !== false;
@@ -148,6 +149,11 @@
 
     function hasLocks() {
       return !!locks && typeof locks.request === 'function';
+    }
+
+    function hasPushAndNotification() {
+      return !!registration && !!registration.pushManager
+        && !!notificationApi && typeof notificationApi.permission === 'string';
     }
 
     function getDatabase() {
@@ -184,8 +190,8 @@
     function installationStatus(installation) {
       if (!installation) return 'disabled';
       if (installation.enabled && installation.subscriptionReady) return 'ready';
-      if (installation.enablePending && installation.deviceId
-        && installation.deviceToken && !installation.subscriptionReady) return 'error';
+      if (installation.enableFailed) return 'error';
+      if (installation.enablePending && !installation.subscriptionReady) return 'pending';
       return installation.enabled ? 'error' : 'disabled';
     }
 
@@ -226,15 +232,19 @@
             return;
           }
           if (entry) {
+            var sameVersion = Number.isSafeInteger(queueOptions.version)
+              && Number.isSafeInteger(entry.version) && entry.version === queueOptions.version;
             entry.kind = kind;
             entry.method = method;
             entry.path = path;
             entry.body = body || null;
             entry.version = queueOptions.version;
             entry.generation = Number.isSafeInteger(entry.generation) ? entry.generation + 1 : 1;
-            entry.attempts = 0;
-            entry.nextRetryAt = now();
-            entry.terminal = false;
+            if (!sameVersion) {
+              entry.attempts = 0;
+              entry.nextRetryAt = now();
+              entry.terminal = false;
+            }
             queueStore.put(entry, entry.id);
             finish({ entry: entry });
             return;
@@ -340,6 +350,11 @@
         attempts: 0, nextRetryAt: now(), terminal: false };
     }
 
+    function buildServerReminderId(deviceId, reminderId) {
+      var value = String(deviceId || '') + ':' + String(reminderId || '');
+      return value.length > 1 && value.length <= 128 ? value : null;
+    }
+
     async function prepareDisable() {
       var database = await getDatabase();
       return runTransaction(database, ['meta', 'installation', 'queue'], 'readwrite', function(transaction, finish) {
@@ -428,6 +443,7 @@
       installation.enabled = false;
       installation.subscriptionReady = false;
       installation.enablePending = false;
+      installation.enableFailed = false;
       installation.authenticationReset = false;
       installation.cleanupPending = false;
       installation.cleanupServerDone = false;
@@ -463,6 +479,7 @@
               installation.enabled = true;
               installation.subscriptionReady = true;
               installation.enablePending = false;
+              installation.enableFailed = false;
               installation.subscriptionEndpoint = current.body && current.body.endpoint || '';
               installation.authenticationReset = false;
               installationStore.put(installation, INSTALLATION_KEY);
@@ -561,10 +578,12 @@
 
     async function setupImpl(nextRegistration) {
       if (nextRegistration) registration = nextRegistration;
+      if (!hasPushAndNotification()) return toPublicStatus('unsupported');
       return getStatusImpl();
     }
 
     async function getStatusImpl() {
+      if (!hasPushAndNotification()) return toPublicStatus('unsupported');
       var installation = await getInstallation();
       var entries = await getQueue();
       if (installation && installation.cleanupPending) {
@@ -573,6 +592,8 @@
         }
         return toPublicStatus('pending', installation);
       }
+      if (installation && installation.enableFailed) return toPublicStatus('error');
+      if (installation && installation.enablePending) return toPublicStatus('pending', installation);
       if (installation && installation.authenticationReset) return toPublicStatus('error');
       if (entries.some(function(entry) { return !entry.terminal; })) return toPublicStatus('pending', installation);
       if (!installation || (!installation.enabled && !installation.deviceToken)) return toPublicStatus('disabled');
@@ -602,6 +623,7 @@
           stored.subscriptionReady = true;
           stored.enabled = true;
           stored.enablePending = false;
+          stored.enableFailed = false;
           stored.authenticationReset = false;
           installationStore.put(stored, INSTALLATION_KEY);
           if (queued && values[1] && values[1].generation === queued.generation) queueStore.delete(queued.id);
@@ -615,7 +637,8 @@
       if (installation && installation.cleanupPending) {
         return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
       }
-      if (!registration || !registration.pushManager || typeof registration.pushManager.getSubscription !== 'function') {
+      if (!hasPushAndNotification()
+        || typeof registration.pushManager.getSubscription !== 'function') {
         state = 'unsupported';
         return toPublicStatus('unsupported');
       }
@@ -624,6 +647,16 @@
         return toPublicStatus('permission-required');
       }
       state = 'subscribing';
+      installation = installation || {
+        enabled: false,
+        subscriptionReady: false,
+        authenticationReset: false
+      };
+      installation.enabled = false;
+      installation.subscriptionReady = false;
+      installation.enablePending = true;
+      installation.enableFailed = false;
+      await saveInstallation(installation);
       if (!isOnline()) {
         state = 'pending';
         return toPublicStatus('pending', installation);
@@ -639,7 +672,6 @@
         return toPublicStatus('pending', installation);
       }
 
-      installation = await getInstallation();
       if (!installation || !installation.deviceId || !installation.deviceToken || installation.authenticationReset) {
         try {
           var registrationResponse = await request('POST', '/api/notifications/devices', {
@@ -661,11 +693,6 @@
           state = 'pending';
           return toPublicStatus('pending', installation);
         }
-      } else {
-        installation.enabled = false;
-        installation.subscriptionReady = false;
-        installation.enablePending = true;
-        await saveInstallation(installation);
       }
 
       var subscription;
@@ -686,6 +713,9 @@
           ? subscription.toJSON()
           : subscription;
       } catch (error) {
+        installation.enablePending = false;
+        installation.enableFailed = true;
+        await saveInstallation(installation);
         state = 'error';
         return toPublicStatus('error');
       }
@@ -746,11 +776,13 @@
         for (var index = 0; index < reminders.length; index += 1) {
           var reminder = reminders[index];
           if (!reminder || typeof reminder.id !== 'string' || !Number.isSafeInteger(reminder.revision)) continue;
-          summaries.push({ id: reminder.id, revision: reminder.revision });
+          var serverId = buildServerReminderId(installation.deviceId, reminder.id);
+          if (!serverId) throw new Error('Notification reminder ID is invalid');
+          summaries.push({ id: serverId, revision: reminder.revision });
           if (reminder.cancelled) {
-            await queueOperation('cancel', 'DELETE', '/api/notifications/reminders/' + encodeURIComponent(reminder.id),
+            await queueOperation('cancel', 'DELETE', '/api/notifications/reminders/' + encodeURIComponent(serverId),
               { revision: reminder.revision }, {
-                logicalKey: 'reminder:' + reminder.id,
+                logicalKey: 'reminder:' + serverId,
                 version: reminder.revision,
                 requireEnabled: true
               });
@@ -761,7 +793,7 @@
             var key = await notificationCrypto.getOrCreateKey();
             encryptedPayload = await notificationCrypto.encryptPayload(key, reminder.payload || {});
           }
-          await queueOperation('upsert', 'PUT', '/api/notifications/reminders/' + encodeURIComponent(reminder.id), {
+          await queueOperation('upsert', 'PUT', '/api/notifications/reminders/' + encodeURIComponent(serverId), {
             tool: 'time',
             sourceIdHash: reminder.sourceIdHash,
             notifyAt: reminder.notifyAt,
@@ -769,7 +801,7 @@
             encryptionVersion: 1,
             revision: reminder.revision
           }, {
-            logicalKey: 'reminder:' + reminder.id,
+            logicalKey: 'reminder:' + serverId,
             version: reminder.revision,
             requireEnabled: true
           });
@@ -862,6 +894,7 @@
 
     async function handleOnlineImpl() {
       var installation = await getInstallation();
+      if (installation && installation.enablePending && !installation.cleanupPending) return enableImpl();
       if (installation && installation.authenticationReset && !installation.cleanupPending) return getStatusImpl();
       if (installation && installation.cleanupPending) {
         if (installation.cleanupAuthRejected) return toPublicStatus('error');
@@ -871,7 +904,7 @@
         }
         await ensureCleanupIntent();
       }
-      return flushQueue(true);
+      return flushQueue(false);
     }
 
     function runLocked(operation, args) {
