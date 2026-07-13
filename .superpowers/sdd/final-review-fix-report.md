@@ -79,3 +79,46 @@ PNPM=/Users/wesley/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/
 - Individual `$NODE --check` for every changed JS/MJS file: 17 checked, 17 exit 0.
 - Proxy-cleared `$PNPM check`: Wrangler `deploy --dry-run`, upload 59.42 KiB / gzip 14.13 KiB, exit 0.
 - `git diff --check`: exit 0 with no output.
+
+## Remaining Important Fixes
+
+Base HEAD: `88c646e`
+
+### RED Evidence
+
+1. Bulk marker reconciliation and endpoint ownership
+   - `node --test repository.test.mjs` failed 3 of 11 tests before the repository change.
+   - Empty reconcile left `subscription_disabled` set, the observed-revision race hook was never reached, and a claimed endpoint left both device subscriptions active.
+
+2. Browser subscription retirement and cleanup auth rejection
+   - The focused notification-sync suite failed the new auth-reset and cleanup cases before the client change.
+   - Ordinary auth reset registered `device-2` without unsubscribing the stale browser subscription. Cleanup DELETE 401/403 returned `error` without attempting local unsubscribe.
+   - Stale unsubscribe `false` and rejection did not block new device registration because retirement was not part of enable recovery.
+
+3. Reconcile retry preservation
+   - The focused notification-sync suite made 11 reconcile requests instead of 1 across 10 immediate same-data recovery cycles.
+   - Reordered but equivalent summaries made 2 requests instead of 1. A persisted legacy unsorted body reproduced the same reset in a dedicated RED run.
+
+### GREEN Evidence
+
+1. Repository
+   - Reconcile clears only the bulk-disable marker for an omitted cancelled row matching device, ID, observed revision, status, marker, and authoritative time window. Status remains cancelled, equal-revision upsert is unchanged, and a concurrent higher revision wins.
+   - Subscription upsert uses one D1 batch to cancel the previous endpoint owner's active reminders, invalidate its subscription, and upsert the new owner. The real SQLite test confirms `claimDue` returns only the new device.
+
+2. Client auth and cleanup
+   - Auth reset must complete local unsubscribe before device registration, persists a forced-new-subscription intent, and never reuses the stale PushSubscription. `false` and rejection remain typed `error` states and are retryable through explicit enable.
+   - Cleanup DELETE 401/403 is treated as server-terminal but still performs local unsubscribe. Success persists disabled state without foreground auto-enable; failure remains cleanup-pending and retries only local unsubscribe.
+   - Existing explicit terminal cleanup recovery still passes for `handleOnline`, `handleForeground`, and `disable`.
+
+3. Reconcile retry
+   - Reconcile summaries are persisted in stable order and compared semantically independent of persisted order.
+   - Same content preserves attempts, terminal state, and `nextRetryAt` despite sync generation changes. New content resets once; immediate calls respect backoff; same-data recovery remains bounded at five requests.
+
+### Fresh Verification
+
+- `$NODE --test tools/time/js/notification-sync.test.js`: 56 tests, 56 pass, 0 fail, exit 0.
+- `$NODE --test tools/time/js/*.test.js`: 130 tests, 130 pass, 0 fail, exit 0.
+- `cd workers/notifications && PATH=<bundled-node>:$PATH $PNPM test`: 49 tests, 49 pass, 0 fail, exit 0.
+- Proxy-cleared `$PNPM check`: Wrangler dry-run upload 60.73 KiB / gzip 14.29 KiB, exit 0.
+- `$NODE --check` for all 4 changed JS/MJS files: 4 checked, 4 exit 0.
+- `git diff --check`: exit 0 with no output.

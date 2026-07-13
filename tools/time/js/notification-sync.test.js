@@ -714,6 +714,95 @@ test('full foreground recovery followed by same-revision sync remains bounded to
   assert.equal(queued.nextRetryAt, null);
 });
 
+test('same reconcile data preserves backoff through foreground recovery and resets once for new summaries', async () => {
+  let reconcileAttempts = 0;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reconcile$/.test(url)) {
+        reconcileAttempts += 1;
+        throw new Error('offline');
+      }
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [] });
+
+  for (let cycle = 0; cycle < 10; cycle += 1) {
+    await harness.sync.handleForeground();
+    await harness.sync.sync({ reminders: [] });
+  }
+  assert.equal(reconcileAttempts, 1);
+
+  for (let attempt = 1; attempt < 5; attempt += 1) {
+    harness.advance(30 * 60 * 1000);
+    await harness.sync.handleForeground();
+    await harness.sync.sync({ reminders: [] });
+  }
+  let queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'reconcile');
+  assert.equal(reconcileAttempts, 5);
+  assert.deepEqual(
+    { attempts: queued.attempts, terminal: queued.terminal, nextRetryAt: queued.nextRetryAt },
+    { attempts: 5, terminal: true, nextRetryAt: null }
+  );
+
+  await harness.sync.handleForeground();
+  await harness.sync.sync({ reminders: [] });
+  assert.equal(reconcileAttempts, 5);
+
+  await harness.sync.sync({ reminders: [{
+    id: 'new-summary', revision: 1, sourceIdHash: '7'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'new-summary' }
+  }] });
+  queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'reconcile');
+  assert.equal(reconcileAttempts, 6);
+  assert.equal(queued.attempts, 1);
+  assert.equal(queued.terminal, false);
+
+  await harness.sync.sync({ reminders: [{
+    id: 'new-summary', revision: 1, sourceIdHash: '7'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'reencrypted' }
+  }] });
+  assert.equal(reconcileAttempts, 6);
+});
+
+test('reconcile summary ordering is stable and does not reset retry state', async () => {
+  let reconcileAttempts = 0;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (/\/reconcile$/.test(url)) {
+        reconcileAttempts += 1;
+        throw new Error('offline');
+      }
+      return standard(url, init, calls);
+    }
+  });
+  const makeReminder = id => ({
+    id, revision: 1, sourceIdHash: id.padEnd(64, '0'),
+    notifyAt: '2026-07-11T15:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: id }
+  });
+  await harness.sync.enable();
+  await harness.sync.sync({ reminders: [makeReminder('b'), makeReminder('a')] });
+  const persisted = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'reconcile');
+  persisted.body.reminders.reverse();
+  await harness.sync.sync({ reminders: [makeReminder('a'), makeReminder('b')] });
+
+  const queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .find(entry => entry.kind === 'reconcile');
+  assert.equal(reconcileAttempts, 1);
+  assert.deepEqual(queued.body.reminders.map(item => item.id), ['device-1:a', 'device-1:b']);
+  assert.equal(queued.attempts, 1);
+  assert.equal(queued.nextRetryAt, 2000);
+});
+
 test('reminder transport scopes path summary and logical key to the current device', async () => {
   const standard = responsePlan();
   const harness = createHarness({
@@ -1324,7 +1413,34 @@ test('cleanup with no recoverable device identity never reports ready or unsubsc
     .get('current').cleanupPending, true);
 });
 
-test('cleanup authentication rejection preserves the old identity and never auto-enables a replacement device', async () => {
+test('cleanup 401 and 403 retire the browser subscription locally and stay disabled', async t => {
+  for (const status of [401, 403]) {
+    await t.test(String(status), async () => {
+      const standard = responsePlan();
+      const harness = createHarness({
+        fetch: async (url, init, calls) => {
+          if (/\/subscription$/.test(url) && init.method === 'DELETE') {
+            return jsonResponse(status, { error: { code: 'rejected' } });
+          }
+          return standard(url, init, calls);
+        }
+      });
+      await harness.sync.enable();
+      const deviceCalls = harness.calls.filter(call => call.url === '/api/notifications/devices').length;
+
+      assert.deepEqual(await harness.sync.disable(), { status: 'disabled' });
+      assert.equal(harness.getSubscription().unsubscribed, true);
+      const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+      assert.equal(installation.enabled, false);
+      assert.equal(installation.cleanupPending, false);
+      assert.deepEqual(await harness.sync.handleOnline(), { status: 'disabled' });
+      assert.deepEqual(await harness.sync.handleForeground(), { status: 'disabled' });
+      assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, deviceCalls);
+    });
+  }
+});
+
+test('cleanup auth rejection retries only local unsubscribe after false and rejection', async () => {
   const standard = responsePlan();
   const harness = createHarness({
     fetch: async (url, init, calls) => {
@@ -1335,26 +1451,31 @@ test('cleanup authentication rejection preserves the old identity and never auto
     }
   });
   await harness.sync.enable();
+  const current = harness.getSubscription();
+  let unsubscribeCalls = 0;
+  current.unsubscribe = async () => {
+    unsubscribeCalls += 1;
+    if (unsubscribeCalls === 1) return false;
+    if (unsubscribeCalls === 2) throw new Error('local unsubscribe failed');
+    current.unsubscribed = true;
+    return true;
+  };
 
   assert.deepEqual(await harness.sync.disable(), { status: 'error' });
-  const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  let installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
   assert.equal(installation.cleanupPending, true);
-  assert.equal(installation.deviceId, 'device-1');
-  assert.equal(installation.cleanupDeviceId, 'device-1');
-  assert.deepEqual(await harness.sync.getStatus(), { status: 'error' });
+  assert.equal(installation.cleanupServerDone, true);
+  assert.equal(installation.cleanupAuthRejected, true);
+  const networkCalls = harness.calls.length;
 
-  const deviceCalls = harness.calls.filter(call => call.url === '/api/notifications/devices').length;
-  const subscriptionPuts = harness.calls.filter(call => /\/subscription$/.test(call.url)
-    && call.init.method === 'PUT').length;
-  assert.deepEqual(await harness.sync.handleOnline(), { status: 'error' });
-  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
   assert.deepEqual(await harness.sync.handleForeground(), { status: 'error' });
-  assert.deepEqual(await harness.sync.disable(), { status: 'error' });
-  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, deviceCalls);
-  assert.equal(harness.calls.filter(call => /\/subscription$/.test(call.url)
-    && call.init.method === 'PUT').length, subscriptionPuts);
-  assert.equal(harness.calls.filter(call => /\/subscription$/.test(call.url)
-    && call.init.method === 'DELETE').length, 1);
+  assert.equal(harness.calls.length, networkCalls);
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'disabled' });
+  assert.equal(harness.calls.length, networkCalls);
+  assert.equal(unsubscribeCalls, 3);
+  installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enabled, false);
+  assert.equal(installation.cleanupPending, false);
 });
 
 test('unsubscribe false keeps cleanup pending and foreground retries only local cleanup', async () => {
@@ -1426,15 +1547,62 @@ test('authentication failures reset the installation and a later enable renews t
   });
   await harness.sync.setup(harness.registration);
   await harness.sync.enable();
-  harness.setSubscription(subscription('https://push.example/renewed'));
-  await harness.sync.enable();
-  assert.ok(harness.calls.some(call => call.url === '/api/notifications/devices/device-1/subscription' && call.init.body.includes('renewed')));
+  const staleSubscription = harness.getSubscription();
+  staleSubscription.unsubscribe = async () => {
+    harness.calls.push({ unsubscribe: staleSubscription.endpoint });
+    staleSubscription.unsubscribed = true;
+    return true;
+  };
 
   assert.deepEqual(await harness.sync.sendTest({ title: '测试', body: '通知' }), { status: 'error' });
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').deviceToken, undefined);
 
   rejectTest = false;
   assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-2' });
+  assert.equal(staleSubscription.unsubscribed, true);
+  assert.notEqual(harness.getSubscription(), staleSubscription);
+  assert.equal(harness.calls.filter(call => call.subscribe).length, 1);
+  const unsubscribeIndex = harness.calls.findIndex(call => call.unsubscribe === staleSubscription.endpoint);
+  const registrationIndex = harness.calls.findIndex((call, index) => index > unsubscribeIndex
+    && call.url === '/api/notifications/devices');
+  assert.ok(unsubscribeIndex >= 0 && registrationIndex > unsubscribeIndex);
+  assert.ok(harness.calls.some(call => call.url === '/api/notifications/devices/device-2/subscription'
+    && call.init.body.includes('https://push.example/created')));
+});
+
+test('auth reset does not register a new device until stale local unsubscribe succeeds', async () => {
+  let rejectTest = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/test' && rejectTest) return jsonResponse(401, {});
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  const staleSubscription = harness.getSubscription();
+  let unsubscribeCalls = 0;
+  staleSubscription.unsubscribe = async () => {
+    unsubscribeCalls += 1;
+    if (unsubscribeCalls === 1) return false;
+    if (unsubscribeCalls === 2) throw new Error('local unsubscribe failed');
+    staleSubscription.unsubscribed = true;
+    return true;
+  };
+  await harness.sync.sendTest();
+  rejectTest = false;
+  const initialRegistrations = harness.calls.filter(call => call.url === '/api/notifications/devices').length;
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
+  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
+  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, initialRegistrations);
+  assert.equal(harness.calls.filter(call => call.subscribe).length, 0);
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-2' });
+  assert.equal(unsubscribeCalls, 3);
+  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length,
+    initialRegistrations + 1);
+  assert.equal(harness.calls.filter(call => call.subscribe).length, 1);
 });
 
 test('authentication reset removes queued requests addressed to the invalid installation', async () => {

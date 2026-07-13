@@ -199,6 +199,20 @@
       return (await readRecord(await getDatabase(), 'meta', 'queue-compact-error')) === true;
     }
 
+    function reconcileBodySignature(body) {
+      if (!body || !Array.isArray(body.reminders)) return null;
+      return JSON.stringify(body.reminders.map(function(item) {
+        return [item && item.id, item && item.revision];
+      }).sort(function(left, right) {
+        return left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : left[1] - right[1];
+      }));
+    }
+
+    function sameReconcileBody(left, right) {
+      var leftSignature = reconcileBodySignature(left);
+      return leftSignature !== null && leftSignature === reconcileBodySignature(right);
+    }
+
     async function queueOperation(kind, method, path, body, queueOptions) {
       queueOptions = queueOptions || {};
       var database = await getDatabase();
@@ -234,13 +248,15 @@
           if (entry) {
             var sameVersion = Number.isSafeInteger(queueOptions.version)
               && Number.isSafeInteger(entry.version) && entry.version === queueOptions.version;
+            var sameIntent = sameVersion || (kind === 'reconcile' && entry.kind === 'reconcile'
+              && sameReconcileBody(entry.body, body));
             entry.kind = kind;
             entry.method = method;
             entry.path = path;
             entry.body = body || null;
             entry.version = queueOptions.version;
             entry.generation = Number.isSafeInteger(entry.generation) ? entry.generation + 1 : 1;
-            if (!sameVersion) {
+            if (!sameIntent) {
               entry.attempts = 0;
               entry.nextRetryAt = now();
               entry.terminal = false;
@@ -329,7 +345,11 @@
         return;
       }
       (entries || []).forEach(function(entry) { queueStore.delete(entry.id); });
-      installationStore.put({ enabled: !!installation.enabled, authenticationReset: true }, INSTALLATION_KEY);
+      installationStore.put({
+        enabled: !!installation.enabled,
+        authenticationReset: true,
+        forceNewSubscription: false
+      }, INSTALLATION_KEY);
     }
 
     async function resetAuthentication() {
@@ -428,16 +448,28 @@
       return await current.unsubscribe() !== false;
     }
 
+    async function retireAuthenticationSubscription(installation) {
+      if (!installation || !installation.authenticationReset || installation.forceNewSubscription) return true;
+      try {
+        if (!await unsubscribeBrowser()) return false;
+      } catch (error) {
+        return false;
+      }
+      installation.forceNewSubscription = true;
+      await saveInstallation(installation);
+      return true;
+    }
+
     async function completeDisable() {
       var installation = await getInstallation();
       if (!installation || !installation.cleanupPending || !installation.cleanupServerDone) return false;
       try {
         if (!await unsubscribeBrowser()) {
-          state = 'pending';
+          state = installation.cleanupAuthRejected ? 'error' : 'pending';
           return false;
         }
       } catch (error) {
-        state = 'pending';
+        state = installation.cleanupAuthRejected ? 'error' : 'pending';
         return false;
       }
       installation.enabled = false;
@@ -449,6 +481,7 @@
       installation.cleanupServerDone = false;
       installation.cleanupAuthRejected = false;
       installation.subscriptionEndpoint = '';
+      installation.forceNewSubscription = false;
       await saveInstallation(installation);
       state = 'disabled';
       return true;
@@ -482,12 +515,23 @@
               installation.enableFailed = false;
               installation.subscriptionEndpoint = current.body && current.body.endpoint || '';
               installation.authenticationReset = false;
+              installation.forceNewSubscription = false;
               installationStore.put(installation, INSTALLATION_KEY);
             }
             finish({ success: true, disable: current.kind === 'disable' });
             return;
           }
           if (response && (response.status === 401 || response.status === 403)) {
+            if (current.kind === 'disable' && installation.cleanupPending) {
+              queueStore.delete(current.id);
+              installation.deviceToken = undefined;
+              installation.cleanupServerDone = true;
+              installation.cleanupAuthRejected = true;
+              installation.authenticationReset = true;
+              installationStore.put(installation, INSTALLATION_KEY);
+              finish({ disableAuthenticationError: true });
+              return;
+            }
             applyAuthenticationReset(installationStore, queueStore, installation, values[2], current);
             finish({ authenticationError: true });
             return;
@@ -506,11 +550,11 @@
     async function flushQueue(forceRetry) {
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
-        if (installation.cleanupAuthRejected) return toPublicStatus('error');
         if (installation.cleanupServerDone) {
           if (await completeDisable()) return toPublicStatus('disabled');
-          return toPublicStatus('pending', installation);
+          return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
         }
+        if (installation.cleanupAuthRejected) return toPublicStatus('error');
         await ensureCleanupIntent();
       }
       var entries = await getQueue();
@@ -544,6 +588,10 @@
         var committed = await commitQueueResponse(entry, response);
         if (committed.authenticationError) {
           state = 'error';
+          return toPublicStatus('error');
+        }
+        if (committed.disableAuthenticationError) {
+          if (await completeDisable()) return toPublicStatus('disabled');
           return toPublicStatus('error');
         }
         if (committed.disable) {
@@ -625,6 +673,7 @@
           stored.enablePending = false;
           stored.enableFailed = false;
           stored.authenticationReset = false;
+          stored.forceNewSubscription = false;
           installationStore.put(stored, INSTALLATION_KEY);
           if (queued && values[1] && values[1].generation === queued.generation) queueStore.delete(queued.id);
           finish(true);
@@ -646,6 +695,12 @@
         state = 'permission-required';
         return toPublicStatus('permission-required');
       }
+      if (installation && installation.authenticationReset
+        && !await retireAuthenticationSubscription(installation)) {
+        state = 'error';
+        return toPublicStatus('error');
+      }
+      installation = await getInstallation();
       state = 'subscribing';
       installation = installation || {
         enabled: false,
@@ -680,13 +735,15 @@
           }, null, false);
           if (!registrationResponse.ok) throw new Error('Device registration failed');
           var credentials = await registrationResponse.json();
+          var forceNewSubscription = !!(installation && installation.forceNewSubscription);
           installation = {
             deviceId: credentials.deviceId,
             deviceToken: credentials.deviceToken,
             enabled: false,
             subscriptionReady: false,
             enablePending: true,
-            authenticationReset: false
+            authenticationReset: false,
+            forceNewSubscription: forceNewSubscription
           };
           await saveInstallation(installation);
         } catch (error) {
@@ -698,7 +755,9 @@
       var subscription;
       var subscriptionValue;
       try {
-        subscription = await registration.pushManager.getSubscription();
+        subscription = installation.forceNewSubscription
+          ? null
+          : await registration.pushManager.getSubscription();
         if (subscription && Number.isFinite(subscription.expirationTime) && subscription.expirationTime <= now()) {
           if (await subscription.unsubscribe() === false) throw new Error('Expired subscription cleanup failed');
           subscription = null;
@@ -806,6 +865,9 @@
             requireEnabled: true
           });
         }
+        summaries.sort(function(left, right) {
+          return left.id < right.id ? -1 : left.id > right.id ? 1 : left.revision - right.revision;
+        });
         await queueOperation('reconcile', 'POST', '/api/notifications/reconcile', { reminders: summaries }, {
           logicalKey: 'reconcile',
           version: reconcileVersion,
@@ -854,11 +916,11 @@
     async function disableImpl() {
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
-        if (installation.cleanupAuthRejected) return toPublicStatus('error');
         if (installation.cleanupServerDone) {
           if (await completeDisable()) return toPublicStatus('disabled');
-          return toPublicStatus('pending', installation);
+          return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
         }
+        if (installation.cleanupAuthRejected) return toPublicStatus('error');
         await ensureCleanupIntent();
         return flushQueue(false);
       }
@@ -897,11 +959,11 @@
       if (installation && installation.enablePending && !installation.cleanupPending) return enableImpl();
       if (installation && installation.authenticationReset && !installation.cleanupPending) return getStatusImpl();
       if (installation && installation.cleanupPending) {
-        if (installation.cleanupAuthRejected) return toPublicStatus('error');
         if (installation.cleanupServerDone) {
           if (await completeDisable()) return toPublicStatus('disabled');
-          return toPublicStatus('pending', installation);
+          return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
         }
+        if (installation.cleanupAuthRejected) return toPublicStatus('error');
         await ensureCleanupIntent();
       }
       return flushQueue(false);
