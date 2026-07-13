@@ -43,13 +43,13 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 
 ### 生产准备与部署
 
-以下命令必须由具备 Cloudflare 权限的 controller 在 `workers/notifications/` 执行。本次 Task 9 不执行任何远端写操作；不得将返回的 D1 ID、VAPID 私钥或 token 编造或复制到日志。
+以下命令必须由具备 Cloudflare 权限的 controller 在 `workers/notifications/` 执行；不得将 VAPID 私钥或 token 复制到日志或提交到仓库。
 
 1. 确认身份并创建独立 D1。`--update-config` 会把真实 `database_id` 写入 `wrangler.jsonc`，提交前必须人工核对账号和数据库名称：
 
    ```bash
    pnpm exec wrangler whoami
-   pnpm exec wrangler d1 create billnest_notifications --binding NOTIFICATIONS_DB --update-config wrangler.jsonc
+   pnpm exec wrangler d1 create billnest_notifications --binding NOTIFICATIONS_DB --update-config
    ```
 
 2. 审阅 `wrangler.jsonc`，确认只有一个 `compatibility_flags`，并包含真实 D1 binding、每分钟 Cron 与两个 route。route 由 `wrangler deploy` 随配置发布，不存在单独的 route 创建命令：
@@ -74,7 +74,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
    pnpm exec wrangler d1 migrations apply NOTIFICATIONS_DB --remote
    ```
 
-4. 使用可信本地工具只生成一次 VAPID key pair，然后交互写入 secrets。私钥不得提交到仓库、D1 或 shell history：
+4. 使用可信本地工具只生成一次 VAPID key pair，然后交互写入 secrets。私钥不得提交到仓库、D1 或 shell history。首次创建 Worker 时，若 `secret put` 提示 Worker 不存在，先在不含生产 routes 的配置下完成一次初始 deploy，再写入 secrets，最后恢复 routes 并正式 deploy：
 
    ```bash
    pnpm exec wrangler secret put VAPID_PUBLIC_KEY
@@ -82,7 +82,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
    pnpm exec wrangler secret put VAPID_SUBJECT
    ```
 
-5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署。当前 `wrangler.jsonc` 只有 `* * * * *` Cron，尚不能接管生产 API 路径：
+5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署：
 
    ```bash
    env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy pnpm check

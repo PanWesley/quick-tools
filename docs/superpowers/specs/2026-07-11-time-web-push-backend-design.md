@@ -396,7 +396,7 @@ controller 的部署顺序与命令如下；执行前必须先完成 `wrangler w
 
 ```bash
 cd workers/notifications
-pnpm exec wrangler d1 create billnest_notifications --binding NOTIFICATIONS_DB --update-config wrangler.jsonc
+pnpm exec wrangler d1 create billnest_notifications --binding NOTIFICATIONS_DB --update-config
 pnpm exec wrangler d1 migrations apply NOTIFICATIONS_DB --remote
 pnpm exec wrangler secret put VAPID_PUBLIC_KEY
 pnpm exec wrangler secret put VAPID_PRIVATE_KEY
@@ -411,8 +411,8 @@ pnpm exec wrangler deploy
 ## 当前验证边界
 
 - 已实现并由本地自动测试覆盖：AES-GCM 密文模型、安装身份持久化、同步队列和状态、Web Locks 生命周期串行化、Worker API/D1 repository/Cron 状态机、Service Worker 解密/兜底/点击定位及本地 CRUD 与通知后端失败解耦。
-- 尚未验证：生产 Cloudflare 认证与账号归属、真实 Notifications D1 binding 和迁移、VAPID secrets、生产 routes/Cron/deploy、远端日志与指标，以及 iOS/iPadOS、Android、桌面真机的后台和关闭状态投递。
-- 因此，本地测试通过只能证明实现和 dry-run readiness，不能声明生产后台通知已经可用。
+- 已验证：生产 Cloudflare 账号、Notifications D1 binding 和迁移、VAPID secrets、两条生产 routes、每分钟 Cron、Worker deploy，以及生产 `/api/notifications/config` 返回协议版本和 VAPID 公钥。
+- 尚未验证：远端投递日志与指标，以及 iOS/iPadOS、Android、桌面真机的后台和关闭状态投递。因此在真机矩阵完成前，不能声明所有支持平台的生产后台通知已经验收完成。
 
 ## 验收标准
 
