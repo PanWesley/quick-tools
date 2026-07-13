@@ -83,27 +83,45 @@ export function createD1Repository(db) {
     },
 
     async upsertSubscription(deviceId, subscription, at) {
-      await db.prepare(`
-        INSERT INTO push_subscriptions (
-          id, device_id, endpoint, p256dh, auth, created_at, updated_at, expires_at, invalidated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
-        ON CONFLICT(device_id) DO UPDATE SET
-          endpoint = excluded.endpoint,
-          p256dh = excluded.p256dh,
-          auth = excluded.auth,
-          updated_at = excluded.updated_at,
-          expires_at = excluded.expires_at,
-          invalidated_at = NULL
-      `).bind(
-        deviceId,
-        deviceId,
-        subscription.endpoint,
-        subscription.p256dh,
-        subscription.auth,
-        at,
-        at,
-        subscription.expirationTime === null ? null : new Date(subscription.expirationTime).toISOString()
-      ).run();
+      await db.batch([
+        db.prepare(`
+          UPDATE reminders
+          SET status = 'cancelled', lease_until = NULL,
+              last_error_code = 'subscription_reassigned', updated_at = ?
+          WHERE device_id != ? AND status IN ('pending', 'processing', 'retry')
+            AND device_id IN (
+              SELECT device_id
+              FROM push_subscriptions
+              WHERE endpoint = ? AND invalidated_at IS NULL
+            )
+        `).bind(at, deviceId, subscription.endpoint),
+        db.prepare(`
+          UPDATE push_subscriptions
+          SET invalidated_at = ?, updated_at = ?
+          WHERE device_id != ? AND endpoint = ? AND invalidated_at IS NULL
+        `).bind(at, at, deviceId, subscription.endpoint),
+        db.prepare(`
+          INSERT INTO push_subscriptions (
+            id, device_id, endpoint, p256dh, auth, created_at, updated_at, expires_at, invalidated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          ON CONFLICT(device_id) DO UPDATE SET
+            endpoint = excluded.endpoint,
+            p256dh = excluded.p256dh,
+            auth = excluded.auth,
+            updated_at = excluded.updated_at,
+            expires_at = excluded.expires_at,
+            invalidated_at = NULL
+        `).bind(
+          deviceId,
+          deviceId,
+          subscription.endpoint,
+          subscription.p256dh,
+          subscription.auth,
+          at,
+          at,
+          subscription.expirationTime === null ? null : new Date(subscription.expirationTime).toISOString()
+        )
+      ]);
       return { deviceId, ...subscription, updatedAt: at };
     },
 
@@ -229,7 +247,7 @@ export function createD1Repository(db) {
 
     async reconcile(deviceId, summaries, from, through) {
       const result = await db.prepare(`
-        SELECT id, revision, status
+        SELECT id, revision, status, last_error_code
         FROM reminders
         WHERE device_id = ? AND notify_at >= ? AND notify_at <= ? AND status != 'expired'
         ORDER BY id
@@ -239,7 +257,18 @@ export function createD1Repository(db) {
       const client = new Map(summaries.map((item) => [item.id, item.revision]));
       const unknown = [];
       for (const item of stored) {
-        if (client.has(item.id) || !['pending', 'processing', 'retry'].includes(item.status)) continue;
+        if (client.has(item.id)) continue;
+        if (item.status === 'cancelled' && item.last_error_code === 'subscription_disabled') {
+          await db.prepare(`
+            UPDATE reminders
+            SET last_error_code = NULL, updated_at = ?
+            WHERE id = ? AND device_id = ? AND revision = ?
+              AND notify_at >= ? AND notify_at <= ?
+              AND status = 'cancelled' AND last_error_code = 'subscription_disabled'
+          `).bind(from, item.id, deviceId, item.revision, from, through).run();
+          continue;
+        }
+        if (!['pending', 'processing', 'retry'].includes(item.status)) continue;
         const cancelled = await db.prepare(`
           UPDATE reminders
           SET status = 'cancelled', lease_until = NULL,

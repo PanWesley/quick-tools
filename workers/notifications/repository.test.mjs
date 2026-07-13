@@ -296,3 +296,99 @@ test('same revision restores only reminders cancelled by bulk subscription disab
   assert.equal(explicit.reminder.status, 'cancelled');
   assert.notEqual(explicit.reminder.lastErrorCode, 'subscription_disabled');
 });
+
+test('empty reconcile clears bulk-disable restoration without reviving an equal revision', async () => {
+  const { db, repository } = await createFixture();
+  await subscribe(repository);
+  await repository.upsertReminder(
+    'device-1', 'bulk-disabled', reminder(9, '2026-07-11T10:05:00.000Z'), AT
+  );
+  await repository.removeSubscriptionAndCancelReminders('device-1', '2026-07-11T10:01:00.000Z');
+
+  await repository.reconcile('device-1', [], AT, '2026-08-11T10:00:00.000Z');
+  const afterReconcile = db.database.prepare(`
+    SELECT revision, status, last_error_code
+    FROM reminders WHERE id = 'bulk-disabled'
+  `).get();
+  assert.deepEqual({ ...afterReconcile }, {
+    revision: 9,
+    status: 'cancelled',
+    last_error_code: null
+  });
+
+  const equalRevision = await repository.upsertReminder(
+    'device-1',
+    'bulk-disabled',
+    reminder(9, '2026-07-11T10:05:00.000Z'),
+    '2026-07-11T10:02:00.000Z'
+  );
+  assert.equal(equalRevision.outcome, 'unchanged');
+  assert.equal(equalRevision.reminder.status, 'cancelled');
+});
+
+test('reconcile bulk-marker clearing cannot overwrite a concurrently higher revision', async () => {
+  const { db, repository } = await createFixture();
+  await subscribe(repository);
+  await repository.upsertReminder(
+    'device-1', 'raced-bulk', reminder(9, '2026-07-11T10:05:00.000Z'), AT
+  );
+  await repository.removeSubscriptionAndCancelReminders('device-1', '2026-07-11T10:01:00.000Z');
+  db.beforeRun = (sql, _values, database) => {
+    if (!/SET last_error_code = NULL, updated_at = \?/m.test(sql)) return;
+    db.beforeRun = null;
+    database.prepare(`
+      UPDATE reminders
+      SET revision = 10, status = 'pending', last_error_code = NULL, updated_at = ?
+      WHERE id = 'raced-bulk'
+    `).run('2026-07-11T10:01:30.000Z');
+  };
+
+  await repository.reconcile('device-1', [], AT, '2026-08-11T10:00:00.000Z');
+
+  assert.deepEqual({ ...db.database.prepare(`
+    SELECT revision, status, last_error_code
+    FROM reminders WHERE id = 'raced-bulk'
+  `).get() }, {
+    revision: 10,
+    status: 'pending',
+    last_error_code: null
+  });
+});
+
+test('claiming an endpoint transfers ownership and cancels the old device reminders atomically', async () => {
+  const { db, repository } = await createFixture();
+  await repository.createDevice({
+    id: 'device-2',
+    tokenHash: 'c'.repeat(64),
+    platform: 'mobile',
+    timezone: 'Asia/Shanghai',
+    createdAt: AT
+  });
+  await subscribe(repository);
+  await repository.upsertReminder('device-1', 'old-owner', reminder(1), AT);
+  await repository.upsertReminder('device-2', 'new-owner', reminder(1), AT);
+
+  await repository.upsertSubscription('device-2', {
+    endpoint: 'https://push.example/subscription',
+    expirationTime: null,
+    p256dh: 'new-p256dh',
+    auth: 'new-auth'
+  }, '2026-07-11T10:01:00.000Z');
+
+  assert.deepEqual(db.database.prepare(`
+    SELECT device_id, invalidated_at
+    FROM push_subscriptions ORDER BY device_id
+  `).all().map((row) => ({ ...row })), [
+    { device_id: 'device-1', invalidated_at: '2026-07-11T10:01:00.000Z' },
+    { device_id: 'device-2', invalidated_at: null }
+  ]);
+  assert.deepEqual(db.database.prepare(`
+    SELECT id, status, last_error_code
+    FROM reminders ORDER BY id
+  `).all().map((row) => ({ ...row })), [
+    { id: 'new-owner', status: 'pending', last_error_code: null },
+    { id: 'old-owner', status: 'cancelled', last_error_code: 'subscription_reassigned' }
+  ]);
+  const claimed = await repository.claimDue(AT, '2026-07-11T10:05:00.000Z', 10);
+  assert.deepEqual(claimed.map((item) => item.deviceId), ['device-2']);
+});
