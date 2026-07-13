@@ -1,12 +1,26 @@
 # Changelog
 
+## Unreleased (2026-07-12)
+
+### 新增
+- 新增独立 Notifications Worker、Notifications D1 迁移和每分钟 Cron 调度，实现 PWA 后台或关闭后的 Web Push 提醒；超过计划时间 15 分钟的提醒不再补发系统横幅。
+- 新增安装级设备身份。`device_id` 对应浏览器/PWA 安装实例而非硬件，清除站点数据或重装后会变化，并为未来 nullable `user_id` 账号绑定保留字段。
+- 通知标题、正文、tag 和点击目标使用 AES-GCM 应用层端到端加密，密钥只保存在 IndexedDB；后端仍可见提醒时间等调度元数据和 PushSubscription。
+- 新增通知同步队列与 pending、unsupported、error 状态。本地任务和习惯 CRUD 与通知后端失败解耦，恢复网络后重试。
+
+### 技术与兼容性
+- 后台通知同步使用 Web Locks 串行化页面与 Service Worker 生命周期；缺少原生 `navigator.locks` 时明确显示不支持。
+- Notifications Worker/D1 与 Analytics Worker/D1 隔离，只允许复用无状态基础模块，不共享业务数据库或密钥。
+- 修正旧版说明：Service Worker 只能由 Push 等事件唤醒，不能仅依靠现有 Service Worker 在本地到点后台定时。
+- 本地 Node、Worker 测试和 Wrangler dry-run 已纳入发布验证；生产 Cloudflare D1、VAPID secrets、route、Cron/deploy 与 iOS/iPadOS、Android、桌面真机投递尚需外部验证，当前不声明生产后台提醒已可用。
+
 ## v0.6.0 (2026-07-10)
 
 ### 新增
 - **系统通知提醒**：添加到桌面（PWA standalone模式）后支持系统级通知，每个任务和习惯按设置的提醒时间弹出系统通知。
 - **通知权限管理**：「我的」页新增「系统通知」设置区，显示当前通知状态，支持一键授权通知权限和开启/关闭提醒。
 - **多层调度策略**：前端定时器精确调度未来24小时内的提醒；每分钟自动检查并补充调度；应用切回前台时检查过去12小时内漏掉的提醒，弹出汇总通知。
-- **Service Worker通知支持**：Service Worker新增通知显示、点击跳转和消息处理，即使应用不在前台也能弹出通知；点击通知自动聚焦/打开应用并回到今日页。
+- **Service Worker通知支持**：Service Worker新增通知显示、点击跳转和消息处理；应用未在前台时，必须由 Web Push 等事件唤醒后才能弹出通知。点击通知自动聚焦/打开应用并回到今日页。
 - **通知去重机制**：通过localStorage记录已发送的提醒（48小时自动清理），避免重复通知；使用到期时间作为唯一标识，同一次到期只通知一次。
 - **通知内容**：包含事项分类（工作/学习/生活等）、类型（任务/习惯）和距离到期的时间提示。
 - **振动反馈**：通知触发振动模式[200ms, 100ms, 200ms]，移动端可感知提醒。

@@ -4,6 +4,20 @@
   var Exporter = window.TodayYouxuExport;
   var DB = window.TodayYouxuDB;
   var NotificationService = window.TodayYouxuNotification;
+  var NotificationModel = window.TodayYouxuNotificationModel;
+  var NotificationSyncFactory = window.TodayYouxuNotificationSync;
+  var NotificationSync = null;
+
+  var NOTIFICATION_STATUS_COPY = {
+    'subscribing': '正在连接',
+    'syncing': '正在连接',
+    'pending': '等待同步',
+    'ready': '后台提醒已开启',
+    'error': '需要重新授权',
+    'unsupported': '当前设备不支持',
+    'permission-required': '未开启',
+    'disabled': '未开启'
+  };
 
   var appState = {
     view: 'today',
@@ -28,6 +42,11 @@
   var els = {};
   var journalSaveTimer = null;
   var swipeState = null;
+  var notificationBackendStatus = { status: 'disabled' };
+  var notificationSetupPromise = null;
+  var pendingNotificationSnapshot = null;
+  var notificationSyncPromise = null;
+  var missedReminderToastShown = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -49,6 +68,78 @@
     showToast.timer = setTimeout(function() {
       els.toast.hidden = true;
     }, 2200);
+  }
+
+  function setNotificationBackendStatus(result) {
+    notificationBackendStatus = result && result.status ? result : { status: 'error' };
+    updateNotificationUI();
+    return notificationBackendStatus;
+  }
+
+  function handleNotificationBackendFailure(error) {
+    console.warn('[TodayYouxu] Notification backend failed:', error);
+    setNotificationBackendStatus({ status: 'error' });
+  }
+
+  function syncNotificationSnapshot(data) {
+    return NotificationModel.buildReminderRecords(data, appState.todayKey, State.habitDueOn, new Date())
+      .then(function(records) {
+        data.reminders = records.map(function(record) {
+          return {
+            id: record.id,
+            sourceIdHash: record.sourceIdHash,
+            notifyAt: record.notifyAt,
+            revision: record.revision,
+            payload: record.encryptedValue
+          };
+        });
+        setNotificationBackendStatus({ status: 'syncing' });
+        return NotificationSync.sync(data, appState.todayKey, State.habitDueOn);
+      }).then(setNotificationBackendStatus);
+  }
+
+  function queueNotificationSync(data) {
+    if (!NotificationSync || !NotificationModel || !data) {
+      return Promise.resolve(notificationBackendStatus);
+    }
+    pendingNotificationSnapshot = data;
+    if (notificationSyncPromise) return notificationSyncPromise;
+
+    function drainLatestSnapshot() {
+      var snapshot = pendingNotificationSnapshot;
+      pendingNotificationSnapshot = null;
+      if (!snapshot) return Promise.resolve(notificationBackendStatus);
+      return syncNotificationSnapshot(snapshot).then(function(result) {
+        return pendingNotificationSnapshot ? drainLatestSnapshot() : result;
+      });
+    }
+
+    notificationSyncPromise = drainLatestSnapshot().then(function(result) {
+      notificationSyncPromise = null;
+      if (pendingNotificationSnapshot) return queueNotificationSync(pendingNotificationSnapshot);
+      return result;
+    }, function(error) {
+      notificationSyncPromise = null;
+      if (pendingNotificationSnapshot) {
+        queueNotificationSync(pendingNotificationSnapshot).catch(handleNotificationBackendFailure);
+      }
+      throw error;
+    });
+    return notificationSyncPromise;
+  }
+
+  function syncNotificationsWithoutBlocking(data) {
+    if (notificationBackendStatus.status === 'unsupported') return;
+    queueNotificationSync(data).catch(handleNotificationBackendFailure);
+  }
+
+  function showMissedReminderToast(data) {
+    if (missedReminderToastShown || !NotificationService || !NotificationService.getMissedCount) return;
+    var count = NotificationService.getMissedCount(data, appState.todayKey, State.habitDueOn, new Date());
+    if (count > 0) {
+      missedReminderToastShown = true;
+      showToast('有 ' + count + ' 项提醒已过期');
+    }
   }
 
   function normalizePriority(priority) {
@@ -251,7 +342,7 @@
 
     var isOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row>',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -276,7 +367,7 @@
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + '>',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -311,7 +402,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row>',
+      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(dateKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -356,7 +447,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row>',
+      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(appState.todayKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -726,7 +817,7 @@
     }
 
     return [
-      '<article class="task-row list-task-row' + rowClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '">',
+      '<article class="task-row list-task-row' + rowClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -957,6 +1048,52 @@
     }
   }
 
+  function isValidNotificationDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+    var date = DateUtils.fromDateKey(value);
+    return date instanceof Date && Number.isFinite(date.getTime()) && DateUtils.toDateKey(date) === value;
+  }
+
+  function handleNotificationClick(data) {
+    data = data && typeof data === 'object' ? data : {};
+    var hasValidDate = isValidNotificationDate(data.date);
+    var targetView = hasValidDate && data.date !== appState.todayKey ? 'calendar' : 'today';
+    if (hasValidDate) {
+      var targetDate = DateUtils.fromDateKey(data.date);
+      appState.selectedDateKey = data.date;
+      appState.calendarYear = targetDate.getFullYear();
+      appState.calendarMonth = targetDate.getMonth();
+    }
+    switchView(targetView);
+    render();
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        var activeView = document.getElementById('view-' + appState.view);
+        if (!activeView) return;
+        var entity = Array.prototype.find.call(
+          activeView.querySelectorAll('[data-notification-type][data-notification-id][data-notification-date]'),
+          function(row) {
+            return row.dataset.notificationType === data.type
+              && row.dataset.notificationId === data.id
+              && (!hasValidDate || row.dataset.notificationDate === data.date);
+          }
+        );
+        if (!entity) {
+          if (targetView === 'calendar') {
+            switchView('today');
+            render();
+          }
+          return;
+        }
+        entity.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        entity.classList.add('notification-highlight');
+        setTimeout(function() {
+          entity.classList.remove('notification-highlight');
+        }, 1800);
+      });
+    });
+  }
+
   function setChoiceValue(targetId, value) {
     var input = $(targetId);
     if (!input) return;
@@ -1150,8 +1287,9 @@
     if (!NotificationService) return;
     DB.getAllData().then(function(data) {
       appState.data = data;
-      NotificationService.checkMissedReminders(data, appState.todayKey, State.habitDueOn);
+      showMissedReminderToast(data);
       NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
+      syncNotificationsWithoutBlocking(data);
     }).catch(function() {});
   }
 
@@ -1163,9 +1301,10 @@
       render();
       updateNotificationUI();
       if (NotificationService) {
-        NotificationService.checkMissedReminders(data, appState.todayKey, State.habitDueOn);
+        showMissedReminderToast(data);
         NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
       }
+      syncNotificationsWithoutBlocking(data);
     }).catch(function(error) {
       showToast('本地数据库读取失败：' + error.message);
     });
@@ -1328,6 +1467,8 @@
       renderCalendar();
     } else if (action === 'notification-setup') {
       handleNotificationAction();
+    } else if (action === 'notification-disable') {
+      handleNotificationDisable();
     }
   }
 
@@ -1488,14 +1629,17 @@
   }
 
   function getNotificationStatusInfo() {
-    if (!NotificationService) return { status: 'unsupported', label: '不支持', desc: '当前浏览器不支持系统通知' };
-    var perm = NotificationService.getPermissionStatus();
-    var enabled = NotificationService.isEnabled();
-    if (perm === 'unsupported') return { status: 'unsupported', label: '不支持', desc: '当前浏览器不支持系统通知' };
-    if (perm === 'denied') return { status: 'denied', label: '已拒绝', desc: '通知权限已被拒绝，请在系统设置中开启' };
-    if (perm === 'default') return { status: 'default', label: '未授权', desc: '点击按钮授权系统通知权限' };
-    if (enabled) return { status: 'granted', label: '已开启', desc: '任务和习惯将按设置时间发送系统通知' };
-    return { status: 'disabled', label: '已关闭', desc: '通知权限已授权但提醒功能未开启' };
+    var status = notificationBackendStatus.status;
+    var permission = NotificationService ? NotificationService.getPermissionStatus() : 'unsupported';
+    if (!NotificationService || !NotificationSyncFactory || permission === 'unsupported') status = 'unsupported';
+    else if (permission === 'denied') status = 'error';
+    else if (permission === 'default' && status !== 'subscribing' && status !== 'error') status = 'permission-required';
+    else if (!NOTIFICATION_STATUS_COPY[status]) status = 'error';
+    return {
+      status: status,
+      label: NOTIFICATION_STATUS_COPY[status],
+      desc: NOTIFICATION_STATUS_COPY[status]
+    };
   }
 
   function updateNotificationUI() {
@@ -1507,19 +1651,21 @@
     if (els.notificationButton) {
       if (info.status === 'unsupported') {
         els.notificationButton.hidden = true;
-      } else if (info.status === 'denied') {
+        els.notificationButton.disabled = false;
+      } else {
         els.notificationButton.hidden = false;
-        els.notificationButton.textContent = '了解如何开启';
-      } else if (info.status === 'default') {
-        els.notificationButton.hidden = false;
-        els.notificationButton.textContent = '授权通知';
-      } else if (info.status === 'granted' || info.status === 'disabled') {
-        els.notificationButton.hidden = false;
-        els.notificationButton.textContent = info.status === 'granted' ? '测试通知' : '开启提醒';
+        els.notificationButton.disabled = info.status === 'subscribing' || info.status === 'syncing';
+        if (info.status === 'ready') els.notificationButton.textContent = '测试提醒';
+        else if (info.status === 'permission-required' || info.status === 'error') els.notificationButton.textContent = '授权通知';
+        else els.notificationButton.textContent = '开启提醒';
       }
     }
+    if (els.notificationDisableButton) {
+      els.notificationDisableButton.hidden = info.status !== 'ready';
+      els.notificationDisableButton.disabled = info.status !== 'ready';
+    }
     if (els.quickReminderHint) {
-      if (info.status === 'granted') {
+      if (info.status === 'ready') {
         els.quickReminderHint.textContent = '授权后，到达提醒时间会弹出系统通知。';
       } else {
         els.quickReminderHint.textContent = '请在「我的」页面授权通知权限后生效。';
@@ -1527,69 +1673,51 @@
     }
   }
 
-  function handleNotificationAction() {
+  async function handleNotificationAction() {
     if (!NotificationService) return;
-    var info = getNotificationStatusInfo();
-    if (info.status === 'denied') {
-      showToast('请在浏览器或系统设置中允许今日有序发送通知');
-      return;
-    }
-    if (info.status === 'default') {
-      NotificationService.requestPermission().then(function(perm) {
-        if (perm === 'granted') {
-          showToast('通知权限已开启');
-          updateNotificationUI();
-          rescheduleNotifications();
-        } else if (perm === 'denied') {
-          showToast('通知权限被拒绝');
-        }
-        updateNotificationUI();
-      });
-      return;
-    }
-    if (info.status === 'disabled') {
-      NotificationService.setEnabled(true);
-      showToast('提醒已开启');
-      updateNotificationUI();
-      rescheduleNotifications();
-      return;
-    }
-    if (info.status === 'granted') {
-      if (NotificationService.isEnabled()) {
-        showNotification('🔔 测试通知', {
-          body: '通知功能正常！' + new Date().toLocaleTimeString(),
-          tag: 'test-notification-' + Date.now()
-        });
-      } else {
-        NotificationService.setEnabled(true);
-        updateNotificationUI();
-        rescheduleNotifications();
+    try {
+      if (notificationSetupPromise) await notificationSetupPromise;
+      if (!NotificationSync) return;
+      var info = getNotificationStatusInfo();
+      if (info.status === 'ready') {
+        setNotificationBackendStatus({ status: 'syncing' });
+        setNotificationBackendStatus(await NotificationSync.sendTest());
+        return;
       }
+      var permission = window.Notification && window.Notification.permission;
+      if (permission !== 'granted') {
+        permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          setNotificationBackendStatus({ status: permission === 'denied' ? 'error' : 'permission-required' });
+          showToast(permission === 'denied' ? '通知权限被拒绝' : '未开启通知权限');
+          return;
+        }
+      }
+      NotificationService.setEnabled(true);
+      NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
+      setNotificationBackendStatus({ status: 'subscribing' });
+      var enabledStatus = await NotificationSync.enable();
+      setNotificationBackendStatus(enabledStatus);
+      if (enabledStatus.status !== 'ready') return;
+      var syncedStatus = await queueNotificationSync(appState.data);
+      if (syncedStatus.status === 'ready') {
+        setNotificationBackendStatus(await NotificationSync.sendTest());
+      }
+    } catch (error) {
+      handleNotificationBackendFailure(error);
     }
   }
 
-  function showNotification(title, options) {
-    if (!NotificationService || !NotificationService.isEnabled()) {
-      showToast(title + ': ' + (options && options.body ? options.body : ''));
-      return;
-    }
-    var reg = null;
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then(function(registration) {
-        registration.showNotification(title, Object.assign({
-          icon: '/icons/today-youxu-icon-192x192.png',
-          badge: '/icons/today-youxu-icon-72x72.png',
-          vibrate: [200, 100, 200]
-        }, options || {}));
-      });
-    } else {
-      try {
-        new Notification(title, Object.assign({
-          icon: '/icons/today-youxu-icon-192x192.png'
-        }, options || {}));
-      } catch (e) {
-        showToast(title + ': ' + (options && options.body ? options.body : ''));
-      }
+  async function handleNotificationDisable() {
+    if (!NotificationService) return;
+    try {
+      if (notificationSetupPromise) await notificationSetupPromise;
+      if (!NotificationSync || getNotificationStatusInfo().status !== 'ready') return;
+      NotificationService.setEnabled(false);
+      setNotificationBackendStatus({ status: 'pending' });
+      setNotificationBackendStatus(await NotificationSync.disable());
+    } catch (error) {
+      handleNotificationBackendFailure(error);
     }
   }
 
@@ -2184,10 +2312,18 @@
     els.notificationStatus = $('notification-status');
     els.notificationDesc = $('notification-desc');
     els.notificationButton = $('notification-setup-button');
+    els.notificationDisableButton = $('notification-disable-button');
     els.toast = $('toast');
   }
 
   function bindEvents() {
+    if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+      navigator.serviceWorker.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+          handleNotificationClick(event.data.data);
+        }
+      });
+    }
     document.querySelectorAll('.nav-item').forEach(function(button) {
       button.addEventListener('click', function() {
         switchView(button.dataset.view);
@@ -2372,23 +2508,72 @@
         }
       }
     });
+    window.addEventListener('online', function() {
+      recoverNotificationOnline().catch(handleNotificationBackendFailure);
+    });
     document.addEventListener('visibilitychange', function() {
-      if (!document.hidden && NotificationService) {
-        rescheduleNotifications();
-        updateNotificationUI();
-      }
+      if (!document.hidden) recoverNotificationForeground().catch(handleNotificationBackendFailure);
     });
   }
 
-  function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('/tools/time/sw.js').then(function(reg) {
-      if (NotificationService) {
-        NotificationService.setServiceWorkerRegistration(reg);
-      }
-    }).catch(function(error) {
-      console.warn('[TodayYouxu] Service worker registration failed:', error);
+  function recoverNotificationLifecycle(method) {
+    if (!NotificationSync) return Promise.resolve(notificationBackendStatus);
+    return NotificationSync[method]().then(setNotificationBackendStatus).then(function() {
+      return DB.getAllData().then(function(data) {
+        appState.data = data;
+        if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
+        return queueNotificationSync(data);
+      }, function(error) {
+        showToast('本地数据库读取失败：' + error.message);
+        return notificationBackendStatus;
+      });
     });
+  }
+
+  function recoverNotificationOnline() {
+    return recoverNotificationLifecycle('handleOnline');
+  }
+
+  function recoverNotificationForeground() {
+    return recoverNotificationLifecycle('handleForeground');
+  }
+
+  function registerServiceWorker() {
+    if (notificationSetupPromise) return notificationSetupPromise;
+    if (!('serviceWorker' in navigator)) {
+      setNotificationBackendStatus({ status: 'unsupported' });
+      notificationSetupPromise = Promise.resolve(notificationBackendStatus);
+      return notificationSetupPromise;
+    }
+    setNotificationBackendStatus({ status: 'subscribing' });
+    try {
+      notificationSetupPromise = navigator.serviceWorker.register('/tools/time/sw.js').then(function() {
+        return navigator.serviceWorker.ready;
+      }).then(function(reg) {
+        if (NotificationService) {
+          NotificationService.setServiceWorkerRegistration(reg);
+        }
+        if (!NotificationSync && NotificationSyncFactory && NotificationSyncFactory.create) {
+          NotificationSync = NotificationSyncFactory.create();
+        }
+        if (!NotificationSync) return setNotificationBackendStatus({ status: 'unsupported' });
+        return NotificationSync.setup(reg).then(setNotificationBackendStatus).then(function(status) {
+          if (status.status === 'ready' || status.status === 'pending') {
+            syncNotificationsWithoutBlocking(appState.data);
+          }
+          return status;
+        });
+      }).catch(function(error) {
+        console.warn('[TodayYouxu] Service worker registration failed:', error);
+        setNotificationBackendStatus({ status: 'error' });
+        return notificationBackendStatus;
+      });
+    } catch (error) {
+      console.warn('[TodayYouxu] Service worker registration failed:', error);
+      setNotificationBackendStatus({ status: 'error' });
+      notificationSetupPromise = Promise.resolve(notificationBackendStatus);
+    }
+    return notificationSetupPromise;
   }
 
   function init() {

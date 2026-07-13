@@ -1,0 +1,29 @@
+{
+  "name": "billnest-notifications",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://billnest.top,https://www.billnest.top"
+  },
+  "d1_databases": [
+    {
+      "binding": "NOTIFICATIONS_DB",
+      "database_name": "billnest_notifications",
+      "database_id": "244c4984-dd50-4147-8de6-5d972ebbe9fe"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "billnest.top/api/notifications*",
+      "zone_name": "billnest.top"
+    },
+    {
+      "pattern": "www.billnest.top/api/notifications*",
+      "zone_name": "billnest.top"
+    }
+  ]
+}

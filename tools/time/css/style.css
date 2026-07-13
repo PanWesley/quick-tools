@@ -516,6 +516,10 @@ button {
 .task-row.is-overdue-row { --task-accent: var(--danger); }
 .task-row.is-completed .task-content { background-color: var(--surface); background-image: none; }
 
+.task-row.notification-highlight {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 42%, transparent);
+}
+
 .task-row.actions-open .task-content {
   margin-right: 104px;
   margin-left: -104px;
@@ -2901,6 +2905,21 @@ textarea {
   flex-shrink: 0;
 }
 
+.notification-setting-row .mode-pill {
+  min-width: 86px;
+  text-align: center;
+}
+
+.notification-setting-row .btn {
+  min-width: 88px;
+}
+
+.notification-setting-row .notification-disable-button {
+  min-width: auto;
+  padding-inline: 6px;
+  color: var(--text-muted);
+}
+
 .notification-status-granted {
   background: var(--mint-soft);
   color: #247d67;
@@ -2916,10 +2935,30 @@ textarea {
   color: var(--danger);
 }
 
-.notification-status-disabled {
+.notification-status-disabled,
+.notification-status-permission-required {
   background: var(--surface-soft);
   color: var(--text-muted);
   border: 1px solid var(--border);
+}
+
+.notification-status-syncing,
+.notification-status-subscribing {
+  background: color-mix(in srgb, var(--sky) 16%, var(--surface));
+  color: color-mix(in srgb, var(--sky) 72%, var(--text));
+  border: 1px solid color-mix(in srgb, var(--sky) 34%, var(--border));
+}
+
+.notification-status-pending {
+  background: color-mix(in srgb, var(--sun) 18%, var(--surface));
+  color: color-mix(in srgb, var(--sun) 55%, var(--text));
+  border: 1px solid color-mix(in srgb, var(--sun) 38%, var(--border));
+}
+
+.notification-status-error {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
 }
 
 .notification-status-unsupported {
