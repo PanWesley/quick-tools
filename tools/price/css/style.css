@@ -214,7 +214,7 @@ a:focus-visible {
 .app-shell {
   width: min(1120px, 100%);
   margin: 0 auto;
-  padding: 32px 20px 120px;
+  padding: 32px 20px calc(80px + env(safe-area-inset-bottom, 0px));
 }
 
 .view {
@@ -872,32 +872,34 @@ input::placeholder {
 
 .bottom-nav {
   position: fixed;
-  left: 50%;
-  bottom: max(16px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
+  bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 20;
   display: flex;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-  box-shadow: 0 12px 40px rgba(92, 74, 66, 0.12);
+  justify-content: space-around;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -2px 12px rgba(92, 74, 66, 0.06);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
 
 .nav-item {
-  min-width: 80px;
-  min-height: 48px;
+  flex: 1;
+  max-width: 100px;
+  min-height: 52px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   background: transparent;
   color: var(--color-muted);
-  padding: 8px 16px;
+  padding: 6px 8px;
   cursor: pointer;
   font-weight: 500;
-  font-size: 13px;
+  font-size: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -932,10 +934,13 @@ input::placeholder {
 }
 
 body[data-view="analysis"] .bottom-nav {
-  position: static;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   transform: none;
-  width: max-content;
-  margin: 0 auto 28px;
+  width: auto;
+  margin: 0;
 }
 
 .form-message,
@@ -1087,14 +1092,16 @@ body[data-view="analysis"] .bottom-nav {
   }
 
   .bottom-nav {
-    width: calc(100% - 32px);
-    justify-content: space-between;
-    border-radius: 20px;
-    padding: 6px;
+    width: 100%;
+    left: 0;
+    right: 0;
+    justify-content: space-around;
+    border-radius: 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
   }
 
   body[data-view="analysis"] .bottom-nav {
-    width: calc(100% - 32px);
+    width: 100%;
   }
 
   .nav-item {
