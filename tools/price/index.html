@@ -28,6 +28,11 @@
 </head>
 <body>
 <header class="app-header">
+  <button class="header-back" type="button" data-view-link="home" aria-label="返回">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  </button>
   <a class="brand" href="#home" data-view-link="home" aria-label="返回买前省省首页">
     <img src="/icons/zhenjia-icon.svg" alt="" aria-hidden="true" class="brand-mark" style="background: transparent; box-shadow: none;">
     <span>
@@ -35,7 +40,7 @@
       <small id="app-header-desc">聪明买买买，不花冤枉钱</small>
     </span>
   </a>
-
+  <span class="header-spacer"></span>
 </header>
 
 <main class="app-shell">
@@ -43,8 +48,8 @@
     <div class="hero-panel">
       <div class="hero-copy">
         <p class="eyebrow">贴心价格管家</p>
-        <h1 id="home-title">粘贴商品链接，帮你看看值不值</h1>
-        <p>用本地记录和历史价格帮你判断是不是真划算，下单前多一份安心。</p>
+        <h1 id="home-title">下单前，先看看值不值</h1>
+        <p>本地记录历史价格，帮你判断是不是真划算，买得明明白白。</p>
         <div class="proof-rail" aria-label="价格验真流程">
           <span><strong>01</strong> 识别平台</span>
           <span><strong>02</strong> 对照历史</span>
@@ -63,36 +68,9 @@
         <p class="form-message" id="parse-message" role="status"></p>
       </form>
     </div>
-
-    <section class="support-strip" aria-label="支持平台">
-      <span>京东</span>
-      <span>淘宝</span>
-      <span>天猫</span>
-      <span>拼多多</span>
-    </section>
-
-    <section class="section-block" aria-labelledby="recent-title">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">我的心愿单</p>
-          <h2 id="recent-title">最近关注</h2>
-        </div>
-      </div>
-      <div class="stack-list" id="recent-watches"></div>
-    </section>
   </section>
 
   <section class="view" id="view-analysis" aria-labelledby="analysis-title">
-    <div class="analysis-top-bar">
-      <button class="btn ghost back-btn" type="button" data-view-link="home">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-        返回
-      </button>
-      <h2 class="analysis-page-title">价格分析</h2>
-      <span style="width:72px"></span>
-    </div>
     <div class="truth-bench" id="truth-bench"></div>
     <section class="section-block">
       <div class="section-head">

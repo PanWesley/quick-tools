@@ -204,11 +204,48 @@ a:focus-visible {
   font-weight: 400;
 }
 
-.header-link {
-  color: var(--color-muted);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
+.header-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-deep);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.header-back svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+}
+
+.header-back:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.header-spacer {
+  width: 40px;
+  flex-shrink: 0;
+}
+
+body[data-view="analysis"] .header-back {
+  display: inline-flex;
+}
+
+body[data-view="analysis"] .brand {
+  pointer-events: none;
+}
+
+body[data-view="analysis"] .brand small {
+  display: none;
 }
 
 .app-shell {
@@ -247,8 +284,8 @@ a:focus-visible {
 
 .hero-copy {
   position: relative;
-  min-height: 340px;
-  padding: 42px;
+  min-height: 280px;
+  padding: 36px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -351,6 +388,12 @@ h3 {
   font-size: 17px;
   line-height: 1.4;
   font-weight: 600;
+}
+
+.hero-copy h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  max-width: 14em;
 }
 
 .hero-copy p:not(.eyebrow) {
@@ -1139,6 +1182,10 @@ body[data-view="analysis"] .bottom-nav {
     line-height: 1.2;
   }
 
+  .hero-copy h1 {
+    font-size: 24px;
+  }
+
   h2 {
     font-size: 20px;
   }
@@ -1153,10 +1200,6 @@ body[data-view="analysis"] .bottom-nav {
     min-height: 48px;
     padding: 10px 8px;
     font-size: 11px;
-  }
-
-  .support-strip {
-    margin-bottom: 24px;
   }
 
   .bottom-nav {
