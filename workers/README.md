@@ -29,7 +29,7 @@ It does not store bill amounts, notes, tag names, or imported file contents. DAU
 
 `device_id` 是浏览器/PWA 安装实例标识，不是硬件 ID；清除站点数据或重装后会变化。`devices.user_id` 与 `reminders.user_id` 保持 nullable，供未来账号绑定。
 
-Notifications JSON 请求体上限为 128 KiB；reconcile 每次最多接受 500 条、每个 ID 最多 128 字符的摘要。客户端仍只投影本地日历 30 天，Worker 的 reminder validation 与 reconcile window 使用 `31 * 24h` 包络吸收全球时区和 DST 边界，不扩大客户端 horizon。
+Notifications JSON 请求体上限为 128 KiB；reconcile 每次最多接受 500 条、每个 ID 最多 128 字符的摘要。提醒写入使用已认证的 `POST /api/notifications/reminders/batch`，每批最多 25 个 operations，整个 Notifications JSON body 仍受 128 KiB 上限约束。客户端仍只投影本地日历 30 天，Worker 的 reminder validation 与 reconcile window 使用 `31 * 24h` 包络吸收全球时区和 DST 边界，不扩大客户端 horizon。
 
 ### 本地验证
 
@@ -82,7 +82,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
    pnpm exec wrangler secret put VAPID_SUBJECT
    ```
 
-5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署：
+5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署。必须先发布 Worker，再发布客户端，以保证客户端批处理请求到达已支持的服务端：
 
    ```bash
    env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy pnpm check
@@ -97,7 +97,7 @@ pnpm exec wrangler deployments list
 pnpm exec wrangler d1 migrations list NOTIFICATIONS_DB --remote
 ```
 
-还必须验证：配置接口只返回 VAPID 公钥和协议版本；Cloudflare Cron 每分钟触发；超过 15 分钟的 stale 提醒变为 expired 且不显示横幅；网络失败不影响本地 CRUD；请求中标题/正文保持密文；iOS/iPadOS 主屏 PWA、Android Chromium PWA 和桌面 Chromium 各完成前台、后台与关闭状态测试。浏览器需要 Push、Notification、Service Worker、IndexedDB、Web Crypto 与原生 Web Locks；缺少能力时 UI 必须显示 unsupported，而不是宣称后台提醒可用。
+还必须验证：配置接口只返回 VAPID 公钥和协议版本；Cloudflare Cron 每分钟触发；超过 15 分钟的 stale 提醒变为 expired 且不显示横幅；网络失败不影响本地 CRUD；请求中标题/正文保持密文；`pending` 状态在页面可见且在线时会按有界批次恢复；iOS/iPadOS 主屏 PWA、Android Chromium PWA 和桌面 Chromium 各完成前台、后台与关闭状态测试。生产检查不得包含真实设备 ID、token、endpoint、keys 或 payload。浏览器需要 Push、Notification、Service Worker、IndexedDB、Web Crypto 与原生 Web Locks；缺少能力时 UI 必须显示 unsupported，而不是宣称后台提醒可用。
 
 ### 回滚
 

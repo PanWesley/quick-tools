@@ -442,14 +442,14 @@ test('app source renders stable notification attributes and owns message targeti
 });
 
 test('service worker cache matches current index assets and notification API is network-only', async () => {
-  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v30['"]/);
+  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v31['"]/);
   [
     '/tools/time/css/style.css?v=137',
     '/tools/time/js/notification-crypto.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
-    '/tools/time/js/notification-sync.js?v=2',
+    '/tools/time/js/notification-sync.js?v=3',
     '/tools/time/js/notification.js?v=6',
-    '/tools/time/js/app.js?v=137'
+    '/tools/time/js/app.js?v=138'
   ].forEach(asset => {
     assert.ok(indexSource.includes(asset), asset + ' must be referenced by index');
     assert.ok(swSource.includes("'" + asset + "'"), asset + ' must be precached exactly');
