@@ -706,7 +706,7 @@
       } catch (error) {
         response = null;
       }
-      return { response: response, committed: await commitBatchQueueResponse(entries, response, body) };
+      return { response: response, body: body };
     }
 
     async function flushQueue(forceRetry) {
@@ -747,7 +747,7 @@
             batchSupported = false;
             committed = await sendQueueEntry(selection.entries[0], installation);
           } else {
-            committed = batch.committed;
+            committed = await commitBatchQueueResponse(selection.entries, batch.response, batch.body);
           }
         } else {
           committed = await sendQueueEntry(selection.entry, installation);

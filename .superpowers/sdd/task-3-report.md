@@ -59,3 +59,39 @@ Result: 63 tests passed, 0 failed, and `git diff --check` reported no whitespace
 ## Concerns
 
 No blocking concerns. Batch capability is intentionally session-local, so a new sync instance probes the batch endpoint again as required.
+
+## Task 3 Review Fix
+
+### RED Evidence
+
+```sh
+node --test --test-name-pattern="multibyte|acknowledgement|falls back" tools/time/js/notification-sync.test.js
+```
+
+Result: 3 passed, 1 failed. The fallback regression observed the remaining reminder at `attempts: 1` and `nextRetryAt: 2000`; the intended unattempted state is `attempts: 0` and `nextRetryAt: 1000`.
+
+### GREEN Evidence
+
+```sh
+node --test --test-name-pattern="multibyte|acknowledgement|falls back" tools/time/js/notification-sync.test.js
+node --test tools/time/js/notification-sync.test.js
+git diff --check
+```
+
+Result: focused review coverage passed 4/4. Full notification-sync coverage passed 65/65. `git diff --check` reported no whitespace errors.
+
+### Files
+
+- `tools/time/js/notification-sync.js`
+- `tools/time/js/notification-sync.test.js`
+- `.superpowers/sdd/task-3-report.md`
+
+### Commit
+
+`fix(time): preserve batch fallback queue state`
+
+### Self-Review
+
+- Batch 404/405 responses now disable batching and send only the first snapshot before any batch response commit, so remaining selected snapshots retain their attempt count and immediate eligibility.
+- Valid 200 batch acknowledgements remove only generation-matching snapshots; a newer generation remains queued.
+- Coverage verifies multibyte UTF-8 payload byte bounds, mixed applied/stale/unknown completion, and immediate two-reminder fallback draining for both 404 and 405.
