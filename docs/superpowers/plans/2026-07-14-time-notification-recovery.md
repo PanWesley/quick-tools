@@ -489,4 +489,3 @@ git commit -m "docs(time): document bounded background sync"
 - [ ] **Step 8: Request final code review**
 
 Use `superpowers:requesting-code-review` against the merge base, address all critical/important findings with new failing tests, rerun full verification, and only then offer merge/PR options through `superpowers:finishing-a-development-branch`.
-
