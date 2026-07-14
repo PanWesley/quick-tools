@@ -185,6 +185,17 @@ function jsonResponse(status, body) {
   };
 }
 
+function batchResponse(init) {
+  const operations = JSON.parse(init.body).operations;
+  return jsonResponse(200, {
+    results: operations.map(operation => ({
+      id: operation.id,
+      outcome: 'applied',
+      revision: operation.kind === 'upsert' ? operation.reminder.revision : operation.revision
+    }))
+  });
+}
+
 function deferred() {
   let resolve;
   const promise = new Promise(next => { resolve = next; });
@@ -676,7 +687,10 @@ test('sync queues a failed server write and retries it with exponential delay wh
   const standard = responsePlan();
   const harness = createHarness({
     fetch: async (url, init, calls) => {
-      if (/\/reminders\//.test(url) && failReminder) throw new Error('offline');
+      if (url === '/api/notifications/reminders/batch') {
+        if (failReminder) throw new Error('offline');
+        return batchResponse(init);
+      }
       return standard(url, init, calls);
     }
   });
@@ -695,11 +709,103 @@ test('sync queues a failed server write and retries it with exponential delay wh
 
   failReminder = false;
   harness.advance(1000);
-  assert.deepEqual(await harness.sync.handleOnline(), { status: 'ready', deviceId: 'device-1' });
+  assert.deepEqual(await harness.sync.handleOnline(), { status: 'pending', deviceId: 'device-1' });
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
-  const reminderCall = harness.calls.find(call => call.url === '/api/notifications/reminders/'
-    + encodeURIComponent('device-1:task-1') && call.init.headers.Authorization === 'Bearer secret-token-1');
+  const reminderCall = harness.calls.find(call => call.url === '/api/notifications/reminders/batch'
+    && call.init.headers.Authorization === 'Bearer secret-token-1'
+    && JSON.parse(call.init.body).operations.some(operation => operation.id === 'device-1:task-1'));
   assert.ok(reminderCall);
+});
+
+test('bounded batch transport drains 84 reminders through repeated foreground locks before reconcile', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const standard = responsePlan();
+  const batchCalls = [];
+  const reconcileCalls = [];
+  const fetch = async (url, init, calls) => {
+    if (url === '/api/notifications/reminders/batch') {
+      const operations = JSON.parse(init.body).operations;
+      batchCalls.push({ init, operations });
+      return jsonResponse(200, {
+        results: operations.map(operation => ({
+          id: operation.id,
+          outcome: 'applied',
+          revision: operation.kind === 'upsert' ? operation.reminder.revision : operation.revision
+        }))
+      });
+    }
+    if (/\/reconcile$/.test(url)) reconcileCalls.push({ url, init });
+    return standard(url, init, calls);
+  };
+  const page = createHarness({ indexedDB, fetch });
+  const worker = createHarness({ indexedDB, fetch });
+  const reminders = Array.from({ length: 84 }, (_, index) => ({
+    id: `batch-${index + 1}`,
+    revision: index + 1,
+    sourceIdHash: String(index).padStart(64, '0'),
+    notifyAt: '2026-07-11T13:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: `batch-${index + 1}` }
+  }));
+
+  await page.sync.enable();
+  await worker.sync.enable();
+  assert.deepEqual(await page.sync.sync({ reminders }), { status: 'pending', deviceId: 'device-1' });
+  assert.equal(batchCalls.length, 1);
+  assert.equal(batchCalls[0].operations.length, 25);
+
+  assert.deepEqual(await worker.sync.handleForeground(), { status: 'pending', deviceId: 'device-1' });
+  assert.deepEqual(await page.sync.handleForeground(), { status: 'pending', deviceId: 'device-1' });
+  assert.deepEqual(await worker.sync.handleForeground(), { status: 'pending', deviceId: 'device-1' });
+  assert.deepEqual(await page.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
+
+  assert.equal(batchCalls.length, 4);
+  assert.deepEqual(batchCalls.map(call => call.operations.length), [25, 25, 25, 9]);
+  assert.equal(reconcileCalls.length, 1);
+  assert.deepEqual(await worker.sync.getStatus(), { status: 'ready', deviceId: 'device-1' });
+});
+
+test('batch transport falls back to one-entry requests only for a missing or unsupported endpoint', async () => {
+  for (const status of [404, 405]) {
+    const standard = responsePlan();
+    const harness = createHarness({
+      fetch: async (url, init, calls) => {
+        if (url === '/api/notifications/reminders/batch') return jsonResponse(status, {});
+        return standard(url, init, calls);
+      }
+    });
+    await harness.sync.enable();
+    assert.deepEqual(await harness.sync.sync({ reminders: [{
+      id: `fallback-${status}`, revision: 1, sourceIdHash: 'f'.repeat(64),
+      notifyAt: '2026-07-11T13:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'fallback' }
+    }] }), { status: 'pending', deviceId: 'device-1' });
+    assert.equal(harness.calls.filter(call => call.url === '/api/notifications/reminders/batch').length, 1);
+    assert.equal(harness.calls.filter(call => /^\/api\/notifications\/reminders\//.test(call.url || '')
+      && call.url !== '/api/notifications/reminders/batch').length, 1);
+
+    await harness.sync.handleForeground();
+    assert.equal(harness.calls.filter(call => call.url === '/api/notifications/reminders/batch').length, 1);
+  }
+
+  for (const status of [400, 409, 429, 500]) {
+    const standard = responsePlan();
+    const harness = createHarness({
+      fetch: async (url, init, calls) => {
+        if (url === '/api/notifications/reminders/batch') return jsonResponse(status, {});
+        return standard(url, init, calls);
+      }
+    });
+    await harness.sync.enable();
+    await harness.sync.sync({ reminders: [{
+      id: `keep-batch-${status}`, revision: 1, sourceIdHash: 'e'.repeat(64),
+      notifyAt: '2026-07-11T13:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'keep-batch' }
+    }] });
+    harness.advance(30 * 60 * 1000);
+    await harness.sync.handleForeground();
+    assert.equal(harness.calls.filter(call => call.url === '/api/notifications/reminders/batch').length, 2);
+    assert.equal(harness.calls.some(call => /^\/api\/notifications\/reminders\//.test(call.url || '')
+      && call.url !== '/api/notifications/reminders/batch'), false);
+  }
 });
 
 test('retry attempts are bounded and terminal entries are not sent again', async () => {
@@ -976,12 +1082,9 @@ test('auth reset uses a new device-scoped reminder ID without changing the model
   await harness.sync.enable();
   await harness.sync.sync({ reminders: [reminder] });
 
-  const paths = harness.calls.filter(call => /\/reminders\//.test(call.url || ''))
-    .map(call => call.url);
-  assert.deepEqual(paths, [
-    '/api/notifications/reminders/' + encodeURIComponent('device-1:reminder-stable'),
-    '/api/notifications/reminders/' + encodeURIComponent('device-2:reminder-stable')
-  ]);
+  const reminderIds = harness.calls.filter(call => call.url === '/api/notifications/reminders/batch')
+    .flatMap(call => JSON.parse(call.init.body).operations.map(operation => operation.id));
+  assert.deepEqual(reminderIds, ['device-1:reminder-stable', 'device-2:reminder-stable']);
   assert.equal(reminder.id, 'reminder-stable');
 });
 
@@ -1108,7 +1211,10 @@ test('terminal records are compacted so a new intent can be queued and sent with
   const standard = responsePlan();
   const harness = createHarness({
     fetch: async (url, init, calls) => {
-      if (url.endsWith(encodeURIComponent('device-1:after-capacity'))) reminderCalls += 1;
+      if (url === '/api/notifications/reminders/batch') {
+        if (JSON.parse(init.body).operations.some(operation => operation.id === 'device-1:after-capacity')) reminderCalls += 1;
+        return batchResponse(init);
+      }
       return standard(url, init, calls);
     }
   });
@@ -1125,7 +1231,8 @@ test('terminal records are compacted so a new intent can be queued and sent with
   assert.equal((await harness.sync.sync({ reminders: [{
     id: 'after-capacity', revision: 1, sourceIdHash: '6'.repeat(64),
     notifyAt: '2026-07-11T15:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'new' }
-  }] })).status, 'error');
+  }] })).status, 'pending');
+  assert.equal((await harness.sync.handleForeground()).status, 'error');
   assert.equal(reminderCalls, 1);
   const persistedQueue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
   assert.ok(persistedQueue.size <= 500);
@@ -1176,10 +1283,10 @@ test('queue ids and explicit sequence remain unique across instances in the same
   assert.equal((await second.sync.sync({ reminders: reminders.slice(6) })).status, 'pending');
 
   const entries = Array.from(indexedDB.dump('todayYouxuNotificationDB', 'queue').values());
-  assert.equal(entries.length, 13);
+  assert.equal(entries.length, 12);
   assert.equal(new Set(entries.map(entry => entry.id)).size, entries.length);
   assert.deepEqual(entries.map(entry => entry.sequence).sort((left, right) => left - right),
-    Array.from({ length: 13 }, (_, index) => index + 1));
+    [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]);
 });
 
 test('overlapping drains across page and worker instances send each queued intent once', async () => {
@@ -1188,10 +1295,12 @@ test('overlapping drains across page and worker instances send each queued inten
   const standard = responsePlan();
   let mode = 'offline';
   let reminderCalls = 0;
+  let batchInit;
   const fetch = async (url, init, calls) => {
-    if (/\/reminders\//.test(url)) {
+    if (url === '/api/notifications/reminders/batch') {
       reminderCalls += 1;
       if (mode === 'offline') throw new Error('offline');
+      batchInit = init;
       return response.promise;
     }
     return standard(url, init, calls);
@@ -1212,9 +1321,10 @@ test('overlapping drains across page and worker instances send each queued inten
 
   assert.deepEqual(await secondDrain, { status: 'pending' });
   assert.equal(reminderCalls, 2);
-  response.resolve(jsonResponse(204));
+  response.resolve(batchResponse(batchInit));
   await firstDrain;
   assert.deepEqual(await worker.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
+  assert.deepEqual(await page.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
   assert.equal(reminderCalls, 2);
 });
 
@@ -1265,10 +1375,12 @@ test('a terminal queue entry is skipped so a later logical intent can be deliver
   let newReminderCalls = 0;
   const harness = createHarness({
     fetch: async (url, init, calls) => {
-      if (url.endsWith(encodeURIComponent('device-1:task-terminal'))) {
-        if (failOld) throw new Error('offline');
+      if (url === '/api/notifications/reminders/batch') {
+        const operations = JSON.parse(init.body).operations;
+        if (operations.some(operation => operation.id === 'device-1:task-terminal') && failOld) throw new Error('offline');
+        if (operations.some(operation => operation.id === 'device-1:task-after-terminal')) newReminderCalls += 1;
+        return batchResponse(init);
       }
-      if (url.endsWith(encodeURIComponent('device-1:task-after-terminal'))) newReminderCalls += 1;
       return standard(url, init, calls);
     }
   });
@@ -1286,7 +1398,8 @@ test('a terminal queue entry is skipped so a later logical intent can be deliver
   assert.equal((await harness.sync.sync({ reminders: [{
     id: 'task-after-terminal', revision: 1, sourceIdHash: '9'.repeat(64),
     notifyAt: '2026-07-11T14:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'new' }
-  }] })).status, 'error');
+  }] })).status, 'pending');
+  assert.equal((await harness.sync.handleForeground()).status, 'error');
   assert.equal(newReminderCalls, 1);
   assert.equal(Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
     .some(entry => entry.logicalKey === 'reminder:device-1:task-after-terminal'), false);
@@ -1518,8 +1631,9 @@ test('enable sync disable and re-enable sync reuse the device scope without coll
 
   assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, 1);
   assert.deepEqual(
-    harness.calls.filter(call => /\/reminders\//.test(call.url || '')).map(call => call.url),
-    Array(2).fill('/api/notifications/reminders/' + encodeURIComponent('device-1:lifecycle-reminder'))
+    harness.calls.filter(call => call.url === '/api/notifications/reminders/batch')
+      .flatMap(call => JSON.parse(call.init.body).operations.map(operation => operation.id)),
+    Array(2).fill('device-1:lifecycle-reminder')
   );
 });
 

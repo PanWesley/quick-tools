@@ -14,6 +14,8 @@
   var RETRY_MAX_MS = 30 * 60 * 1000;
   var MAX_RETRY_ATTEMPTS = 5;
   var MAX_QUEUE_SIZE = 500;
+  var MAX_BATCH_OPERATIONS = 25;
+  var MAX_BATCH_BYTES = 120 * 1024;
 
   function openDatabase(indexedDBApi) {
     return new Promise(function(resolve, reject) {
@@ -139,6 +141,7 @@
     var clearTimer = options.clearTimer || (root && root.clearTimeout ? root.clearTimeout.bind(root) : clearTimeout);
     var databasePromise;
     var state = 'disabled';
+    var batchSupported = true;
     var activeControllers = new Set();
     var randomUUID = options.randomUUID
       || (root && root.crypto && typeof root.crypto.randomUUID === 'function'
@@ -404,6 +407,71 @@
         attempts: 0, nextRetryAt: now(), terminal: false };
     }
 
+    function batchOperation(entry) {
+      var prefix = '/api/notifications/reminders/';
+      if (!entry.path.startsWith(prefix)) return null;
+      var id;
+      try {
+        id = decodeURIComponent(entry.path.slice(prefix.length));
+      } catch (error) {
+        return null;
+      }
+      if (!id) return null;
+      if (entry.kind === 'upsert') return { kind: 'upsert', id: id, reminder: entry.body };
+      if (entry.kind === 'cancel') return { kind: 'cancel', id: id, revision: entry.body && entry.body.revision };
+      return null;
+    }
+
+    function encodedJsonBytes(value) {
+      return encodeURIComponent(value).replace(/%[0-9A-F]{2}|./g, 'x').length;
+    }
+
+    function entryIsEligible(entry, forceRetry) {
+      return !entry.terminal && (forceRetry || entry.nextRetryAt <= now());
+    }
+
+    function selectQueueDrain(entries, forceRetry) {
+      for (var index = 0; index < entries.length; index += 1) {
+        var entry = entries[index];
+        if (!entryIsEligible(entry, forceRetry)) continue;
+        var operation = batchSupported && batchOperation(entry);
+        if (!operation) return { entry: entry };
+
+        var snapshots = [];
+        var operations = [];
+        for (var batchIndex = index; batchIndex < entries.length; batchIndex += 1) {
+          var candidate = entries[batchIndex];
+          if (!entryIsEligible(candidate, forceRetry)) continue;
+          var candidateOperation = batchOperation(candidate);
+          if (!candidateOperation) break;
+          var nextOperations = operations.concat([candidateOperation]);
+          if (encodedJsonBytes(JSON.stringify({ operations: nextOperations })) > MAX_BATCH_BYTES) break;
+          snapshots.push(candidate);
+          operations = nextOperations;
+          if (operations.length === MAX_BATCH_OPERATIONS) break;
+        }
+        return snapshots.length ? { entries: snapshots, operations: operations } : { entry: entry };
+      }
+      return null;
+    }
+
+    function validBatchResults(snapshots, body) {
+      if (!body || !Array.isArray(body.results) || body.results.length !== snapshots.length) return false;
+      var expected = {};
+      snapshots.forEach(function(snapshot) {
+        var operation = batchOperation(snapshot);
+        if (operation) expected[operation.id] = true;
+      });
+      var seen = {};
+      return body.results.every(function(result) {
+        if (!result || typeof result.id !== 'string' || !expected[result.id] || seen[result.id]
+          || !Number.isSafeInteger(result.revision)) return false;
+        if (result.outcome !== 'applied' && result.outcome !== 'stale' && result.outcome !== 'unknown') return false;
+        seen[result.id] = true;
+        return true;
+      });
+    }
+
     function buildServerReminderId(deviceId, reminderId) {
       var value = String(deviceId || '') + ':' + String(reminderId || '');
       return value.length > 1 && value.length <= 128 ? value : null;
@@ -581,6 +649,66 @@
       }, 'IndexedDB queue response commit failed');
     }
 
+    async function commitBatchQueueResponse(snapshots, response, body) {
+      var database = await getDatabase();
+      return runTransaction(database, ['queue', 'installation'], 'readwrite', function(transaction, finish) {
+        var queueStore = transaction.objectStore('queue');
+        var installationStore = transaction.objectStore('installation');
+        afterReads([queueStore.getAll(), installationStore.get(INSTALLATION_KEY)], function(values) {
+          var entries = values[0] || [];
+          var installation = values[1] || {};
+          if (response && (response.status === 401 || response.status === 403)) {
+            applyAuthenticationReset(installationStore, queueStore, installation, entries);
+            finish({ authenticationError: true });
+            return;
+          }
+          if (response && response.ok && validBatchResults(snapshots, body)) {
+            snapshots.forEach(function(snapshot) {
+              var current = entries.find(function(entry) { return entry.id === snapshot.id; });
+              if (current && current.generation === snapshot.generation) queueStore.delete(current.id);
+            });
+            finish({ success: true });
+            return;
+          }
+          var failed = false;
+          snapshots.forEach(function(snapshot) {
+            var current = entries.find(function(entry) { return entry.id === snapshot.id; });
+            if (!current || current.generation !== snapshot.generation) return;
+            current.attempts += 1;
+            current.terminal = current.attempts >= MAX_RETRY_ATTEMPTS;
+            current.nextRetryAt = current.terminal
+              ? null
+              : now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, current.attempts - 1));
+            queueStore.put(current, current.id);
+            failed = true;
+          });
+          finish({ failed: failed });
+        });
+      }, 'IndexedDB batch queue response commit failed');
+    }
+
+    async function sendQueueEntry(entry, installation) {
+      var response;
+      try {
+        response = await request(entry.method, entry.path, entry.body, installation, true);
+      } catch (error) {
+        response = null;
+      }
+      return commitQueueResponse(entry, response);
+    }
+
+    async function sendReminderBatch(entries, operations, installation) {
+      var response;
+      var body;
+      try {
+        response = await request('POST', '/api/notifications/reminders/batch', { operations: operations }, installation, true);
+        if (response.ok) body = await response.json();
+      } catch (error) {
+        response = null;
+      }
+      return { response: response, committed: await commitBatchQueueResponse(entries, response, body) };
+    }
+
     async function flushQueue(forceRetry) {
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
@@ -610,16 +738,20 @@
         return toPublicStatus('pending', installation);
       }
 
-      for (var index = 0; index < entries.length; index += 1) {
-        var entry = entries[index];
-        if (entry.terminal || (!forceRetry && entry.nextRetryAt > now())) continue;
-        var response;
-        try {
-          response = await request(entry.method, entry.path, entry.body, installation, true);
-        } catch (error) {
-          response = null;
+      var selection = selectQueueDrain(entries, forceRetry);
+      if (selection) {
+        var committed;
+        if (selection.entries) {
+          var batch = await sendReminderBatch(selection.entries, selection.operations, installation);
+          if (batch.response && (batch.response.status === 404 || batch.response.status === 405)) {
+            batchSupported = false;
+            committed = await sendQueueEntry(selection.entries[0], installation);
+          } else {
+            committed = batch.committed;
+          }
+        } else {
+          committed = await sendQueueEntry(selection.entry, installation);
         }
-        var committed = await commitQueueResponse(entry, response);
         if (committed.authenticationError) {
           state = 'error';
           return toPublicStatus('error');
@@ -632,7 +764,6 @@
           if (await completeDisable()) return toPublicStatus('disabled');
           return toPublicStatus('pending', await getInstallation());
         }
-        if (committed.failed && !committed.terminal) break;
       }
 
       installation = await getInstallation();
