@@ -152,6 +152,22 @@
     return parts.join('');
   }
 
+  var HEADER_TITLES = {
+    home: { title: '买前省省', desc: '聪明买买买，不花冤枉钱' },
+    watches: { title: '我的关注', desc: '心愿清单，等降价提醒' },
+    picks: { title: '好物推荐', desc: '精选划算好物' },
+    profile: { title: '我的', desc: '设置与数据管理' },
+    analysis: { title: '价格分析', desc: '历史价格与购买建议' }
+  };
+
+  function updateHeader(view) {
+    var info = HEADER_TITLES[view] || HEADER_TITLES.home;
+    var titleEl = $('#app-header-title');
+    var descEl = $('#app-header-desc');
+    if (titleEl) titleEl.textContent = info.title;
+    if (descEl) descEl.textContent = info.desc;
+  }
+
   function switchView(view) {
     state.view = view;
     document.body.dataset.view = view;
@@ -161,9 +177,44 @@
     document.querySelectorAll('.nav-item').forEach(function(button) {
       button.classList.toggle('active', button.dataset.view === view);
     });
+    updateHeader(view);
     if (location.hash !== '#' + view) {
       location.hash = view === 'home' ? '#home' : '#' + view;
     }
+  }
+
+  function setThemePreference(pref) {
+    localStorage.setItem('quick-tools-theme', pref);
+    var theme = pref === 'system'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : pref;
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  function setPalette(palette) {
+    localStorage.setItem('price-palette', palette);
+    document.documentElement.setAttribute('data-palette', palette);
+    document.querySelectorAll('[data-palette]').forEach(function(btn) {
+      btn.closest('label') && btn.closest('label').classList.toggle('active', btn.value === palette);
+    });
+  }
+
+  function initThemeControls() {
+    var currentTheme = localStorage.getItem('quick-tools-theme') || 'light';
+    document.querySelectorAll('[data-theme-pref]').forEach(function(input) {
+      input.checked = input.value === currentTheme;
+      input.addEventListener('change', function() {
+        if (input.checked) setThemePreference(input.value);
+      });
+    });
+
+    var currentPalette = localStorage.getItem('price-palette') || 'mint';
+    document.querySelectorAll('[data-palette]').forEach(function(input) {
+      input.checked = input.value === currentPalette;
+      input.addEventListener('change', function() {
+        if (input.checked) setPalette(input.value);
+      });
+    });
   }
 
   function platformLabel(platform) {
@@ -233,6 +284,31 @@
         '<div class="button-row">',
         '<button class="btn secondary" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">看看详情</button>',
         '<button class="btn ghost" type="button" data-delete-watch="', escapeHtml(watch.id), '">取消关注</button>',
+        '</div>',
+        '</article>'
+      ].join('');
+    }).join('');
+  }
+
+  function renderPicks() {
+    var container = $('#picks-grid');
+    if (!container) return;
+    var samples = sampleData.getSampleProducts();
+    var badges = ['历史低价', '大额券', '限时特惠', '新品推荐'];
+    container.innerHTML = samples.map(function(product, index) {
+      var snapshots = sampleData.getSampleSnapshots(product.id);
+      var prices = snapshots.map(function(s) { return s.finalPrice; }).filter(Boolean);
+      var minPrice = prices.length ? Math.min.apply(null, prices) : 0;
+      var maxPrice = prices.length ? Math.max.apply(null, prices) : 0;
+      var badgeClass = index % 2 === 0 ? 'low-price' : '';
+      return [
+        '<article class="pick-card" data-product-id="', escapeHtml(product.id), '" data-open-product="sample">',
+        '<span class="pick-badge ', badgeClass, '">', escapeHtml(badges[index % badges.length]), '</span>',
+        '<p class="pick-platform">', escapeHtml(platformLabel(product.platform)), '</p>',
+        '<h3 class="pick-title">', escapeHtml(product.title || '未命名商品'), '</h3>',
+        '<div class="pick-price">',
+          escapeHtml(money(minPrice)),
+          maxPrice > minPrice ? '<span class="pick-original">' + escapeHtml(money(maxPrice)) + '</span>' : '',
         '</div>',
         '</article>'
       ].join('');
@@ -354,6 +430,7 @@
       renderSamples();
       renderRecentWatches();
       renderWatchList();
+      renderPicks();
       return Promise.resolve();
     }
     return db.getAllData().then(function(data) {
@@ -363,6 +440,7 @@
       renderSamples();
       renderRecentWatches();
       renderWatchList();
+      renderPicks();
     }).catch(function(error) {
       setMessage('parse-message', error.message || '读取本地数据失败。');
     });
@@ -640,7 +718,7 @@
       });
     });
 
-    $('#export-button').addEventListener('click', function() {
+    function handleExport() {
       db.getAllData().then(function(data) {
         var payload = exporter.buildExportPayload(data);
         var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -651,31 +729,45 @@
         link.click();
         URL.revokeObjectURL(url);
         setMessage('data-message', '导出已开始。');
+        setMessage('profile-data-message', '导出已开始。');
       }).catch(function(error) {
         setMessage('data-message', error.message || '导出失败。');
+        setMessage('profile-data-message', error.message || '导出失败。');
       });
-    });
+    }
+    var exportBtn = $('#export-button') || $('#profile-export-button');
+    if ($('#export-button')) $('#export-button').addEventListener('click', handleExport);
+    if ($('#profile-export-button')) $('#profile-export-button').addEventListener('click', handleExport);
 
-    $('#import-file').addEventListener('change', function(event) {
+    function handleImport(event) {
       var file = event.target.files && event.target.files[0];
       if (!file) return;
       file.text().then(function(text) {
         return importPayload(JSON.parse(text));
       }).then(loadAllData).then(function() {
         setMessage('data-message', '导入完成。');
+        setMessage('profile-data-message', '导入完成。');
         event.target.value = '';
       }).catch(function(error) {
         setMessage('data-message', error.message || '导入失败。');
+        setMessage('profile-data-message', error.message || '导入失败。');
       });
-    });
+    }
+    if ($('#import-file')) $('#import-file').addEventListener('change', handleImport);
+    if ($('#profile-import-file')) $('#profile-import-file').addEventListener('change', handleImport);
 
-    $('#clear-button').addEventListener('click', function() {
+    function handleClear() {
       if (confirm('确定清空买前省省的本地数据吗？')) {
         db.clearAll().then(loadAllData).then(function() {
           setMessage('data-message', '本地数据已清空。');
+          setMessage('profile-data-message', '本地数据已清空。');
         });
       }
-    });
+    }
+    if ($('#clear-button')) $('#clear-button').addEventListener('click', handleClear);
+    if ($('#profile-clear-button')) $('#profile-clear-button').addEventListener('click', handleClear);
+
+    initThemeControls();
   }
 
   function registerServiceWorker() {
@@ -688,6 +780,7 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     document.body.dataset.view = state.view;
+    updateHeader(state.view);
     bindEvents();
     loadAllData();
     registerServiceWorker();

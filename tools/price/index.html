@@ -4,15 +4,18 @@
 <script>
   (function() {
     var preference = localStorage.getItem('quick-tools-theme') || 'light';
+    var palette = localStorage.getItem('price-palette') || 'mint';
     var theme = preference === 'system'
       ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : preference;
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-palette', palette);
   })();
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0F766E">
+<meta http-equiv="cache-control" content="no-cache, must-revalidate">
+<meta name="theme-color" content="#7FB8A6">
 <meta name="description" content="买前省省：本地优先的买前查价与真低价判断工具。">
 <link rel="icon" href="/icons/zhenjia-icon-96x96.png">
 <link rel="manifest" href="/tools/price/manifest.json">
@@ -20,7 +23,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/zhenjia-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/zhenjia-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/price/css/style.css?v=101">
+<link rel="stylesheet" href="/tools/price/css/style.css?v=102">
 <title>买前省省 - 买前查价</title>
 </head>
 <body>
@@ -28,8 +31,8 @@
   <a class="brand" href="#home" data-view-link="home" aria-label="返回买前省省首页">
     <img src="/icons/zhenjia-icon.svg" alt="" aria-hidden="true" class="brand-mark" style="background: transparent; box-shadow: none;">
     <span>
-      <strong>买前省省</strong>
-      <small>聪明买买买，不花冤枉钱</small>
+      <strong id="app-header-title">买前省省</strong>
+      <small id="app-header-desc">聪明买买买，不花冤枉钱</small>
     </span>
   </a>
   <a class="header-link" href="/" aria-label="返回 Quick Tools">Quick Tools</a>
@@ -131,67 +134,192 @@
     <div class="stack-list" id="watch-list"></div>
   </section>
 
-  <section class="view" id="view-data" aria-labelledby="data-title">
+  <section class="view" id="view-picks" aria-labelledby="picks-title">
     <div class="section-head">
       <div>
-        <p class="eyebrow">数据管理</p>
-        <h1 id="data-title">我的数据</h1>
+        <p class="eyebrow">精选好物</p>
+        <h1 id="picks-title">好物推荐</h1>
       </div>
     </div>
-    <section class="panel data-panel">
-      <p>数据都保存在你的手机/电脑本地哦，随时可以导出备份～</p>
-      <div class="button-row">
-        <button class="btn secondary" id="export-button" type="button">导出数据</button>
-        <label class="btn ghost file-button">导入数据<input id="import-file" type="file" accept="application/json"></label>
-        <button class="btn danger" id="clear-button" type="button">清空数据</button>
+    <div class="picks-grid" id="picks-grid"></div>
+    <p class="picks-tip">💡 后续接入后台后，会根据你的查询偏好推荐历史低价和大额券好物哦～</p>
+  </section>
+
+  <section class="view" id="view-profile" aria-labelledby="profile-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">个人中心</p>
+        <h1 id="profile-title">我的</h1>
       </div>
-      <p class="form-message" id="data-message" role="status"></p>
-    </section>
-    <section class="panel data-panel">
-      <p data-app-update-status role="status">检查一下有没有新版本吧～</p>
-      <div class="button-row">
-        <button class="btn secondary" type="button" data-app-update-button>检查更新</button>
+    </div>
+
+    <div class="settings-group">
+      <h3>🎨 外观</h3>
+      <div class="setting-item theme-setting">
+        <div class="setting-info">
+          <span class="setting-title">主题模式</span>
+          <span class="setting-desc">选择浅色、深色，或跟随手机系统设置</span>
+        </div>
+        <div class="theme-options" role="radiogroup" aria-label="主题模式">
+          <label>
+            <input type="radio" name="theme-preference" value="light" data-theme-pref="light">
+            <span>浅色</span>
+          </label>
+          <label>
+            <input type="radio" name="theme-preference" value="dark" data-theme-pref="dark">
+            <span>深色</span>
+          </label>
+          <label>
+            <input type="radio" name="theme-preference" value="system" data-theme-pref="system">
+            <span>跟随系统</span>
+          </label>
+        </div>
       </div>
-    </section>
+      <div class="setting-item palette-setting">
+        <div class="setting-info">
+          <span class="setting-title">主题色</span>
+          <span class="setting-desc">选一个喜欢的色调，按钮、导航、图表都会跟着变～</span>
+        </div>
+        <div class="palette-options" role="radiogroup" aria-label="主题色">
+          <label>
+            <input type="radio" name="palette-choice" value="mint" data-palette="mint" checked>
+            <span class="palette-swatch mint"></span>
+            <span class="palette-name">薄荷奶绿</span>
+          </label>
+          <label>
+            <input type="radio" name="palette-choice" value="peach" data-palette="peach">
+            <span class="palette-swatch peach"></span>
+            <span class="palette-name">蜜桃粉</span>
+          </label>
+          <label>
+            <input type="radio" name="palette-choice" value="apricot" data-palette="apricot">
+            <span class="palette-swatch apricot"></span>
+            <span class="palette-name">暖杏橘</span>
+          </label>
+          <label>
+            <input type="radio" name="palette-choice" value="lavender" data-palette="lavender">
+            <span class="palette-swatch lavender"></span>
+            <span class="palette-name">薰衣草</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>💾 数据管理</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">导出数据</span>
+          <span class="setting-desc">把关注和价格记录备份成 JSON 文件</span>
+        </div>
+        <button class="btn secondary" id="profile-export-button" type="button">导出</button>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">导入数据</span>
+          <span class="setting-desc">从备份文件恢复数据</span>
+        </div>
+        <label class="btn ghost file-button">
+          导入
+          <input id="profile-import-file" type="file" accept="application/json">
+        </label>
+      </div>
+      <div class="setting-item danger">
+        <div class="setting-info">
+          <span class="setting-title">清空数据</span>
+          <span class="setting-desc">清除所有本地商品、价格和关注记录</span>
+        </div>
+        <button class="btn danger" id="profile-clear-button" type="button">清空</button>
+      </div>
+      <p class="form-message" id="profile-data-message" role="status"></p>
+    </div>
+
+    <div class="settings-group">
+      <h3>🔄 版本与更新</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">当前版本</span>
+          <span class="setting-desc">买前省省 · 本地优先的查价工具</span>
+        </div>
+        <span class="setting-version">v0.2.0</span>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">更新日志</span>
+          <span class="setting-desc">看看每个版本都更新了什么</span>
+        </div>
+        <button class="btn ghost" type="button" onclick="window.open('CHANGELOG.md', '_blank')">查看</button>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">检查更新</span>
+          <span class="setting-desc" data-app-update-status role="status">拉取最新版本</span>
+        </div>
+        <button class="btn secondary" type="button" data-app-update-button>检查</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>💌 问题反馈</h3>
+      <div class="setting-item feedback-setting">
+        <div class="setting-info">
+          <span class="setting-title">联系我们</span>
+          <span class="setting-desc">遇到问题或有建议？发邮件告诉我们～</span>
+        </div>
+        <button class="btn secondary" type="button" onclick="window.open('mailto:zhenjia_feedback@outlook.com?subject=买前省省问题反馈', '_blank', 'noopener,noreferrer')">✉️ 发送邮件</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>ℹ️ 关于</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">买前省省</span>
+          <span class="setting-desc">纯前端实现，数据存储在本地浏览器中，不上传到服务器</span>
+        </div>
+      </div>
+    </div>
   </section>
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
   <button class="nav-item active" type="button" data-view="home">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-      <path d="M2 17l10 5 10-5"/>
-      <path d="M2 12l10 5 10-5"/>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
     </svg>
-    查价
+    <span>查价</span>
   </button>
   <button class="nav-item" type="button" data-view="watches">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
     </svg>
-    关注
+    <span>关注</span>
   </button>
-  <button class="nav-item" type="button" data-view="data">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14 2 14 8 20 8"/>
-      <line x1="16" y1="13" x2="8" y2="13"/>
-      <line x1="16" y1="17" x2="8" y2="17"/>
-      <polyline points="10 9 9 9 8 9"/>
+  <button class="nav-item" type="button" data-view="picks">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
     </svg>
-    数据
+    <span>好物</span>
+  </button>
+  <button class="nav-item" type="button" data-view="profile">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+    <span>我的</span>
   </button>
 </nav>
 
-<script src="/tools/price/js/link-parser.js?v=101"></script>
-<script src="/tools/price/js/price-judge.js?v=101"></script>
-<script src="/tools/price/js/export.js?v=101"></script>
-<script src="/tools/price/js/sample-data.js?v=101"></script>
-<script src="/tools/price/js/db.js?v=101"></script>
-<script src="/tools/price/js/chart.js?v=101"></script>
+<script src="/tools/price/js/link-parser.js?v=102"></script>
+<script src="/tools/price/js/price-judge.js?v=102"></script>
+<script src="/tools/price/js/export.js?v=102"></script>
+<script src="/tools/price/js/sample-data.js?v=102"></script>
+<script src="/tools/price/js/db.js?v=102"></script>
+<script src="/tools/price/js/chart.js?v=102"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
-<script src="/tools/price/js/app.js?v=101"></script>
+<script src="/tools/price/js/app.js?v=102"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 </body>
 </html>
