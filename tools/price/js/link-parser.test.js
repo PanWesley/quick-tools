@@ -14,6 +14,7 @@ test('parseProductInput extracts a JD sku from a product page URL', () => {
   assert.equal(result.data.itemId, '100012043978');
   assert.equal(result.data.skuId, '100012043978');
   assert.equal(result.data.canonicalUrl, 'https://item.jd.com/100012043978.html');
+  assert.equal(result.data.isShortLink, undefined);
 });
 
 test('parseProductInput extracts JD sku from mobile product URL', () => {
@@ -61,50 +62,60 @@ test('parseProductInput extracts a PDD goods id', () => {
   assert.equal(result.data.platform, 'pdd');
   assert.equal(result.data.itemId, '531222333444');
   assert.equal(result.data.canonicalUrl, 'https://mobile.yangkeduo.com/goods.html?goods_id=531222333444');
+  assert.equal(result.data.isShortLink, undefined);
 });
 
-test('parseProductInput rejects short links with helpful guidance and platform info', () => {
-  const result = parseProductInput('https://m.tb.cn/h.abc123');
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, 'short_link_unsupported');
-  assert.equal(result.error.platform, 'taobao');
-  assert.ok(Array.isArray(result.error.guideSteps));
-  assert.ok(result.error.guideSteps.length >= 3);
-});
-
-test('parseProductInput recognizes e.tb.cn as Taobao short link', () => {
-  const result = parseProductInput('https://e.tb.cn/h.8bHMm3ebr9c2xTr?tk=0u02gqqp66J');
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, 'short_link_unsupported');
-  assert.equal(result.error.platform, 'taobao');
-  assert.ok(result.error.guideSteps);
-});
-
-test('parseProductInput recognizes 3.cn as JD short link and extracts title', () => {
+test('parseProductInput handles JD short link by creating local product with title', () => {
   const text = '【京东】https://3.cn/-2Vv3ukm?jkl=@W0Yzw10kN4h@ MU5104 「初申针织女薄款内外搭外套」\n点击链接直接打开 或者复制文案打开京东';
   const result = parseProductInput(text);
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, 'short_link_unsupported');
-  assert.equal(result.error.platform, 'jd');
-  assert.equal(result.error.extractedTitle, '初申针织女薄款内外搭外套');
-  assert.ok(result.error.guideSteps);
-  assert.ok(result.error.guideSteps.length >= 3);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'jd');
+  assert.equal(result.data.isShortLink, true);
+  assert.equal(result.data.title, '初申针织女薄款内外搭外套');
+  assert.equal(result.data.extractedTitle, '初申针织女薄款内外搭外套');
+  assert.ok(result.data.notice);
+  assert.ok(result.data.notice.indexOf('京东') >= 0);
+  assert.ok(result.data.source === 'short_link');
 });
 
-test('parseProductInput detects Taobao platform from 【淘宝】 tag in share text', () => {
+test('parseProductInput handles Taobao e.tb.cn short link with title extraction', () => {
   const text = '【淘宝】7天无理由退货\nhttps://e.tb.cn/h.8bHMm3ebr9c2xTr?tk=0u02gqqp66J CZ356 「早春碎花雪纺连衣裙女夏2026年新款女装显瘦时尚气质仙女蛋糕裙子」';
   const result = parseProductInput(text);
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, 'short_link_unsupported');
-  assert.equal(result.error.platform, 'taobao');
-  assert.equal(result.error.extractedTitle, '早春碎花雪纺连衣裙女夏2026年新款女装显瘦时尚气质仙女蛋糕裙子');
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'taobao');
+  assert.equal(result.data.isShortLink, true);
+  assert.equal(result.data.title, '早春碎花雪纺连衣裙女夏2026年新款女装显瘦时尚气质仙女蛋糕裙子');
+  assert.ok(result.data.notice);
+  assert.ok(result.data.source === 'short_link');
 });
 
-test('parseProductInput detects PDD ps parameter as short sign requiring full link', () => {
-  const result = parseProductInput('https://mobile.yangkeduo.com/goods.html?ps=e1xaEqLYy8');
-  assert.equal(result.ok, false);
-  assert.equal(result.error.code, 'pdd_sign_unsupported');
-  assert.equal(result.error.platform, 'pdd');
+test('parseProductInput handles PDD ps parameter link as short link with title', () => {
+  const text = '【拼多多】百亿补贴 超划算 https://mobile.yangkeduo.com/goods.html?ps=e1xaEqLYy8 「家庭抽纸囤货装」';
+  const result = parseProductInput(text);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'pdd');
+  assert.equal(result.data.isShortLink, true);
+  assert.equal(result.data.title, '家庭抽纸囤货装');
+  assert.ok(result.data.notice);
+});
+
+test('parseProductInput handles m.tb.cn short link', () => {
+  const result = parseProductInput('https://m.tb.cn/h.abc123 「测试商品标题」');
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'taobao');
+  assert.equal(result.data.isShortLink, true);
+  assert.equal(result.data.title, '测试商品标题');
+});
+
+test('parseProductInput handles tao kou ling without URL', () => {
+  const text = '【淘宝】￥abcdefgh12￥ 「超级好用的商品」';
+  const result = parseProductInput(text);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'taobao');
+  assert.equal(result.data.isShortLink, true);
+  assert.equal(result.data.isTaoKouLing, true);
+  assert.equal(result.data.title, '超级好用的商品');
+  assert.ok(result.data.notice);
 });
 
 test('parseProductInput extracts product title from direct parseable URL', () => {
@@ -131,7 +142,19 @@ test('detectPlatformFromText detects Taobao from tao kou ling', () => {
   assert.equal(detectPlatformFromText('这是一个淘口令￥abcdefgh12￥试试'), 'taobao');
 });
 
-test('parseProductInput rejects unsupported platforms', () => {
+test('parseProductInput rejects empty input with no URL or title', () => {
+  const result = parseProductInput('随便一些文字');
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'missing_url');
+});
+
+test('parseProductInput rejects invalid URL', () => {
+  const result = parseProductInput('https://[invalid');
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'invalid_url');
+});
+
+test('parseProductInput rejects completely unsupported platforms without title', () => {
   const result = parseProductInput('https://example.com/item/123');
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'unsupported_platform');

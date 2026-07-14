@@ -56,7 +56,7 @@
       parts.push('<p style="margin:0 0 10px;">' + escapeHtml(error.message) + '</p>');
     }
     if (error && error.guideSteps && error.guideSteps.length) {
-      parts.push('<ol style="margin:0;padding-left:20px;color:var(--color-muted);line-height:1.8;">');
+      parts.push('<ol style="margin:0;padding-left:20px;color:var(--color-muted);line-height:1.8;list-style:none;">');
       error.guideSteps.forEach(function(step) {
         parts.push('<li>' + escapeHtml(step) + '</li>');
       });
@@ -195,6 +195,11 @@
     state.activeSnapshots = snapshots;
     state.activeWatch = watch || null;
 
+    var noticeHtml = '';
+    if (product && product.notice) {
+      noticeHtml = '<p style="margin:12px 0 0;padding:10px 14px;border-radius:var(--radius);background:var(--color-accent-soft);color:var(--color-accent);font-size:13px;font-weight:700;">' + escapeHtml(product.notice) + '</p>';
+    }
+
     $('#truth-bench').className = 'truth-bench level-' + escapeHtml(result.level);
     $('#truth-bench').innerHTML = [
       '<div class="truth-copy">',
@@ -205,6 +210,7 @@
       '<ul>', result.reasons.map(function(reason) {
         return '<li>' + escapeHtml(reason) + '</li>';
       }).join(''), '</ul>',
+      noticeHtml,
       '</div>',
       '<div class="score-column">',
       '<span class="score-label">可信分</span>',
@@ -254,23 +260,28 @@
   }
 
   function createParsedProduct(parsed) {
-    var title = parsed.extractedTitle ||
+    var title = parsed.title || parsed.extractedTitle ||
       (parser.normalizePlatformLabel(parsed.platform) + '商品 ' + parsed.itemId);
     return db.upsertProduct({
       platform: parsed.platform,
       itemId: parsed.itemId,
-      skuId: parsed.skuId,
-      shopId: parsed.shopId,
+      skuId: parsed.skuId || '',
+      shopId: parsed.shopId || '',
       title: title,
-      shopName: '本地解析',
-      rawUrl: parsed.rawUrl,
-      canonicalUrl: parsed.canonicalUrl,
-      source: 'parsed'
+      shopName: parsed.isShortLink ? '短链识别' : '本地解析',
+      rawUrl: parsed.rawUrl || '',
+      canonicalUrl: parsed.canonicalUrl || '',
+      source: parsed.source || 'parsed',
+      isShortLink: parsed.isShortLink || false
     }).then(function(product) {
       return loadAllData().then(function() {
-        return state.products.find(function(item) {
+        var found = state.products.find(function(item) {
           return item.id === product.id;
         }) || product;
+        if (parsed.notice) {
+          found.notice = parsed.notice;
+        }
+        return found;
       });
     });
   }

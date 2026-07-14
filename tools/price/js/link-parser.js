@@ -210,25 +210,88 @@
     return fail('parse_failed', '没有识别到拼多多商品 ID。');
   }
 
-  function buildShortLinkError(hostname, input) {
-    var info = getShortLinkInfo(hostname);
-    var platform = info ? info.platform : detectPlatformFromText(input);
+  function buildShortLinkResult(hostname, input) {
+    var info = getShortLinkInfo(hostname, '/');
+    var platform = (info && info.platform) || detectPlatformFromText(input) || 'unknown';
     var title = extractProductTitle(input);
     var hostLabel = info ? info.name : '短链接';
     var platformLabel = platform ? normalizePlatformLabel(platform) : '';
-    var message;
-    if (platform) {
-      message = '识别到' + platformLabel + '短链，纯网页版无法自动展开短链。请按以下步骤获取完整链接：';
+    var itemId = '';
+    if (title) {
+      var hash = 0;
+      for (var i = 0; i < title.length; i++) {
+        hash = ((hash << 5) - hash) + title.charCodeAt(i);
+        hash |= 0;
+      }
+      itemId = 'short_' + platform + '_' + Math.abs(hash).toString(36);
     } else {
-      message = '识别到' + hostLabel + '，纯网页版无法自动展开短链。请复制商品详情页完整链接：';
+      itemId = 'short_' + platform + '_' + Date.now().toString(36);
     }
-    return fail('short_link_unsupported', message, {
-      platform: platform,
-      shortHost: hostname,
-      extractedTitle: title,
-      guideSteps: platform ? PLATFORM_GUIDES[platform] : null,
-      isTaoKouLing: hasTaoKouLing(input)
-    });
+
+    return {
+      ok: true,
+      data: {
+        platform: platform,
+        itemId: itemId,
+        skuId: '',
+        shopId: '',
+        title: title || (platformLabel + '商品'),
+        rawUrl: extractFirstUrl(input),
+        canonicalUrl: extractFirstUrl(input),
+        source: 'short_link',
+        isShortLink: true,
+        extractedTitle: title,
+        shortHost: hostname,
+        notice: platformLabel
+          ? '已识别' + platformLabel + '商品，短链版无法自动获取价格，请先手动记录当前价格。'
+          : '已识别商品，短链版无法自动获取价格，请先手动记录当前价格。'
+      }
+    };
+  }
+
+  function buildTaoKouLingResult(input) {
+    var title = extractProductTitle(input);
+    var itemId = 'tkl_' + Date.now().toString(36);
+    return {
+      ok: true,
+      data: {
+        platform: 'taobao',
+        itemId: itemId,
+        skuId: '',
+        shopId: '',
+        title: title || '淘宝商品',
+        rawUrl: '',
+        canonicalUrl: '',
+        source: 'tao_kouling',
+        isShortLink: true,
+        isTaoKouLing: true,
+        extractedTitle: title,
+        notice: '已识别淘宝淘口令商品，请先手动记录当前价格。'
+      }
+    };
+  }
+
+  function buildPddSignResult(parsed, rawUrl, input) {
+    var title = extractProductTitle(input);
+    var ps = parsed.searchParams.get('ps') || parsed.searchParams.get('goods_sign') || '';
+    var itemId = ps ? ('pdd_sign_' + ps) : ('pdd_short_' + Date.now().toString(36));
+    return {
+      ok: true,
+      data: {
+        platform: 'pdd',
+        itemId: itemId,
+        skuId: '',
+        shopId: '',
+        title: title || '拼多多商品',
+        rawUrl: rawUrl,
+        canonicalUrl: rawUrl,
+        source: 'pdd_short',
+        isShortLink: true,
+        isPddSign: true,
+        extractedTitle: title,
+        notice: '已识别拼多多商品，微信/短链版无法自动获取价格，请先手动记录当前价格。'
+      }
+    };
   }
 
   function parseProductInput(input) {
@@ -239,11 +302,26 @@
 
     if (!rawUrl) {
       if (hasTkl) {
-        return fail('taokouling_detected', '识别到淘口令，请在淘宝 APP 中打开后复制商品详情页链接。', {
-          platform: 'taobao',
+        return buildTaoKouLingResult(input);
+      }
+      if (textPlatform && extractedTitle) {
+        var hash = 0;
+        for (var i = 0; i < extractedTitle.length; i++) {
+          hash = ((hash << 5) - hash) + extractedTitle.charCodeAt(i);
+          hash |= 0;
+        }
+        return ok({
+          platform: textPlatform,
+          itemId: 'text_' + textPlatform + '_' + Math.abs(hash).toString(36),
+          skuId: '',
+          shopId: '',
+          title: extractedTitle,
+          rawUrl: '',
+          canonicalUrl: '',
+          source: 'text_only',
+          isShortLink: true,
           extractedTitle: extractedTitle,
-          isTaoKouLing: true,
-          guideSteps: PLATFORM_GUIDES.taobao
+          notice: '已识别' + normalizePlatformLabel(textPlatform) + '商品，请先手动记录当前价格。'
         });
       }
       return fail('missing_url', '没有识别到商品链接。');
@@ -262,47 +340,48 @@
     var originalPathname = parsed.pathname;
 
     if (isShortLinkHost(originalHostname, originalPathname)) {
-      var shortInfo = getShortLinkInfo(originalHostname, originalPathname);
-      if (shortInfo && shortInfo.platform === 'pdd' &&
-          (parsed.searchParams.get('goods_id') || parsed.searchParams.get('goodsId'))) {
-        var pddResult = parsePdd(parsed, rawUrl);
-        if (pddResult.ok) {
-          if (extractedTitle) pddResult.data.extractedTitle = extractedTitle;
-          return pddResult;
-        }
-      }
-      var shortError = buildShortLinkError(originalHostname, input);
-      if (extractedTitle && shortError.error) {
-        shortError.error.extractedTitle = extractedTitle;
-      }
-      return shortError;
+      var result = buildShortLinkResult(originalHostname, input);
+      return result;
     }
 
     var result;
     if (hostname === 'item.jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.com') {
-      if (hostname === 'item.m.jd.com' || hostname === 'm.jd.com') {
-        result = parseJd(parsed, rawUrl);
-      } else {
-        result = parseJd(parsed, rawUrl);
-      }
+      result = parseJd(parsed, rawUrl);
     } else if (hostname === 'item.taobao.com' || hostname.endsWith('.taobao.com') || hostname === 'taobao.com') {
-      if (hostname === 'item.taobao.com' || hostname === 'h5.m.taobao.com' || hostname === 'm.taobao.com') {
-        result = parseTaobaoLike(parsed, rawUrl, 'taobao');
-      } else {
-        result = parseTaobaoLike(parsed, rawUrl, 'taobao');
-      }
+      result = parseTaobaoLike(parsed, rawUrl, 'taobao');
     } else if (hostname === 'detail.tmall.com' || hostname.endsWith('.tmall.com') || hostname === 'tmall.com' || hostname === 'tmall.hk') {
       result = parseTaobaoLike(parsed, rawUrl, 'tmall');
     } else if (hostname === 'mobile.yangkeduo.com' || hostname === 'yangkeduo.com' || hostname.endsWith('.yangkeduo.com')) {
-      result = parsePdd(parsed, rawUrl);
+      var pddResult = parsePdd(parsed, rawUrl);
+      if (!pddResult.ok && pddResult.error && pddResult.error.code === 'pdd_sign_unsupported') {
+        return buildPddSignResult(parsed, rawUrl, input);
+      }
+      result = pddResult;
     } else if (hostname === 'mobile.pinduoduo.com' || hostname === 'pinduoduo.com' || hostname.endsWith('.pinduoduo.com')) {
-      result = parsePdd(parsed, rawUrl);
+      var pddResult2 = parsePdd(parsed, rawUrl);
+      if (!pddResult2.ok && pddResult2.error && pddResult2.error.code === 'pdd_sign_unsupported') {
+        return buildPddSignResult(parsed, rawUrl, input);
+      }
+      result = pddResult2;
     } else {
-      if (textPlatform) {
-        return fail('unsupported_platform', '暂不支持该链接格式，请复制商品详情页完整链接。', {
+      if (textPlatform && extractedTitle) {
+        var hash2 = 0;
+        for (var j = 0; j < extractedTitle.length; j++) {
+          hash2 = ((hash2 << 5) - hash2) + extractedTitle.charCodeAt(j);
+          hash2 |= 0;
+        }
+        return ok({
           platform: textPlatform,
+          itemId: 'unknown_' + textPlatform + '_' + Math.abs(hash2).toString(36),
+          skuId: '',
+          shopId: '',
+          title: extractedTitle,
+          rawUrl: rawUrl,
+          canonicalUrl: rawUrl,
+          source: 'unknown_platform',
+          isShortLink: true,
           extractedTitle: extractedTitle,
-          guideSteps: PLATFORM_GUIDES[textPlatform] || null
+          notice: '已识别' + normalizePlatformLabel(textPlatform) + '商品，请先手动记录当前价格。'
         });
       }
       return fail('unsupported_platform', '暂不支持该平台链接。');
