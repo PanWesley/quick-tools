@@ -168,7 +168,7 @@
     if (descEl) descEl.textContent = info.desc;
   }
 
-  function switchView(view) {
+  function switchView(view, pushHistory) {
     state.view = view;
     document.body.dataset.view = view;
     document.querySelectorAll('.view').forEach(function(section) {
@@ -178,8 +178,18 @@
       button.classList.toggle('active', button.dataset.view === view);
     });
     updateHeader(view);
-    if (location.hash !== '#' + view) {
+    if (pushHistory !== false && location.hash !== '#' + view) {
       location.hash = view === 'home' ? '#home' : '#' + view;
+    }
+    window.scrollTo(0, 0);
+  }
+
+  function handleHashChange() {
+    var hash = location.hash.replace('#', '') || 'home';
+    var validViews = ['home', 'watches', 'picks', 'profile', 'analysis'];
+    if (validViews.indexOf(hash) === -1) hash = 'home';
+    if (state.view !== hash) {
+      switchView(hash, false);
     }
   }
 
@@ -779,8 +789,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
-    document.body.dataset.view = state.view;
-    updateHeader(state.view);
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
     bindEvents();
     loadAllData();
     registerServiceWorker();

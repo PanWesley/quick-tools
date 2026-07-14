@@ -951,6 +951,74 @@ body[data-view="analysis"] .bottom-nav {
   font-weight: 400;
 }
 
+.sample-hint {
+  text-align: center;
+  color: var(--color-primary-deep);
+  font-size: 13px;
+  margin-top: 8px;
+  margin-bottom: 0;
+  font-weight: 500;
+}
+
+.analysis-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.back-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+}
+
+.analysis-page-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-ink);
+}
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.action-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.action-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.action-card-head h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.action-card-head .fine-print {
+  margin: 0;
+}
+
 .file-button input {
   display: none;
 }
@@ -1130,6 +1198,24 @@ body[data-view="analysis"] .bottom-nav {
 
   .current-price-display .price-value {
     font-size: 26px;
+  }
+
+  .analysis-top-bar {
+    margin-bottom: 16px;
+  }
+
+  .analysis-page-title {
+    font-size: 16px;
+  }
+
+  .back-btn {
+    padding: 6px 12px;
+    min-height: 32px;
+    font-size: 13px;
+  }
+
+  .action-card-head h3 {
+    font-size: 16px;
   }
 }
 
