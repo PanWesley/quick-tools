@@ -132,8 +132,14 @@
     var locks = Object.prototype.hasOwnProperty.call(options, 'locks')
       ? options.locks : root && root.navigator && root.navigator.locks;
     var apiBase = options.apiBase || '';
+    var requestTimeoutMs = options.requestTimeoutMs === undefined ? 15 * 1000 : options.requestTimeoutMs;
+    var subscriptionTimeoutMs = options.subscriptionTimeoutMs === undefined ? 20 * 1000 : options.subscriptionTimeoutMs;
+    var AbortControllerImpl = options.AbortController || root && root.AbortController;
+    var setTimer = options.setTimer || (root && root.setTimeout ? root.setTimeout.bind(root) : setTimeout);
+    var clearTimer = options.clearTimer || (root && root.clearTimeout ? root.clearTimeout.bind(root) : clearTimeout);
     var databasePromise;
     var state = 'disabled';
+    var activeControllers = new Set();
     var randomUUID = options.randomUUID
       || (root && root.crypto && typeof root.crypto.randomUUID === 'function'
         ? root.crypto.randomUUID.bind(root.crypto)
@@ -313,6 +319,24 @@
       return entries.find(function(entry) { return entry.logicalKey === logicalKey; });
     }
 
+    function withDeadline(promise, timeoutMs, onTimeout) {
+      return new Promise(function(resolve, reject) {
+        var timer = setTimer(function() {
+          if (onTimeout) onTimeout();
+          var error = new Error('Notification operation timed out');
+          error.name = 'TimeoutError';
+          reject(error);
+        }, timeoutMs);
+        Promise.resolve(promise).then(function(value) {
+          clearTimer(timer);
+          resolve(value);
+        }, function(error) {
+          clearTimer(timer);
+          reject(error);
+        });
+      });
+    }
+
     async function request(method, path, body, installation, authenticated) {
       if (typeof fetchImpl !== 'function') throw new Error('Fetch is not available');
       var headers = {};
@@ -321,8 +345,18 @@
         if (!installation || !installation.deviceToken) throw new Error('Device credentials are required');
         headers.Authorization = 'Bearer ' + installation.deviceToken;
       }
-      return fetchImpl(apiBase + path, { method: method, headers: headers,
-        body: body === undefined || body === null ? undefined : JSON.stringify(body) });
+      var controller = AbortControllerImpl ? new AbortControllerImpl() : null;
+      if (controller) activeControllers.add(controller);
+      try {
+        var init = { method: method, headers: headers,
+          body: body === undefined || body === null ? undefined : JSON.stringify(body) };
+        if (controller) init.signal = controller.signal;
+        return await withDeadline(fetchImpl(apiBase + path, init), requestTimeoutMs, function() {
+          if (controller) controller.abort();
+        });
+      } finally {
+        if (controller) activeControllers.delete(controller);
+      }
     }
 
     function applyAuthenticationReset(installationStore, queueStore, installation, entries, current) {
@@ -763,10 +797,10 @@
           subscription = null;
         }
         if (!subscription) {
-          subscription = await registration.pushManager.subscribe({
+          subscription = await withDeadline(registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: notificationCrypto.base64UrlDecode(config.vapidPublicKey)
-          });
+          }), subscriptionTimeoutMs);
         }
         subscriptionValue = subscription && typeof subscription.toJSON === 'function'
           ? subscription.toJSON()
@@ -971,11 +1005,13 @@
 
     function runLocked(operation, args) {
       if (!hasLocks()) return Promise.resolve(toPublicStatus('unsupported'));
-      return Promise.resolve().then(function() {
-        return locks.request(LIFECYCLE_LOCK, function() {
+      return Promise.resolve(locks.request(LIFECYCLE_LOCK, { ifAvailable: true }, function(lock) {
+        if (!lock) {
+          state = 'pending';
+          return toPublicStatus('pending');
+        }
           return operation.apply(null, args);
-        });
-      }).catch(function() {
+      })).catch(function() {
         state = 'error';
         return toPublicStatus('error');
       });
@@ -989,6 +1025,15 @@
       });
     }
 
+    function cancelActiveRequests() {
+      activeControllers.forEach(function(controller) {
+        try {
+          controller.abort();
+        } catch (error) {}
+      });
+      activeControllers.clear();
+    }
+
     return {
       setup: function() { return runLocked(setupImpl, arguments); },
       getStatus: getStatus,
@@ -997,7 +1042,8 @@
       sync: function() { return runLocked(syncImpl, arguments); },
       sendTest: function() { return runLocked(sendTestImpl, arguments); },
       handleOnline: function() { return runLocked(handleOnlineImpl, arguments); },
-      handleForeground: function() { return runLocked(handleOnlineImpl, arguments); }
+      handleForeground: function() { return runLocked(handleOnlineImpl, arguments); },
+      cancelActiveRequests: cancelActiveRequests
     };
   }
 

@@ -151,8 +151,13 @@ function createFakeIndexedDB(options = {}) {
 function createFakeLockManager() {
   const tails = new Map();
   return {
-    request(name, callback) {
+    isHeld(name) {
+      return tails.has(name);
+    },
+    request(name, options, callback) {
+      if (typeof options === 'function') callback = options;
       const previous = tails.get(name) || Promise.resolve();
+      if (options && options.ifAvailable && tails.has(name)) return Promise.resolve(callback(null));
       let release;
       const held = new Promise(resolve => { release = resolve; });
       const tail = previous.catch(() => {}).then(() => held);
@@ -184,6 +189,28 @@ function deferred() {
   let resolve;
   const promise = new Promise(next => { resolve = next; });
   return { promise, resolve };
+}
+
+function createFakeTimers() {
+  const timers = new Map();
+  let nextId = 0;
+  return {
+    get pendingCount() { return timers.size; },
+    setTimer(callback) {
+      const id = nextId + 1;
+      nextId = id;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimer(id) {
+      timers.delete(id);
+    },
+    runAll() {
+      const callbacks = Array.from(timers.values());
+      timers.clear();
+      callbacks.forEach(callback => callback());
+    }
+  };
 }
 
 async function waitFor(predicate) {
@@ -260,7 +287,12 @@ function createHarness(overrides = {}) {
       return overrides.fetch ? overrides.fetch(url, init, calls) : jsonResponse(204);
     },
     clock: overrides.clock || (() => now),
-    online: overrides.online || (() => true)
+    online: overrides.online || (() => true),
+    requestTimeoutMs: overrides.requestTimeoutMs,
+    subscriptionTimeoutMs: overrides.subscriptionTimeoutMs,
+    AbortController: overrides.AbortController,
+    setTimer: overrides.setTimer,
+    clearTimer: overrides.clearTimer
   });
 
   return {
@@ -340,6 +372,88 @@ test('fake LockManager releases an exclusive lock after callback throw and rejec
   await assert.rejects(rejected, /callback rejected/);
   assert.equal(await next, 'acquired');
   assert.deepEqual(order, ['throw', 'reject', 'next']);
+});
+
+test('a busy lifecycle lock returns pending without waiting', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const locks = locksFor(indexedDB);
+  const held = deferred();
+  const owner = locks.request('today-youxu-notification-lifecycle', async () => held.promise);
+  await waitFor(() => locks.isHeld('today-youxu-notification-lifecycle'));
+  const contender = createHarness({ indexedDB, locks });
+
+  assert.deepEqual(await contender.sync.setup(contender.registration), { status: 'pending' });
+  held.resolve();
+  await owner;
+});
+
+test('HTTP timeout aborts the request and preserves durable enable intent', async () => {
+  const timers = createFakeTimers();
+  const response = deferred();
+  const harness = createHarness({
+    requestTimeoutMs: 1,
+    setTimer: timers.setTimer,
+    clearTimer: timers.clearTimer,
+    fetch(url) {
+      if (url === '/api/notifications/config') return response.promise;
+      return jsonResponse(204);
+    }
+  });
+
+  const enabling = harness.sync.enable();
+  await waitFor(() => harness.calls.some(call => call.url === '/api/notifications/config'));
+  await waitFor(() => timers.pendingCount === 1);
+  const configCall = harness.calls.find(call => call.url === '/api/notifications/config');
+  timers.runAll();
+
+  assert.deepEqual(await enabling, { status: 'pending' });
+  assert.equal(configCall.init.signal.aborted, true);
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').enablePending, true);
+});
+
+test('PushSubscription timeout produces an error and clears enable pending intent', async () => {
+  const timers = createFakeTimers();
+  const subscribeResult = deferred();
+  const harness = createHarness({
+    subscription: null,
+    subscriptionTimeoutMs: 1,
+    setTimer: timers.setTimer,
+    clearTimer: timers.clearTimer,
+    fetch: responsePlan(),
+    subscribe() {
+      return subscribeResult.promise;
+    }
+  });
+
+  const enabling = harness.sync.enable();
+  await waitFor(() => harness.calls.some(call => call.subscribe));
+  await waitFor(() => timers.pendingCount === 1);
+  timers.runAll();
+
+  assert.deepEqual(await enabling, { status: 'error' });
+  const installation = harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
+  assert.equal(installation.enablePending, false);
+  assert.equal(installation.enableFailed, true);
+});
+
+test('active requests can be cancelled without clearing enable intent', async () => {
+  const harness = createHarness({
+    fetch(url, init) {
+      if (url !== '/api/notifications/config') return jsonResponse(204);
+      return new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+    }
+  });
+
+  const enabling = harness.sync.enable();
+  await waitFor(() => harness.calls.some(call => call.url === '/api/notifications/config'));
+  const configCall = harness.calls.find(call => call.url === '/api/notifications/config');
+  harness.sync.cancelActiveRequests();
+
+  assert.equal(configCall.init.signal.aborted, true);
+  assert.deepEqual(await enabling, { status: 'pending' });
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').enablePending, true);
 });
 
 test('lifecycle methods return unsupported when Web Locks are unavailable', async () => {
@@ -1040,10 +1154,14 @@ test('queue ids and explicit sequence remain unique across instances in the same
     encryptedPayload: { v: 1, iv: 'iv', ciphertext: `ciphertext-${index}` }
   }));
 
-  await Promise.all([
-    first.sync.sync({ reminders: reminders.slice(0, 6) }),
-    second.sync.sync({ reminders: reminders.slice(6) })
-  ]);
+  const firstSync = first.sync.sync({ reminders: reminders.slice(0, 6) });
+  const secondSync = second.sync.sync({ reminders: reminders.slice(6) });
+  assert.deepEqual(await secondSync, { status: 'pending' });
+  await firstSync;
+
+  second.advance(1000);
+  assert.equal((await second.sync.handleForeground()).status, 'pending');
+  assert.equal((await second.sync.sync({ reminders: reminders.slice(6) })).status, 'pending');
 
   const entries = Array.from(indexedDB.dump('todayYouxuNotificationDB', 'queue').values());
   assert.equal(entries.length, 13);
@@ -1079,11 +1197,12 @@ test('overlapping drains across page and worker instances send each queued inten
   const firstDrain = page.sync.handleOnline();
   await waitFor(() => reminderCalls === 2);
   const secondDrain = worker.sync.handleOnline();
-  await new Promise(resolve => setImmediate(resolve));
 
+  assert.deepEqual(await secondDrain, { status: 'pending' });
   assert.equal(reminderCalls, 2);
   response.resolve(jsonResponse(204));
-  await Promise.all([firstDrain, secondDrain]);
+  await firstDrain;
+  assert.deepEqual(await worker.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
   assert.equal(reminderCalls, 2);
 });
 
@@ -1230,7 +1349,7 @@ test('terminal disable cleanup gets a fresh five-attempt generation from every r
   }
 });
 
-test('disable serializes against overlapping sync and prevents reminder recreation after cleanup starts', async () => {
+test('busy sync returns pending during disable and foreground recovery prevents reminder recreation', async () => {
   const cleanup = deferred();
   const standard = responsePlan();
   const harness = createHarness({
@@ -1248,15 +1367,16 @@ test('disable serializes against overlapping sync and prevents reminder recreati
     id: 'task-overlap', revision: 1, sourceIdHash: 'b'.repeat(64),
     notifyAt: '2026-07-11T11:00:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
   }] }, '2026-07-11');
+  assert.deepEqual(await syncing, { status: 'pending' });
   cleanup.resolve(jsonResponse(204));
 
   assert.deepEqual(await disabling, { status: 'disabled' });
-  assert.deepEqual(await syncing, { status: 'disabled' });
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'disabled' });
   assert.equal(harness.calls.some(call => /\/reminders\/|\/reconcile$/.test(call.url)), false);
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
 });
 
-test('cross-instance disable waits for a deferred subscribe and removes the created browser subscription', async () => {
+test('cross-instance disable returns pending while subscribe owns the lock and retries after recovery', async () => {
   const indexedDB = createFakeIndexedDB();
   const subscribeResult = deferred();
   const standard = responsePlan();
@@ -1288,7 +1408,7 @@ test('cross-instance disable waits for a deferred subscribe and removes the crea
   const enabling = page.sync.enable();
   await waitFor(() => subscribeStarted);
   const disabling = worker.sync.disable();
-  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(await disabling, { status: 'pending' });
 
   const installation = indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current');
   assert.equal(Boolean(installation.cleanupPending), false);
@@ -1297,7 +1417,8 @@ test('cross-instance disable waits for a deferred subscribe and removes the crea
   const created = subscription('https://push.example/deferred');
   subscribeResult.resolve(created);
   assert.equal((await enabling).status, 'ready');
-  assert.deepEqual(await disabling, { status: 'disabled' });
+  assert.deepEqual(await worker.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
+  assert.deepEqual(await worker.sync.disable(), { status: 'disabled' });
   assert.deepEqual(orderedWrites, ['PUT', 'DELETE']);
   assert.equal(created.unsubscribed, true);
 });
