@@ -133,3 +133,49 @@ Results:
 ### Commit
 
 `fix(time): guard queued recovery sync`
+
+## Task 4 State-Driven Recovery Fix
+
+### RED Evidence
+
+Command:
+
+```sh
+node --test --test-name-pattern='pending startup projection restores one recovery timer' tools/time/js/notification-integration.test.js
+```
+
+Result: 1 failed, 0 passed. The controlled startup projection remained `syncing` until the 250 ms recovery timer disappeared, then resolved to `pending`; the expected single replacement timer was missing (`0 !== 1`).
+
+### Root Cause
+
+Startup projection and recovery timer scheduling had separate owners. The timer could fire while the projection status was `syncing` and exit, while the later `pending` publication only updated UI state and did not schedule another drain.
+
+### Implementation
+
+- Made `setNotificationBackendStatus()` the recovery scheduling entry point. Every status publication now reconciles the owned timer: visible, online `pending` schedules one timer; all other states and hidden/inactive recovery cancel it.
+- Removed manual scheduling from setup completion, online/foreground lifecycle completion, and the timer callback. A timer drains one `handleForeground()` batch and publishes its result through the unified setter, so `pending` naturally schedules the next batch without duplicates.
+- Preserved generation checks before asynchronous recovery results publish state. Stale lifecycle, queue, and timer results cannot restore status or schedule recovery after cancellation.
+
+### GREEN Evidence
+
+Commands and results:
+
+```sh
+node --test --test-name-pattern='pending startup projection restores one recovery timer' tools/time/js/notification-integration.test.js
+# 1 passed, 0 failed
+
+node --test tools/time/js/notification-integration.test.js
+# 27 passed, 0 failed
+
+node --test tools/time/js/notification-integration.test.js tools/time/js/notification-sync.test.js
+# 92 passed, 0 failed
+
+node --check tools/time/js/app.js
+node --check tools/time/js/notification-integration.test.js
+git diff --check
+# all exited 0
+```
+
+### Commit
+
+`fix(time): drive notification recovery from status`

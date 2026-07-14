@@ -76,6 +76,7 @@
   function setNotificationBackendStatus(result) {
     notificationBackendStatus = result && result.status ? result : { status: 'error' };
     updateNotificationUI();
+    scheduleNotificationRecovery();
     return notificationBackendStatus;
   }
 
@@ -2597,18 +2598,12 @@
 
   function recoverNotificationOnline() {
     var generation = startNotificationRecovery();
-    return recoverNotificationLifecycle('handleOnline', generation).then(function(status) {
-      if (isNotificationRecoveryCurrent(generation)) scheduleNotificationRecovery(generation);
-      return status;
-    });
+    return recoverNotificationLifecycle('handleOnline', generation);
   }
 
   function recoverNotificationForeground() {
     var generation = startNotificationRecovery();
-    return recoverNotificationLifecycle('handleForeground', generation).then(function(status) {
-      if (isNotificationRecoveryCurrent(generation)) scheduleNotificationRecovery(generation);
-      return status;
-    });
+    return recoverNotificationLifecycle('handleForeground', generation);
   }
 
   function clearNotificationRecoveryTimer() {
@@ -2621,21 +2616,17 @@
   function scheduleNotificationRecovery(generation) {
     var recoveryGeneration = generation == null ? notificationRecoveryGeneration : generation;
     clearNotificationRecoveryTimer();
-    if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+    if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || typeof NotificationSync.handleForeground !== 'function' || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
     notificationRecoveryTimer = setTimeout(function() {
       notificationRecoveryTimer = null;
-      if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+      if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || typeof NotificationSync.handleForeground !== 'function' || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
       NotificationSync.handleForeground().then(function(status) {
         if (!isNotificationRecoveryCurrent(recoveryGeneration)) return notificationBackendStatus;
         setNotificationBackendStatus(status);
-        if (isNotificationRecoveryCurrent(recoveryGeneration) && status.status === 'pending') {
-          scheduleNotificationRecovery(recoveryGeneration);
-        }
         return status;
       }).catch(function(error) {
         if (!isNotificationRecoveryCurrent(recoveryGeneration)) return notificationBackendStatus;
         handleNotificationBackendFailure(error);
-        clearNotificationRecoveryTimer();
         return notificationBackendStatus;
       });
     }, 250);
@@ -2673,7 +2664,6 @@
           if (status.status === 'ready' || status.status === 'pending') {
             syncNotificationsWithoutBlocking(appState.data);
           }
-          scheduleNotificationRecovery();
           return status;
         });
       }).catch(function(error) {

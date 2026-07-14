@@ -573,6 +573,43 @@ test('visible pending recovery uses one timer and lifecycle events cancel active
   assert.equal(calls.filter(call => call === 'cancel').length, 2);
 });
 
+test('pending startup projection restores one recovery timer after the syncing timer expires', async () => {
+  const timers = createFakeTimers();
+  let resolveProjection;
+  const projection = new Promise(resolve => { resolveProjection = resolve; });
+  const registration = {};
+  const sync = {
+    setup: async () => ({ status: 'pending' }),
+    sync: () => projection,
+    handleForeground: async () => ({ status: 'pending' })
+  };
+  const harness = createHarness({
+    timers,
+    sync,
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        register: async () => registration,
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+
+  await harness.hooks.registerServiceWorker();
+  await settle();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'syncing');
+
+  timers.advance(250);
+  await settle();
+  assert.equal(timers.count(), 0);
+
+  resolveProjection({ status: 'pending' });
+  await settle();
+
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'pending');
+  assert.equal(timers.count(), 1);
+});
+
 test('pagehide invalidates a pending foreground recovery before it can mutate or reschedule', async () => {
   const timers = createFakeTimers();
   let resolveForeground;
