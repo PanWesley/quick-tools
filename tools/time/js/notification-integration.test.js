@@ -573,6 +573,53 @@ test('visible pending recovery uses one timer and lifecycle events cancel active
   assert.equal(calls.filter(call => call === 'cancel').length, 2);
 });
 
+test('pagehide invalidates a pending foreground recovery before it can mutate or reschedule', async () => {
+  const timers = createFakeTimers();
+  let resolveForeground;
+  let projections = 0;
+  let syncs = 0;
+  let cancellations = 0;
+  const foreground = new Promise(resolve => { resolveForeground = resolve; });
+  const sync = {
+    handleForeground: () => foreground,
+    sync: async () => { syncs += 1; return { status: 'pending' }; },
+    cancelActiveRequests() { cancellations += 1; }
+  };
+  const db = {
+    getAllData: async () => {
+      projections += 1;
+      return { tasks: [], habits: [], habitLogs: [] };
+    }
+  };
+  const harness = createHarness({
+    timers,
+    sync,
+    db,
+    navigator: { onLine: true },
+    legacy: {
+      getPermissionStatus: () => 'granted',
+      scheduleAll() { projections += 1; },
+      getMissedCount: () => 0
+    }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  const recovery = harness.hooks.recoverNotificationForeground();
+  await settle();
+  harness.listeners.window.pagehide();
+  resolveForeground({ status: 'pending' });
+  await recovery;
+
+  assert.equal(cancellations, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(projections, 0);
+  assert.equal(syncs, 0);
+  assert.equal(timers.count(), 0);
+});
+
 test('visible recovery stops for terminal foreground statuses', async t => {
   for (const status of ['ready', 'error', 'unsupported']) {
     await t.test(status, async () => {

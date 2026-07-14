@@ -61,3 +61,37 @@ Results:
 ## Concerns
 
 The VM harness verifies scheduling and cancellation semantics, but it cannot reproduce Service Worker process suspension or browser-specific page lifecycle timing. Those remain appropriate for the later real-browser verification task.
+
+## Task 4 Review Fix
+
+### RED Evidence
+
+Command:
+
+```sh
+node --test --test-name-pattern='pagehide invalidates a pending foreground recovery' tools/time/js/notification-integration.test.js
+```
+
+Result: 1 failed. After `pagehide`, the unresolved foreground operation resolved to `pending` and changed the backend status from `ready` to `pending`.
+
+### GREEN Evidence
+
+Commands:
+
+```sh
+node --test --test-name-pattern='pagehide invalidates a pending foreground recovery' tools/time/js/notification-integration.test.js
+node --test tools/time/js/notification-integration.test.js
+node --test tools/time/js/notification-integration.test.js tools/time/js/notification-sync.test.js
+git diff --check
+```
+
+Results:
+
+- Focused regression: 1 passed, 0 failed.
+- Integration coverage: 25 passed, 0 failed.
+- Combined integration and sync coverage: 90 passed, 0 failed.
+- `git diff --check`: no whitespace errors.
+
+### Commit
+
+`fix(time): guard recovery lifecycle`

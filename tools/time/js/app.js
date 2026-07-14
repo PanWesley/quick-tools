@@ -45,6 +45,8 @@
   var notificationBackendStatus = { status: 'disabled' };
   var notificationSetupPromise = null;
   var notificationRecoveryTimer = null;
+  var notificationRecoveryGeneration = 0;
+  var notificationRecoveryActive = true;
   var pendingNotificationSnapshot = null;
   var notificationSyncPromise = null;
   var missedReminderToastShown = false;
@@ -2548,30 +2550,50 @@
     window.addEventListener('pagehide', cancelNotificationRecovery);
   }
 
-  function recoverNotificationLifecycle(method) {
-    if (!NotificationSync) return Promise.resolve(notificationBackendStatus);
-    return NotificationSync[method]().then(setNotificationBackendStatus).then(function() {
+  function startNotificationRecovery() {
+    notificationRecoveryGeneration += 1;
+    notificationRecoveryActive = !document.hidden;
+    return notificationRecoveryGeneration;
+  }
+
+  function isNotificationRecoveryCurrent(generation) {
+    return notificationRecoveryActive && !document.hidden && generation === notificationRecoveryGeneration;
+  }
+
+  function recoverNotificationLifecycle(method, generation) {
+    if (!NotificationSync || !isNotificationRecoveryCurrent(generation)) return Promise.resolve(notificationBackendStatus);
+    return NotificationSync[method]().then(function(status) {
+      if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
+      setNotificationBackendStatus(status);
       return DB.getAllData().then(function(data) {
+        if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
         appState.data = data;
         if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
+        if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
         return queueNotificationSync(data);
       }, function(error) {
+        if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
         showToast('本地数据库读取失败：' + error.message);
         return notificationBackendStatus;
       });
+    }).catch(function(error) {
+      if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
+      throw error;
     });
   }
 
   function recoverNotificationOnline() {
-    return recoverNotificationLifecycle('handleOnline').then(function(status) {
-      scheduleNotificationRecovery();
+    var generation = startNotificationRecovery();
+    return recoverNotificationLifecycle('handleOnline', generation).then(function(status) {
+      if (isNotificationRecoveryCurrent(generation)) scheduleNotificationRecovery(generation);
       return status;
     });
   }
 
   function recoverNotificationForeground() {
-    return recoverNotificationLifecycle('handleForeground').then(function(status) {
-      scheduleNotificationRecovery();
+    var generation = startNotificationRecovery();
+    return recoverNotificationLifecycle('handleForeground', generation).then(function(status) {
+      if (isNotificationRecoveryCurrent(generation)) scheduleNotificationRecovery(generation);
       return status;
     });
   }
@@ -2583,22 +2605,32 @@
     }
   }
 
-  function scheduleNotificationRecovery() {
+  function scheduleNotificationRecovery(generation) {
+    var recoveryGeneration = generation == null ? notificationRecoveryGeneration : generation;
     clearNotificationRecoveryTimer();
-    if (!NotificationSync || document.hidden || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+    if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
     notificationRecoveryTimer = setTimeout(function() {
       notificationRecoveryTimer = null;
-      if (!NotificationSync || document.hidden || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
-      NotificationSync.handleForeground().then(setNotificationBackendStatus).then(function(status) {
-        if (status.status === 'pending') scheduleNotificationRecovery();
+      if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+      NotificationSync.handleForeground().then(function(status) {
+        if (!isNotificationRecoveryCurrent(recoveryGeneration)) return notificationBackendStatus;
+        setNotificationBackendStatus(status);
+        if (isNotificationRecoveryCurrent(recoveryGeneration) && status.status === 'pending') {
+          scheduleNotificationRecovery(recoveryGeneration);
+        }
+        return status;
       }).catch(function(error) {
+        if (!isNotificationRecoveryCurrent(recoveryGeneration)) return notificationBackendStatus;
         handleNotificationBackendFailure(error);
         clearNotificationRecoveryTimer();
+        return notificationBackendStatus;
       });
     }, 250);
   }
 
   function cancelNotificationRecovery() {
+    notificationRecoveryGeneration += 1;
+    notificationRecoveryActive = false;
     clearNotificationRecoveryTimer();
     if (NotificationSync && NotificationSync.cancelActiveRequests) {
       NotificationSync.cancelActiveRequests();
