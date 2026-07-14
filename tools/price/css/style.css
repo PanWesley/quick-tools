@@ -251,7 +251,7 @@ body[data-view="analysis"] .brand small {
 .app-shell {
   width: min(1120px, 100%);
   margin: 0 auto;
-  padding: 32px 20px calc(80px + env(safe-area-inset-bottom, 0px));
+  padding: 20px 20px calc(80px + env(safe-area-inset-bottom, 0px));
 }
 
 .view {
@@ -279,13 +279,13 @@ body[data-view="analysis"] .brand small {
   grid-template-columns: minmax(0, 1.04fr) minmax(336px, 0.96fr);
   gap: 20px;
   align-items: stretch;
-  margin: 20px 0 24px;
+  margin: 8px 0 20px;
 }
 
 .hero-copy {
   position: relative;
-  min-height: 280px;
-  padding: 36px;
+  min-height: 0;
+  padding: 28px 32px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1148,11 +1148,12 @@ body[data-view="analysis"] .bottom-nav {
   }
 
   .app-shell {
-    padding: 24px 16px 110px;
+    padding: 12px 16px 110px;
   }
 
   .hero-panel {
     gap: 16px;
+    margin: 4px 0 16px;
   }
 
   .hero-copy,
@@ -1312,6 +1313,19 @@ body[data-view="analysis"] .bottom-nav {
   font-size: 12px;
   color: var(--color-muted);
   line-height: 1.5;
+}
+
+.setting-item.theme-setting,
+.setting-item.palette-setting {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 4px;
+}
+
+.setting-item.theme-setting .theme-options,
+.setting-item.palette-setting .palette-options {
+  align-self: stretch;
 }
 
 .setting-version {
