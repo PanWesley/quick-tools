@@ -13,6 +13,40 @@ function scriptPosition(name) {
   return index.indexOf('/tools/time/js/' + name + '?v=');
 }
 
+function createFakeTimers() {
+  let now = 0;
+  let nextId = 1;
+  const timers = new Map();
+
+  function setTimeout(callback, delay) {
+    const id = nextId++;
+    timers.set(id, { callback, dueAt: now + Math.max(0, Number(delay) || 0) });
+    return id;
+  }
+
+  function clearTimeout(id) {
+    timers.delete(id);
+  }
+
+  function advance(milliseconds) {
+    now += milliseconds;
+    while (true) {
+      const next = [...timers.entries()]
+        .filter(([, timer]) => timer.dueAt <= now)
+        .sort((left, right) => left[1].dueAt - right[1].dueAt || left[0] - right[0])[0];
+      if (!next) return;
+      timers.delete(next[0]);
+      next[1].callback();
+    }
+  }
+
+  return { setTimeout, clearTimeout, advance, count: () => timers.size };
+}
+
+async function settle() {
+  for (let index = 0; index < 12; index += 1) await Promise.resolve();
+}
+
 function createHarness(overrides = {}) {
   const listeners = { document: {}, window: {} };
   const elements = new Map();
@@ -63,6 +97,7 @@ function createHarness(overrides = {}) {
   };
   const db = overrides.db || { getAllData: async () => ({ tasks: [], habits: [], habitLogs: [] }) };
   const syncFactory = overrides.syncFactory || { create: () => overrides.sync };
+  const timers = overrides.timers || { setTimeout, clearTimeout };
   const window = {
     TodayYouxuDateUtils: { getTodayKey: () => '2026-07-12' },
     TodayYouxuState: { habitDueOn: () => false },
@@ -89,6 +124,8 @@ function createHarness(overrides = {}) {
       registerServiceWorker: registerServiceWorker,
       recoverNotificationOnline: recoverNotificationOnline,
       recoverNotificationForeground: recoverNotificationForeground,
+      cacheElements: cacheElements,
+      bindEvents: bindEvents,
       queueNotificationSync: queueNotificationSync,
       setNotificationBackendStatus: setNotificationBackendStatus,
       setNotificationSync: function(value) { NotificationSync = value; },
@@ -110,8 +147,8 @@ function createHarness(overrides = {}) {
     Notification: notification,
     localStorage: { getItem: () => null, setItem() {} },
     console: { warn() {}, error() {}, log() {} },
-    setTimeout,
-    clearTimeout,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
     setInterval: () => 1,
     clearInterval,
     URL,
@@ -130,7 +167,7 @@ function createHarness(overrides = {}) {
   };
   vm.runInNewContext(source, context, { filename: 'app.js' });
   window.__notificationTestHooks.setElements();
-  return { hooks: window.__notificationTestHooks, listeners, window, document, elements };
+  return { hooks: window.__notificationTestHooks, listeners, window, document, elements, timers };
 }
 
 test('loads cache-busted notification dependencies in strict order', () => {
@@ -225,6 +262,24 @@ test('ready click sends only the encrypted backend test', async () => {
   await harness.hooks.handleNotificationAction();
   assert.equal(sent, 1);
   assert.equal(legacyScheduled, 0);
+});
+
+test('a failed test notification settles outside the subscription state', async () => {
+  const sync = {
+    sendTest: async () => ({ status: 'pending' })
+  };
+  const harness = createHarness({
+    sync,
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'ready', deviceId: 'device-1' });
+
+  await harness.hooks.handleNotificationAction();
+
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'pending');
+  assert.notEqual(harness.hooks.getNotificationBackendStatus().status, 'disabled');
+  assert.notEqual(harness.hooks.getNotificationBackendStatus().status, 'syncing');
 });
 
 test('ready notification row keeps test reminder and offers inline disable with pending state', async () => {
@@ -421,6 +476,124 @@ test('waits for service worker ready, shares one setup promise, and disables ear
   assert.strictEqual(serviceRegistration, readyRegistration);
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
   assert.equal(harness.elements.get('notification-setup-button').disabled, false);
+});
+
+test('service worker ready deadline returns pending and allows a new setup attempt', async () => {
+  const timers = createFakeTimers();
+  const registration = { source: 'register' };
+  const readyRegistration = { source: 'ready' };
+  let ready = new Promise(() => {});
+  let registerCalls = 0;
+  let setupCalls = 0;
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    timers,
+    sync,
+    navigator: {
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registration;
+        },
+        get ready() { return ready; }
+      }
+    }
+  });
+
+  const first = harness.hooks.registerServiceWorker();
+  let firstResult;
+  first.then(result => { firstResult = result; });
+  await settle();
+  timers.advance(10000);
+  await settle();
+
+  assert.equal(firstResult.status, 'pending');
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'pending');
+  assert.equal(harness.elements.get('notification-setup-button').disabled, false);
+
+  ready = Promise.resolve(readyRegistration);
+  const retry = harness.hooks.registerServiceWorker();
+  assert.notStrictEqual(retry, first);
+  await retry;
+  await settle();
+
+  assert.equal(registerCalls, 2);
+  assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('visible pending recovery uses one timer and lifecycle events cancel active work', async () => {
+  const timers = createFakeTimers();
+  const calls = [];
+  let status = 'pending';
+  const sync = {
+    handleForeground: async () => {
+      calls.push('foreground');
+      return { status };
+    },
+    sync: async () => ({ status }),
+    cancelActiveRequests() { calls.push('cancel'); }
+  };
+  const harness = createHarness({ timers, sync, navigator: { onLine: true } });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+
+  harness.listeners.document.visibilitychange();
+  await settle();
+  assert.deepEqual(calls, ['foreground']);
+  assert.equal(timers.count(), 1);
+
+  timers.advance(250);
+  await settle();
+  assert.deepEqual(calls, ['foreground', 'foreground']);
+  assert.equal(timers.count(), 1);
+
+  status = 'ready';
+  timers.advance(250);
+  await settle();
+  assert.deepEqual(calls, ['foreground', 'foreground', 'foreground']);
+  assert.equal(timers.count(), 0);
+
+  status = 'pending';
+  harness.listeners.document.visibilitychange();
+  await settle();
+  assert.equal(timers.count(), 1);
+  harness.document.hidden = true;
+  harness.listeners.document.visibilitychange();
+  assert.equal(timers.count(), 0);
+  assert.equal(calls.filter(call => call === 'cancel').length, 1);
+  harness.listeners.window.pagehide();
+  assert.equal(calls.filter(call => call === 'cancel').length, 2);
+});
+
+test('visible recovery stops for terminal foreground statuses', async t => {
+  for (const status of ['ready', 'error', 'unsupported']) {
+    await t.test(status, async () => {
+      const timers = createFakeTimers();
+      const sync = {
+        handleForeground: async () => ({ status }),
+        sync: async () => ({ status }),
+        cancelActiveRequests() {}
+      };
+      const harness = createHarness({ timers, sync, navigator: { onLine: true } });
+      harness.hooks.setNotificationSync(sync);
+      harness.hooks.cacheElements();
+      harness.hooks.bindEvents();
+
+      harness.listeners.document.visibilitychange();
+      await settle();
+
+      assert.equal(harness.hooks.getNotificationBackendStatus().status, status);
+      assert.equal(timers.count(), 0);
+    });
+  }
 });
 
 test('successful setup projects the current snapshot missed before registration', async () => {

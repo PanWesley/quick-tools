@@ -44,6 +44,7 @@
   var swipeState = null;
   var notificationBackendStatus = { status: 'disabled' };
   var notificationSetupPromise = null;
+  var notificationRecoveryTimer = null;
   var pendingNotificationSnapshot = null;
   var notificationSyncPromise = null;
   var missedReminderToastShown = false;
@@ -79,6 +80,30 @@
   function handleNotificationBackendFailure(error) {
     console.warn('[TodayYouxu] Notification backend failed:', error);
     setNotificationBackendStatus({ status: 'error' });
+  }
+
+  function withNotificationDeadline(promise, milliseconds) {
+    return new Promise(function(resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function() {
+        if (settled) return;
+        settled = true;
+        var error = new Error('Notification operation timed out');
+        error.notificationDeadline = true;
+        reject(error);
+      }, milliseconds);
+      Promise.resolve(promise).then(function(value) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      }, function(error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
   }
 
   function syncNotificationSnapshot(data) {
@@ -2509,11 +2534,18 @@
       }
     });
     window.addEventListener('online', function() {
+      registerServiceWorker().catch(handleNotificationBackendFailure);
       recoverNotificationOnline().catch(handleNotificationBackendFailure);
     });
     document.addEventListener('visibilitychange', function() {
-      if (!document.hidden) recoverNotificationForeground().catch(handleNotificationBackendFailure);
+      if (document.hidden) {
+        cancelNotificationRecovery();
+        return;
+      }
+      registerServiceWorker().catch(handleNotificationBackendFailure);
+      recoverNotificationForeground().catch(handleNotificationBackendFailure);
     });
+    window.addEventListener('pagehide', cancelNotificationRecovery);
   }
 
   function recoverNotificationLifecycle(method) {
@@ -2531,11 +2563,46 @@
   }
 
   function recoverNotificationOnline() {
-    return recoverNotificationLifecycle('handleOnline');
+    return recoverNotificationLifecycle('handleOnline').then(function(status) {
+      scheduleNotificationRecovery();
+      return status;
+    });
   }
 
   function recoverNotificationForeground() {
-    return recoverNotificationLifecycle('handleForeground');
+    return recoverNotificationLifecycle('handleForeground').then(function(status) {
+      scheduleNotificationRecovery();
+      return status;
+    });
+  }
+
+  function clearNotificationRecoveryTimer() {
+    if (notificationRecoveryTimer !== null) {
+      clearTimeout(notificationRecoveryTimer);
+      notificationRecoveryTimer = null;
+    }
+  }
+
+  function scheduleNotificationRecovery() {
+    clearNotificationRecoveryTimer();
+    if (!NotificationSync || document.hidden || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+    notificationRecoveryTimer = setTimeout(function() {
+      notificationRecoveryTimer = null;
+      if (!NotificationSync || document.hidden || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+      NotificationSync.handleForeground().then(setNotificationBackendStatus).then(function(status) {
+        if (status.status === 'pending') scheduleNotificationRecovery();
+      }).catch(function(error) {
+        handleNotificationBackendFailure(error);
+        clearNotificationRecoveryTimer();
+      });
+    }, 250);
+  }
+
+  function cancelNotificationRecovery() {
+    clearNotificationRecoveryTimer();
+    if (NotificationSync && NotificationSync.cancelActiveRequests) {
+      NotificationSync.cancelActiveRequests();
+    }
   }
 
   function registerServiceWorker() {
@@ -2548,7 +2615,7 @@
     setNotificationBackendStatus({ status: 'subscribing' });
     try {
       notificationSetupPromise = navigator.serviceWorker.register('/tools/time/sw.js').then(function() {
-        return navigator.serviceWorker.ready;
+        return withNotificationDeadline(navigator.serviceWorker.ready, 10000);
       }).then(function(reg) {
         if (NotificationService) {
           NotificationService.setServiceWorkerRegistration(reg);
@@ -2561,9 +2628,15 @@
           if (status.status === 'ready' || status.status === 'pending') {
             syncNotificationsWithoutBlocking(appState.data);
           }
+          scheduleNotificationRecovery();
           return status;
         });
       }).catch(function(error) {
+        if (error && error.notificationDeadline) {
+          setNotificationBackendStatus({ status: 'pending' });
+          notificationSetupPromise = null;
+          return notificationBackendStatus;
+        }
         console.warn('[TodayYouxu] Service worker registration failed:', error);
         setNotificationBackendStatus({ status: 'error' });
         return notificationBackendStatus;
