@@ -11,6 +11,7 @@ import {
   parseBearer,
   retryAt,
   validateReminder,
+  validateReminderBatch,
   validateSubscription
 } from './core.mjs';
 
@@ -162,6 +163,41 @@ test('reminders reject non-string notifyAt values without throwing', () => {
       });
     });
   }
+});
+
+test('batch validation accepts at most 25 strict unique operations', () => {
+  const now = new Date('2026-07-11T10:00:00.000Z');
+  const reminder = () => ({
+    tool: 'time', sourceIdHash: 'a'.repeat(64), notifyAt: '2026-07-11T10:30:00.000Z',
+    encryptedPayload: { v: 1, iv: 'abc', ciphertext: 'def' }, encryptionVersion: 1, revision: 3
+  });
+  const valid = validateReminderBatch({ operations: [
+    { kind: 'upsert', id: 'device-1:one', reminder: reminder() },
+    { kind: 'cancel', id: 'device-1:two', revision: 4 }
+  ] }, now);
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.value.map((item) => item.kind), ['upsert', 'cancel']);
+
+  assert.equal(validateReminderBatch({ operations: [] }, now).ok, false);
+  assert.equal(validateReminderBatch({ operations: Array.from({ length: 26 }, (_, index) => ({
+    kind: 'cancel', id: `device-1:${index}`, revision: index
+  })) }, now).ok, false);
+  assert.equal(validateReminderBatch({ operations: [
+    { kind: 'cancel', id: 'duplicate', revision: 1 },
+    { kind: 'cancel', id: 'duplicate', revision: 2 }
+  ] }, now).ok, false);
+  assert.equal(validateReminderBatch({ operations: [
+    { kind: 'cancel', id: 'one', revision: 1, plaintext: 'never accepted' }
+  ] }, now).ok, false);
+  assert.equal(validateReminderBatch({ operations: [
+    { kind: 'cancel', id: '', revision: 1 }
+  ] }, now).ok, false);
+  assert.equal(validateReminderBatch({ operations: [
+    { kind: 'upsert', id: 'one', reminder: { ...reminder(), title: 'never accepted' } }
+  ] }, now).ok, false);
+  assert.equal(validateReminderBatch({ operations: [
+    { kind: 'cancel', id: 'one', revision: 1.5 }
+  ] }, now).ok, false);
 });
 
 test('push status classification separates retryable and permanent failures', () => {

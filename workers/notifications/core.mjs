@@ -1,4 +1,5 @@
 const DEVICE_TOKEN_BYTES = 32;
+const MAX_BATCH_OPERATIONS = 25;
 // The client horizon remains 30 local-calendar days. This 31-day validation
 // envelope only absorbs timezone and DST differences at the HTTP boundary.
 const MAX_REMINDER_DELAY_MS = 31 * 24 * 60 * 60 * 1000;
@@ -172,6 +173,44 @@ export function validateReminder(value, now) {
       revision: value.revision
     }
   };
+}
+
+function validateRevision(value) {
+  if (!isObject(value) || !hasOnlyKeys(value, ['revision'])) return null;
+  return Number.isSafeInteger(value.revision) && value.revision >= 0 ? value.revision : null;
+}
+
+export function validateReminderBatch(value, now) {
+  if (!isObject(value) || !hasOnlyKeys(value, ['operations'])
+    || !Array.isArray(value.operations)
+    || value.operations.length < 1
+    || value.operations.length > MAX_BATCH_OPERATIONS) {
+    return failure('invalid_reminder_batch', 'Reminder batch is invalid.');
+  }
+  const ids = new Set();
+  const operations = [];
+  for (const operation of value.operations) {
+    if (!isObject(operation) || typeof operation.id !== 'string'
+      || operation.id.length < 1 || operation.id.length > 128 || ids.has(operation.id)) {
+      return failure('invalid_reminder_batch', 'Reminder batch is invalid.');
+    }
+    ids.add(operation.id);
+    if (operation.kind === 'upsert' && hasOnlyKeys(operation, ['kind', 'id', 'reminder'])) {
+      const validated = validateReminder(operation.reminder, now);
+      if (!validated.ok) return failure('invalid_reminder_batch', validated.message);
+      operations.push({ kind: 'upsert', id: operation.id, reminder: validated.value });
+      continue;
+    }
+    if (operation.kind === 'cancel' && hasOnlyKeys(operation, ['kind', 'id', 'revision'])) {
+      const revision = validateRevision({ revision: operation.revision });
+      if (revision !== null) {
+        operations.push({ kind: 'cancel', id: operation.id, revision });
+        continue;
+      }
+    }
+    return failure('invalid_reminder_batch', 'Reminder batch is invalid.');
+  }
+  return { ok: true, value: operations };
 }
 
 export function classifyPushStatus(status) {

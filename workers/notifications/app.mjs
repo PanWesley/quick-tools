@@ -7,6 +7,7 @@ import {
   parseBearer,
   retryAt,
   validateReminder,
+  validateReminderBatch,
   validateSubscription
 } from './core.mjs';
 
@@ -126,6 +127,9 @@ function routeFor(pathname) {
   if (pathname === '/api/notifications/devices') return { name: 'devices', methods: ['POST'] };
   if (pathname === '/api/notifications/reconcile') return { name: 'reconcile', methods: ['POST'] };
   if (pathname === '/api/notifications/test') return { name: 'test', methods: ['POST'] };
+  if (pathname === '/api/notifications/reminders/batch') {
+    return { name: 'reminder-batch', methods: ['POST'] };
+  }
 
   let match = pathname.match(/^\/api\/notifications\/devices\/([^/]+)\/subscription$/);
   if (match) return { name: 'subscription', methods: ['PUT', 'DELETE'], id: decodeSegment(match[1]) };
@@ -233,6 +237,26 @@ export function createNotificationApp({ repository, sendPush, now = () => new Da
     if (route.name === 'subscription') {
       await repository.removeSubscriptionAndCancelReminders(device.id, at.toISOString());
       return emptyResponse(204, origin, env);
+    }
+
+    if (route.name === 'reminder-batch') {
+      const body = await readJson(request);
+      if (!body.ok) return errorResponse(body.code, body.message, body.status, origin, env);
+      const validated = validateReminderBatch(body.value, at);
+      if (!validated.ok) return errorResponse(validated.code, validated.message, 400, origin, env);
+      const results = [];
+      for (const operation of validated.value) {
+        const result = operation.kind === 'upsert'
+          ? await repository.upsertReminder(device.id, operation.id, operation.reminder, at.toISOString())
+          : await repository.cancelReminder(device.id, operation.id, operation.revision, at.toISOString());
+        results.push({
+          id: operation.id,
+          outcome: result.outcome === 'conflict' ? 'stale'
+            : result.outcome === 'missing' ? 'unknown' : 'applied',
+          revision: result.reminder?.revision ?? operation.revision ?? operation.reminder.revision
+        });
+      }
+      return json({ results }, 200, origin, env);
     }
 
     if (route.name === 'reminder' && (typeof route.id !== 'string' || route.id.length < 1 || route.id.length > 128)) {

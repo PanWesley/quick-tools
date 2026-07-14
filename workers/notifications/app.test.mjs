@@ -266,6 +266,71 @@ test('cancellation requires a newer revision and a newer upsert restores pending
   assert.equal(context.repository.reminders[0].status, 'pending');
 });
 
+test('batch applies mixed reminders only after complete validation', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const invalid = await context.app.fetch(jsonRequest('/api/notifications/reminders/batch', 'POST', {
+    operations: [
+      { kind: 'upsert', id: 'one', reminder: reminder(2) },
+      { kind: 'cancel', id: 'invalid', revision: 3.5 }
+    ]
+  }, credentials.deviceToken), context.env);
+  assert.equal(invalid.status, 400);
+  assert.equal(context.repository.reminders.length, 0);
+
+  const existing = await context.app.fetch(jsonRequest('/api/notifications/reminders/stale', 'PUT',
+    reminder(4), credentials.deviceToken), context.env);
+  assert.equal(existing.status, 201);
+
+  const response = await context.app.fetch(jsonRequest('/api/notifications/reminders/batch', 'POST', {
+    operations: [
+      { kind: 'upsert', id: 'stale', reminder: reminder(3) },
+      { kind: 'upsert', id: 'one', reminder: reminder(2) },
+      { kind: 'cancel', id: 'missing', revision: 3 }
+    ]
+  }, credentials.deviceToken), context.env);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    results: [
+      { id: 'stale', outcome: 'stale', revision: 4 },
+      { id: 'one', outcome: 'applied', revision: 2 },
+      { id: 'missing', outcome: 'unknown', revision: 3 }
+    ]
+  });
+});
+
+test('batch route supports POST preflight and requires JSON', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const preflight = await context.app.fetch(new Request(
+    'https://billnest.top/api/notifications/reminders/batch',
+    {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://billnest.top',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Authorization, Content-Type'
+      }
+    }
+  ), context.env);
+  assert.equal(preflight.status, 204);
+
+  const response = await context.app.fetch(new Request(
+    'https://billnest.top/api/notifications/reminders/batch',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://billnest.top',
+        Authorization: `Bearer ${credentials.deviceToken}`,
+        'Content-Type': 'text/plain'
+      },
+      body: '{}'
+    }
+  ), context.env);
+  assert.equal(response.status, 415);
+  assert.equal((await response.json()).error.code, 'unsupported_media_type');
+});
+
 test('HTTP disable and re-enable restores only bulk-disabled reminders at the same revision', async () => {
   const context = fixture();
   const credentials = await register(context);
