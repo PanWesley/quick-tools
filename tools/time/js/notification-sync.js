@@ -1005,13 +1005,15 @@
 
     function runLocked(operation, args) {
       if (!hasLocks()) return Promise.resolve(toPublicStatus('unsupported'));
-      return Promise.resolve(locks.request(LIFECYCLE_LOCK, { ifAvailable: true }, function(lock) {
-        if (!lock) {
-          state = 'pending';
-          return toPublicStatus('pending');
-        }
+      return Promise.resolve().then(function() {
+        return locks.request(LIFECYCLE_LOCK, { ifAvailable: true }, function(lock) {
+          if (!lock) {
+            state = 'pending';
+            return toPublicStatus('pending');
+          }
           return operation.apply(null, args);
-      })).catch(function() {
+        });
+      }).catch(function() {
         state = 'error';
         return toPublicStatus('error');
       });

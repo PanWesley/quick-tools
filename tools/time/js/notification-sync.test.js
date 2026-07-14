@@ -387,6 +387,18 @@ test('a busy lifecycle lock returns pending without waiting', async () => {
   await owner;
 });
 
+test('a synchronous lock request failure returns error status', async () => {
+  const harness = createHarness({
+    locks: {
+      request() {
+        throw new Error('lock manager unavailable');
+      }
+    }
+  });
+
+  assert.deepEqual(await harness.sync.setup(harness.registration), { status: 'error' });
+});
+
 test('HTTP timeout aborts the request and preserves durable enable intent', async () => {
   const timers = createFakeTimers();
   const response = deferred();
