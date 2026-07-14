@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   parseProductInput,
-  normalizePlatformLabel
+  normalizePlatformLabel,
+  extractProductTitle,
+  detectPlatformFromText
 } = require('./link-parser.js');
 
 test('parseProductInput extracts a JD sku from a product page URL', () => {
@@ -12,6 +14,13 @@ test('parseProductInput extracts a JD sku from a product page URL', () => {
   assert.equal(result.data.itemId, '100012043978');
   assert.equal(result.data.skuId, '100012043978');
   assert.equal(result.data.canonicalUrl, 'https://item.jd.com/100012043978.html');
+});
+
+test('parseProductInput extracts JD sku from mobile product URL', () => {
+  const result = parseProductInput('https://item.m.jd.com/product/100012043978.html');
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'jd');
+  assert.equal(result.data.itemId, '100012043978');
 });
 
 test('parseProductInput trims sentence punctuation after a JD product URL', () => {
@@ -54,10 +63,72 @@ test('parseProductInput extracts a PDD goods id', () => {
   assert.equal(result.data.canonicalUrl, 'https://mobile.yangkeduo.com/goods.html?goods_id=531222333444');
 });
 
-test('parseProductInput rejects short links with a specific error', () => {
+test('parseProductInput rejects short links with helpful guidance and platform info', () => {
   const result = parseProductInput('https://m.tb.cn/h.abc123');
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'short_link_unsupported');
+  assert.equal(result.error.platform, 'taobao');
+  assert.ok(Array.isArray(result.error.guideSteps));
+  assert.ok(result.error.guideSteps.length >= 3);
+});
+
+test('parseProductInput recognizes e.tb.cn as Taobao short link', () => {
+  const result = parseProductInput('https://e.tb.cn/h.8bHMm3ebr9c2xTr?tk=0u02gqqp66J');
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'short_link_unsupported');
+  assert.equal(result.error.platform, 'taobao');
+  assert.ok(result.error.guideSteps);
+});
+
+test('parseProductInput recognizes 3.cn as JD short link and extracts title', () => {
+  const text = '【京东】https://3.cn/-2Vv3ukm?jkl=@W0Yzw10kN4h@ MU5104 「初申针织女薄款内外搭外套」\n点击链接直接打开 或者复制文案打开京东';
+  const result = parseProductInput(text);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'short_link_unsupported');
+  assert.equal(result.error.platform, 'jd');
+  assert.equal(result.error.extractedTitle, '初申针织女薄款内外搭外套');
+  assert.ok(result.error.guideSteps);
+  assert.ok(result.error.guideSteps.length >= 3);
+});
+
+test('parseProductInput detects Taobao platform from 【淘宝】 tag in share text', () => {
+  const text = '【淘宝】7天无理由退货\nhttps://e.tb.cn/h.8bHMm3ebr9c2xTr?tk=0u02gqqp66J CZ356 「早春碎花雪纺连衣裙女夏2026年新款女装显瘦时尚气质仙女蛋糕裙子」';
+  const result = parseProductInput(text);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'short_link_unsupported');
+  assert.equal(result.error.platform, 'taobao');
+  assert.equal(result.error.extractedTitle, '早春碎花雪纺连衣裙女夏2026年新款女装显瘦时尚气质仙女蛋糕裙子');
+});
+
+test('parseProductInput detects PDD ps parameter as short sign requiring full link', () => {
+  const result = parseProductInput('https://mobile.yangkeduo.com/goods.html?ps=e1xaEqLYy8');
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'pdd_sign_unsupported');
+  assert.equal(result.error.platform, 'pdd');
+});
+
+test('parseProductInput extracts product title from direct parseable URL', () => {
+  const text = '【京东】降价啦！https://item.jd.com/100012043978.html 「机械键盘 87键无线版」';
+  const result = parseProductInput(text);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.platform, 'jd');
+  assert.equal(result.data.extractedTitle, '机械键盘 87键无线版');
+});
+
+test('extractProductTitle extracts title from corner brackets', () => {
+  const title = extractProductTitle('【京东】...「初申针织女薄款内外搭外套」...');
+  assert.equal(title, '初申针织女薄款内外搭外套');
+});
+
+test('detectPlatformFromText detects JD from 【京东】 tag', () => {
+  assert.equal(detectPlatformFromText('【京东】xxx'), 'jd');
+  assert.equal(detectPlatformFromText('【淘宝】xxx'), 'taobao');
+  assert.equal(detectPlatformFromText('【天猫】xxx'), 'tmall');
+  assert.equal(detectPlatformFromText('【拼多多】xxx'), 'pdd');
+});
+
+test('detectPlatformFromText detects Taobao from tao kou ling', () => {
+  assert.equal(detectPlatformFromText('这是一个淘口令￥abcdefgh12￥试试'), 'taobao');
 });
 
 test('parseProductInput rejects unsupported platforms', () => {

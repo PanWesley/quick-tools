@@ -36,9 +36,36 @@
     return '¥' + (Number.isInteger(number) ? String(number) : number.toFixed(2));
   }
 
-  function setMessage(id, text) {
+  function setMessage(id, text, options) {
     var element = document.getElementById(id);
-    if (element) element.textContent = text || '';
+    if (!element) return;
+    var opts = options || {};
+    if (opts.html) {
+      element.innerHTML = text || '';
+    } else {
+      element.textContent = text || '';
+    }
+  }
+
+  function buildGuideHtml(error) {
+    var parts = [];
+    if (error && error.extractedTitle) {
+      parts.push('<p style="margin:0 0 8px;color:var(--color-ink);font-weight:600;">识别到商品：' + escapeHtml(error.extractedTitle) + '</p>');
+    }
+    if (error && error.message) {
+      parts.push('<p style="margin:0 0 10px;">' + escapeHtml(error.message) + '</p>');
+    }
+    if (error && error.guideSteps && error.guideSteps.length) {
+      parts.push('<ol style="margin:0;padding-left:20px;color:var(--color-muted);line-height:1.8;">');
+      error.guideSteps.forEach(function(step) {
+        parts.push('<li>' + escapeHtml(step) + '</li>');
+      });
+      parts.push('</ol>');
+    }
+    if (error && error.isTaoKouLing) {
+      parts.push('<p style="margin:8px 0 0;font-size:12px;">小贴士：淘口令需在淘宝 APP 中打开后再复制详情页链接。</p>');
+    }
+    return parts.join('');
   }
 
   function switchView(view) {
@@ -227,12 +254,14 @@
   }
 
   function createParsedProduct(parsed) {
+    var title = parsed.extractedTitle ||
+      (parser.normalizePlatformLabel(parsed.platform) + '商品 ' + parsed.itemId);
     return db.upsertProduct({
       platform: parsed.platform,
       itemId: parsed.itemId,
       skuId: parsed.skuId,
       shopId: parsed.shopId,
-      title: parser.normalizePlatformLabel(parsed.platform) + '商品 ' + parsed.itemId,
+      title: title,
       shopName: '本地解析',
       rawUrl: parsed.rawUrl,
       canonicalUrl: parsed.canonicalUrl,
@@ -320,13 +349,21 @@
     $('#parse-form').addEventListener('submit', function(event) {
       event.preventDefault();
       setMessage('parse-message', '');
-      var result = parser.parseProductInput($('#product-input').value);
+      var input = $('#product-input').value;
+      var result = parser.parseProductInput(input);
       if (!result.ok) {
-        setMessage('parse-message', result.error.message);
+        var err = result.error;
+        var needsGuide = err.guideSteps || err.extractedTitle || err.isTaoKouLing;
+        if (needsGuide) {
+          setMessage('parse-message', buildGuideHtml(err), { html: true });
+        } else {
+          setMessage('parse-message', err.message);
+        }
         return;
       }
       createParsedProduct(result.data).then(function(product) {
         renderAnalysis(product, snapshotsForProduct(product.id), watchForProduct(product.id));
+        $('#product-input').value = '';
       }).catch(function(error) {
         setMessage('parse-message', error.message || '解析后保存商品失败。');
       });
