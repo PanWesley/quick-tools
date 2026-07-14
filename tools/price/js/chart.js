@@ -51,7 +51,7 @@
   }
 
   function renderEmpty(container) {
-    container.innerHTML = '<div class="chart-empty">价格记录不足，先记录至少两次价格。</div>';
+    container.innerHTML = '<div class="chart-empty"><span class="chart-empty-icon">📈</span>价格记录还不够多呢～<br>再记几笔就能看到曲线啦</div>';
   }
 
   function renderPriceChart(container, snapshots) {
@@ -66,11 +66,11 @@
     }
 
     var width = 720;
-    var height = 260;
+    var height = 280;
     var paddingLeft = 48;
     var paddingRight = 24;
-    var paddingTop = 28;
-    var paddingBottom = 42;
+    var paddingTop = 24;
+    var paddingBottom = 44;
     var chartWidth = width - paddingLeft - paddingRight;
     var chartHeight = height - paddingTop - paddingBottom;
     var prices = list.map(function(snapshot) {
@@ -93,6 +93,9 @@
     var path = points.map(function(point, index) {
       return (index === 0 ? 'M' : 'L') + point.x.toFixed(2) + ' ' + point.y.toFixed(2);
     }).join(' ');
+    var areaPath = path +
+      ' L' + points[points.length - 1].x.toFixed(2) + ' ' + (height - paddingBottom) +
+      ' L' + points[0].x.toFixed(2) + ' ' + (height - paddingBottom) + ' Z';
     var circles = points.map(function(point) {
       var title = formatPrice(point.price) + ' ' + formatDateLabel(point.capturedAt);
       return [
@@ -106,13 +109,32 @@
 
     container.innerHTML = [
       '<svg class="price-chart-svg" viewBox="0 0 ', width, ' ', height, '" role="img" aria-label="历史价格曲线">',
+      '<defs>',
+        '<linearGradient id="chartGradient" x1="0%" y1="0%" x2="100%" y2="0%">',
+          '<stop offset="0%" style="stop-color:#7FB8A6;stop-opacity:1" />',
+          '<stop offset="100%" style="stop-color:#E89B9B;stop-opacity:1" />',
+        '</linearGradient>',
+        '<linearGradient id="chartAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">',
+          '<stop offset="0%" style="stop-color:#7FB8A6;stop-opacity:0.3" />',
+          '<stop offset="100%" style="stop-color:#7FB8A6;stop-opacity:0.02" />',
+        '</linearGradient>',
+      '</defs>',
+      '<path class="chart-area" d="', areaPath, '"></path>',
       '<line class="chart-axis" x1="', paddingLeft, '" y1="', height - paddingBottom, '" x2="', width - paddingRight, '" y2="', height - paddingBottom, '"></line>',
-      '<text class="chart-label" x="', paddingLeft, '" y="18">', escapeHtml(formatPrice(max)), '</text>',
-      '<text class="chart-label" x="', paddingLeft, '" y="', height - 8, '">', escapeHtml(formatPrice(min)), '</text>',
-      '<text class="chart-label" x="', paddingLeft, '" y="', height - 22, '">', escapeHtml(firstDate), '</text>',
-      '<text class="chart-label" x="', width - paddingRight, '" y="', height - 22, '" text-anchor="end">', escapeHtml(lastDate), '</text>',
-      '<path class="chart-line" d="', path, '"></path>',
-      '<g class="chart-points">', circles, '</g>',
+      '<text class="chart-label" x="', paddingLeft, '" y="16">', escapeHtml(formatPrice(max)), '</text>',
+      '<text class="chart-label" x="', paddingLeft, '" y="', height - 6, '">', escapeHtml(formatPrice(min)), '</text>',
+      '<text class="chart-label" x="', paddingLeft, '" y="', height - 24, '">', escapeHtml(firstDate), '</text>',
+      '<text class="chart-label" x="', width - paddingRight, '" y="', height - 24, '" text-anchor="end">', escapeHtml(lastDate), '</text>',
+      '<path class="chart-line" d="', path, '" style="stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: drawLine 1.2s ease forwards;"></path>',
+      '<g class="chart-points" style="opacity: 0; animation: fadeIn 0.4s ease 0.9s forwards;">', circles, '</g>',
+      '<style>',
+        '@keyframes drawLine {',
+          'to { stroke-dashoffset: 0; }',
+        '}',
+        '@keyframes fadeIn {',
+          'to { opacity: 1; }',
+        '}',
+      '</style>',
       '</svg>'
     ].join('');
   }

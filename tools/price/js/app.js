@@ -196,7 +196,7 @@
       return watch.enabled;
     }).slice(0, 4);
     if (!enabled.length) {
-      container.innerHTML = '<p class="fine-print">还没有本地关注。先分析一个商品，再设置目标价。</p>';
+      container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">💝</span><p class="empty-state-text">还没关注的商品呢～<br>遇到心仪的就加进来吧</p></div>';
       return;
     }
     container.innerHTML = enabled.map(function(watch) {
@@ -206,8 +206,8 @@
       return [
         '<article class="panel">',
         '<h3>', escapeHtml(product ? product.title : watch.productId), '</h3>',
-        '<p class="fine-print">目标价 ', escapeHtml(money(watch.targetPrice)), '</p>',
-        '<button class="btn ghost" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">查看分析</button>',
+        '<p class="fine-print">心愿价 ', escapeHtml(money(watch.targetPrice)), '</p>',
+        '<button class="btn ghost" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">看看价格</button>',
         '</article>'
       ].join('');
     }).join('');
@@ -217,7 +217,7 @@
     var container = $('#watch-list');
     if (!container) return;
     if (!state.watches.length) {
-      container.innerHTML = '<p class="fine-print">本地关注清单为空。</p>';
+      container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🛍️</span><p class="empty-state-text">心愿清单空空的～<br>去看看有没有什么想买的吧</p></div>';
       return;
     }
     container.innerHTML = state.watches.map(function(watch) {
@@ -229,9 +229,9 @@
       return [
         '<article class="panel">',
         '<h2>', escapeHtml(product ? product.title : watch.productId), '</h2>',
-        '<p>目标价 ', escapeHtml(money(watch.targetPrice)), ' · 最近记录 ', escapeHtml(money(latest && latest.finalPrice)), '</p>',
+        '<p>心愿价 ', escapeHtml(money(watch.targetPrice)), ' · 最近记录 ', escapeHtml(money(latest && latest.finalPrice)), '</p>',
         '<div class="button-row">',
-        '<button class="btn secondary" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">查看分析</button>',
+        '<button class="btn secondary" type="button" data-product-id="', escapeHtml(watch.productId), '" data-open-product="local">看看详情</button>',
         '<button class="btn ghost" type="button" data-delete-watch="', escapeHtml(watch.id), '">取消关注</button>',
         '</div>',
         '</article>'
@@ -281,24 +281,49 @@
 
     var noticeHtml = '';
     if (product && product.notice) {
-      noticeHtml = '<p style="margin:12px 0 0;padding:10px 14px;border-radius:var(--radius);background:var(--color-accent-soft);color:var(--color-accent);font-size:13px;font-weight:700;">' + escapeHtml(product.notice) + '</p>';
+      noticeHtml = '<p style="margin:12px 0 0;padding:10px 14px;border-radius:var(--radius-sm);background:var(--color-gold-soft);color:var(--color-gold);font-size:13px;font-weight:600;">' + escapeHtml(product.notice) + '</p>';
+    }
+
+    var verdictEmoji = '🤔';
+    var verdictLabel = '再看看';
+    if (result.level === 'history_low' || result.level === 'recent_low') {
+      verdictEmoji = '✨';
+      verdictLabel = '好时机';
+    } else if (result.level === 'expensive') {
+      verdictEmoji = '💸';
+      verdictLabel = '有点贵';
+    } else {
+      verdictEmoji = '😊';
+      verdictLabel = '还可以';
     }
 
     $('#truth-bench').className = 'truth-bench level-' + escapeHtml(result.level);
     $('#truth-bench').innerHTML = [
       '<div class="truth-copy">',
-      '<p class="eyebrow">', escapeHtml(platformLabel(product.platform)), ' · ', escapeHtml(product.source || 'local'), '</p>',
-      '<h1>', escapeHtml(result.title), '</h1>',
-      '<p>', escapeHtml(result.suggestion), '</p>',
-      '<p><strong>', escapeHtml(money(currentPrice)), '</strong> · ', escapeHtml(product.title), '</p>',
-      '<ul>', result.reasons.map(function(reason) {
-        return '<li>' + escapeHtml(reason) + '</li>';
-      }).join(''), '</ul>',
-      noticeHtml,
+        '<p class="eyebrow">', escapeHtml(platformLabel(product.platform)), ' · ', escapeHtml(product.source || 'local'), '</p>',
+        '<div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;padding:6px 14px;border-radius:999px;background:',
+          result.level === 'expensive' ? 'var(--color-rose-soft)' : 'var(--color-primary-soft)',
+          ';color:',
+          result.level === 'expensive' ? 'var(--color-rose-deep)' : 'var(--color-primary-deep)',
+          ';font-weight:600;font-size:14px;">',
+          '<span>', verdictEmoji, '</span>',
+          verdictLabel,
+        '</div>',
+        '<h1>', escapeHtml(result.title), '</h1>',
+        '<div class="current-price-display">',
+          '<span class="price-label">当前价</span>',
+          '<span class="price-value">', escapeHtml(money(currentPrice)), '</span>',
+        '</div>',
+        '<p>', escapeHtml(result.suggestion), '</p>',
+        '<p style="margin-top:8px;font-size:14px;color:var(--color-muted);">', escapeHtml(product.title), '</p>',
+        '<ul>', result.reasons.map(function(reason) {
+          return '<li>' + escapeHtml(reason) + '</li>';
+        }).join(''), '</ul>',
+        noticeHtml,
       '</div>',
       '<div class="score-column">',
-      '<span class="score-label">可信分</span>',
-      '<div class="score-ring" style="--score:', String(result.score), '"><span>', String(result.score), '</span></div>',
+        '<span class="score-label">入手推荐度</span>',
+        '<div class="score-ring" style="--score:', String(result.score), '"><span>', String(result.score), '</span></div>',
       '</div>'
     ].join('');
 

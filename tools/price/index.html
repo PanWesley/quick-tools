@@ -20,7 +20,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/zhenjia-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/zhenjia-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/price/css/style.css?v=100">
+<link rel="stylesheet" href="/tools/price/css/style.css?v=101">
 <title>买前省省 - 买前查价</title>
 </head>
 <body>
@@ -29,7 +29,7 @@
     <img src="/icons/zhenjia-icon.svg" alt="" aria-hidden="true" class="brand-mark" style="background: transparent; box-shadow: none;">
     <span>
       <strong>买前省省</strong>
-      <small>买前查验价格，不被假低价带节奏</small>
+      <small>聪明买买买，不花冤枉钱</small>
     </span>
   </a>
   <a class="header-link" href="/" aria-label="返回 Quick Tools">Quick Tools</a>
@@ -39,22 +39,22 @@
   <section class="view active" id="view-home" aria-labelledby="home-title">
     <div class="hero-panel">
       <div class="hero-copy">
-        <p class="eyebrow">本地验证版</p>
-        <h1 id="home-title">粘贴商品链接，先看是不是值得买</h1>
-        <p>首版用本地记录和示例数据判断价格区间。真实采集、优惠券和通知后续接入。</p>
+        <p class="eyebrow">贴心价格管家</p>
+        <h1 id="home-title">粘贴商品链接，帮你看看值不值</h1>
+        <p>用本地记录和历史价格帮你判断是不是真划算，下单前多一份安心。</p>
         <div class="proof-rail" aria-label="价格验真流程">
           <span><strong>01</strong> 识别平台</span>
           <span><strong>02</strong> 对照历史</span>
-          <span><strong>03</strong> 给出建议</span>
+          <span><strong>03</strong> 贴心建议</span>
         </div>
       </div>
       <form class="search-card" id="parse-form">
-        <p class="search-kicker">价格验真台</p>
+        <p class="search-kicker">✨ 价格小帮手</p>
         <label for="product-input">商品链接或分享文本</label>
-        <textarea id="product-input" rows="4" placeholder="粘贴京东、淘宝、天猫、拼多多商品详情页链接"></textarea>
+        <textarea id="product-input" rows="4" placeholder="试试粘贴淘宝、京东、拼多多的商品链接呀～"></textarea>
         <div class="form-actions">
-          <button class="btn primary" type="submit">立即分析</button>
-          <button class="btn ghost" type="button" id="use-sample-button">看示例</button>
+          <button class="btn primary" type="submit">帮我看看</button>
+          <button class="btn ghost" type="button" id="use-sample-button">看看示例</button>
         </div>
         <p class="form-message" id="parse-message" role="status"></p>
       </form>
@@ -70,8 +70,8 @@
     <section class="section-block" aria-labelledby="sample-title">
       <div class="section-head">
         <div>
-          <p class="eyebrow">示例商品</p>
-          <h2 id="sample-title">不用真实 API，也能体验完整判断</h2>
+          <p class="eyebrow">先来看看</p>
+          <h2 id="sample-title">不用真实链接，也能体验完整功能</h2>
         </div>
       </div>
       <div class="product-grid" id="sample-products"></div>
@@ -80,7 +80,7 @@
     <section class="section-block" aria-labelledby="recent-title">
       <div class="section-head">
         <div>
-          <p class="eyebrow">本地关注</p>
+          <p class="eyebrow">我的心愿单</p>
           <h2 id="recent-title">最近关注</h2>
         </div>
       </div>
@@ -89,13 +89,13 @@
   </section>
 
   <section class="view" id="view-analysis" aria-labelledby="analysis-title">
-    <button class="text-button" type="button" data-view-link="home">返回首页</button>
+    <button class="text-button" type="button" data-view-link="home">← 返回首页</button>
     <div class="truth-bench" id="truth-bench"></div>
     <section class="section-block">
       <div class="section-head">
         <div>
-          <p class="eyebrow">价格曲线</p>
-          <h2 id="analysis-title">本地历史价格</h2>
+          <p class="eyebrow">价格走势</p>
+          <h2 id="analysis-title">历史价格曲线</h2>
         </div>
         <div class="range-tabs" id="range-tabs">
           <button type="button" data-range="30" class="active">30 天</button>
@@ -107,16 +107,16 @@
     </section>
     <section class="detail-grid">
       <form class="panel" id="snapshot-form">
-        <h2>记录一次价格</h2>
-        <label>当前参考价 <input id="snapshot-price" type="number" min="0" step="0.01" required></label>
-        <label>备注 <input id="snapshot-note" type="text" placeholder="例如：店铺券后价"></label>
-        <button class="btn primary" type="submit">记录价格</button>
+        <h2>📝 记一笔价格</h2>
+        <label>当前价格 <input id="snapshot-price" type="number" min="0" step="0.01" required placeholder="例如：199.00"></label>
+        <label>备注 <input id="snapshot-note" type="text" placeholder="例如：店铺券后价、直播间价"></label>
+        <button class="btn primary" type="submit">记录下来</button>
       </form>
       <form class="panel" id="watch-form">
-        <h2>本地关注</h2>
-        <label>目标价 <input id="watch-target" type="number" min="0" step="0.01" required></label>
+        <h2>💝 加入心愿价</h2>
+        <label>目标价 <input id="watch-target" type="number" min="0" step="0.01" required placeholder="降到多少钱愿意买～"></label>
         <button class="btn secondary" type="submit">加入关注</button>
-        <p class="fine-print">首版只保存本地关注，不发送通知。</p>
+        <p class="fine-print">先记在本地，降到心愿价会提醒你的哦～</p>
       </form>
     </section>
   </section>
@@ -124,8 +124,8 @@
   <section class="view" id="view-watches" aria-labelledby="watches-title">
     <div class="section-head">
       <div>
-        <p class="eyebrow">关注</p>
-        <h1 id="watches-title">本地关注清单</h1>
+        <p class="eyebrow">心愿清单</p>
+        <h1 id="watches-title">我的关注</h1>
       </div>
     </div>
     <div class="stack-list" id="watch-list"></div>
@@ -134,21 +134,21 @@
   <section class="view" id="view-data" aria-labelledby="data-title">
     <div class="section-head">
       <div>
-        <p class="eyebrow">数据</p>
-        <h1 id="data-title">本地数据</h1>
+        <p class="eyebrow">数据管理</p>
+        <h1 id="data-title">我的数据</h1>
       </div>
     </div>
     <section class="panel data-panel">
-      <p>数据默认保存在本机 IndexedDB。导出文件包含商品、价格记录、关注目标和本地操作日志。</p>
+      <p>数据都保存在你的手机/电脑本地哦，随时可以导出备份～</p>
       <div class="button-row">
         <button class="btn secondary" id="export-button" type="button">导出数据</button>
         <label class="btn ghost file-button">导入数据<input id="import-file" type="file" accept="application/json"></label>
-        <button class="btn danger" id="clear-button" type="button">清空本地数据</button>
+        <button class="btn danger" id="clear-button" type="button">清空数据</button>
       </div>
       <p class="form-message" id="data-message" role="status"></p>
     </section>
     <section class="panel data-panel">
-      <p data-app-update-status role="status">从服务器检查更新并刷新当前应用。</p>
+      <p data-app-update-status role="status">检查一下有没有新版本吧～</p>
       <div class="button-row">
         <button class="btn secondary" type="button" data-app-update-button>检查更新</button>
       </div>
@@ -157,20 +157,41 @@
 </main>
 
 <nav class="bottom-nav" aria-label="主导航">
-  <button class="nav-item active" type="button" data-view="home">查价</button>
-  <button class="nav-item" type="button" data-view="watches">关注</button>
-  <button class="nav-item" type="button" data-view="data">数据</button>
+  <button class="nav-item active" type="button" data-view="home">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path d="M2 17l10 5 10-5"/>
+      <path d="M2 12l10 5 10-5"/>
+    </svg>
+    查价
+  </button>
+  <button class="nav-item" type="button" data-view="watches">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>
+    关注
+  </button>
+  <button class="nav-item" type="button" data-view="data">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <polyline points="10 9 9 9 8 9"/>
+    </svg>
+    数据
+  </button>
 </nav>
 
-<script src="/tools/price/js/link-parser.js?v=100"></script>
-<script src="/tools/price/js/price-judge.js?v=100"></script>
-<script src="/tools/price/js/export.js?v=100"></script>
-<script src="/tools/price/js/sample-data.js?v=100"></script>
-<script src="/tools/price/js/db.js?v=100"></script>
-<script src="/tools/price/js/chart.js?v=100"></script>
+<script src="/tools/price/js/link-parser.js?v=101"></script>
+<script src="/tools/price/js/price-judge.js?v=101"></script>
+<script src="/tools/price/js/export.js?v=101"></script>
+<script src="/tools/price/js/sample-data.js?v=101"></script>
+<script src="/tools/price/js/db.js?v=101"></script>
+<script src="/tools/price/js/chart.js?v=101"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
-<script src="/tools/price/js/app.js?v=100"></script>
+<script src="/tools/price/js/app.js?v=101"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 </body>
 </html>
