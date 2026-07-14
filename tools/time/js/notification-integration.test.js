@@ -620,6 +620,55 @@ test('pagehide invalidates a pending foreground recovery before it can mutate or
   assert.equal(timers.count(), 0);
 });
 
+test('pagehide invalidates a queued recovery sync before projection mutation or backend work', async () => {
+  const timers = createFakeTimers();
+  let resolveModel;
+  let modelStarts = 0;
+  let syncs = 0;
+  const data = { tasks: [], habits: [], habitLogs: [] };
+  const model = {
+    buildReminderRecords() {
+      modelStarts += 1;
+      return new Promise(resolve => { resolveModel = resolve; });
+    }
+  };
+  const sync = {
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: async () => { syncs += 1; return { status: 'pending' }; },
+    cancelActiveRequests() {}
+  };
+  const harness = createHarness({
+    timers,
+    model,
+    sync,
+    db: { getAllData: async () => data },
+    navigator: { onLine: true },
+    legacy: {
+      getPermissionStatus: () => 'granted',
+      scheduleAll() {},
+      getMissedCount: () => 0
+    }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+
+  const recovery = harness.hooks.recoverNotificationForeground();
+  await settle();
+  assert.equal(modelStarts, 1);
+
+  harness.listeners.window.pagehide();
+  resolveModel([{ id: 'reminder-1', sourceIdHash: 'source-1', notifyAt: '2026-07-12T09:00:00.000Z', revision: 1, encryptedValue: 'ciphertext' }]);
+  await recovery;
+  await settle();
+
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(data.reminders, undefined);
+  assert.equal(syncs, 0);
+  assert.equal(timers.count(), 0);
+});
+
 test('visible recovery stops for terminal foreground statuses', async t => {
   for (const status of ['ready', 'error', 'unsupported']) {
     await t.test(status, async () => {

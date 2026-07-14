@@ -95,3 +95,41 @@ Results:
 ### Commit
 
 `fix(time): guard recovery lifecycle`
+
+## Task 4 Review Fix 2
+
+### RED Evidence
+
+Command:
+
+```sh
+node --test --test-name-pattern='pagehide invalidates a queued recovery sync' tools/time/js/notification-integration.test.js
+```
+
+Result: 1 failed. A recovery-owned queue began reminder projection, then `pagehide` invalidated the recovery. When the deferred model resolved, it still set the backend to `syncing`, called the backend sync, published `pending`, and scheduled another recovery timer.
+
+### GREEN Evidence
+
+Commands:
+
+```sh
+node --test --test-name-pattern='pagehide invalidates a queued recovery sync' tools/time/js/notification-integration.test.js
+node --test tools/time/js/notification-integration.test.js
+node --test tools/time/js/notification-integration.test.js tools/time/js/notification-sync.test.js
+```
+
+Results:
+
+- Focused regression: 1 passed, 0 failed.
+- Integration coverage: 26 passed, 0 failed.
+- Combined integration and sync coverage: 91 passed, 0 failed.
+
+### Behavior Delivered
+
+- Recovery passes its generation currentness check into the queue as an optional callback; normal queue callers remain unconditional.
+- A stale recovery queue checks currentness before reminder mutation, `syncing`, backend sync, and final backend status publication. The recovery caller already checks again before scheduling.
+- The deterministic regression holds the model promise until `pagehide`, then confirms no reminder mutation, backend call, stale status, or timer.
+
+### Commit
+
+`fix(time): guard queued recovery sync`

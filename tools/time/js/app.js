@@ -108,9 +108,15 @@
     });
   }
 
-  function syncNotificationSnapshot(data) {
+  function isNotificationSyncCurrent(isCurrent) {
+    return !isCurrent || isCurrent();
+  }
+
+  function syncNotificationSnapshot(data, isCurrent) {
+    if (!isNotificationSyncCurrent(isCurrent)) return Promise.resolve(notificationBackendStatus);
     return NotificationModel.buildReminderRecords(data, appState.todayKey, State.habitDueOn, new Date())
       .then(function(records) {
+        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
         data.reminders = records.map(function(record) {
           return {
             id: record.id,
@@ -120,35 +126,40 @@
             payload: record.encryptedValue
           };
         });
+        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
         setNotificationBackendStatus({ status: 'syncing' });
+        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
         return NotificationSync.sync(data, appState.todayKey, State.habitDueOn);
-      }).then(setNotificationBackendStatus);
+      }).then(function(status) {
+        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
+        return setNotificationBackendStatus(status);
+      });
   }
 
-  function queueNotificationSync(data) {
+  function queueNotificationSync(data, isCurrent) {
     if (!NotificationSync || !NotificationModel || !data) {
       return Promise.resolve(notificationBackendStatus);
     }
-    pendingNotificationSnapshot = data;
+    pendingNotificationSnapshot = { data: data, isCurrent: isCurrent };
     if (notificationSyncPromise) return notificationSyncPromise;
 
     function drainLatestSnapshot() {
       var snapshot = pendingNotificationSnapshot;
       pendingNotificationSnapshot = null;
       if (!snapshot) return Promise.resolve(notificationBackendStatus);
-      return syncNotificationSnapshot(snapshot).then(function(result) {
+      return syncNotificationSnapshot(snapshot.data, snapshot.isCurrent).then(function(result) {
         return pendingNotificationSnapshot ? drainLatestSnapshot() : result;
       });
     }
 
     notificationSyncPromise = drainLatestSnapshot().then(function(result) {
       notificationSyncPromise = null;
-      if (pendingNotificationSnapshot) return queueNotificationSync(pendingNotificationSnapshot);
+      if (pendingNotificationSnapshot) return queueNotificationSync(pendingNotificationSnapshot.data, pendingNotificationSnapshot.isCurrent);
       return result;
     }, function(error) {
       notificationSyncPromise = null;
       if (pendingNotificationSnapshot) {
-        queueNotificationSync(pendingNotificationSnapshot).catch(handleNotificationBackendFailure);
+        queueNotificationSync(pendingNotificationSnapshot.data, pendingNotificationSnapshot.isCurrent).catch(handleNotificationBackendFailure);
       }
       throw error;
     });
@@ -2570,7 +2581,9 @@
         appState.data = data;
         if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
         if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
-        return queueNotificationSync(data);
+        return queueNotificationSync(data, function() {
+          return isNotificationRecoveryCurrent(generation);
+        });
       }, function(error) {
         if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
         showToast('本地数据库读取失败：' + error.message);
