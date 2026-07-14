@@ -1,4 +1,4 @@
+node_modules/
 .superpowers/
 .worktrees/
 .wrangler/
-workers/notifications/node_modules/

@@ -1,0 +1,26 @@
+{
+  "name": "billnest-price",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://billnest.top,https://www.billnest.top"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "PRICE_KV",
+      "id": "",
+      "title": "billnest_price"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "billnest.top/api/price*",
+      "zone_name": "billnest.top"
+    },
+    {
+      "pattern": "www.billnest.top/api/price*",
+      "zone_name": "billnest.top"
+    }
+  ]
+}

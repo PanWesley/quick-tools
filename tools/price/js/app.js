@@ -6,6 +6,73 @@
   var sampleData = window.ZhenjiaSampleData;
   var exporter = window.ZhenjiaExport;
 
+  var PRICE_API_BASE = '/api/price';
+  var priceApi = {
+    enabled: false,
+
+    init: function() {
+      var self = this;
+      return fetch(PRICE_API_BASE + '/config', { method: 'GET' })
+        .then(function(response) {
+          if (response.ok) {
+            self.enabled = true;
+            return true;
+          }
+          self.enabled = false;
+          return false;
+        })
+        .catch(function() {
+          self.enabled = false;
+          return false;
+        });
+    },
+
+    resolve: function(input) {
+      var self = this;
+      if (!self.enabled) return Promise.resolve(null);
+      return fetch(PRICE_API_BASE + '/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: '', text: input })
+      }).then(function(response) {
+        if (!response.ok) return null;
+        return response.json();
+      }).catch(function() {
+        return null;
+      });
+    },
+
+    getHistory: function(platform, itemId) {
+      var self = this;
+      if (!self.enabled || !platform || !itemId) return Promise.resolve([]);
+      return fetch(PRICE_API_BASE + '/history?platform=' + encodeURIComponent(platform) + '&item_id=' + encodeURIComponent(itemId), {
+        method: 'GET'
+      }).then(function(response) {
+        if (!response.ok) return [];
+        return response.json().then(function(data) {
+          return data.snapshots || [];
+        });
+      }).catch(function() {
+        return [];
+      });
+    },
+
+    recordSnapshot: function(data) {
+      var self = this;
+      if (!self.enabled) return Promise.resolve(null);
+      return fetch(PRICE_API_BASE + '/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function(response) {
+        if (!response.ok) return null;
+        return response.json();
+      }).catch(function() {
+        return null;
+      });
+    }
+  };
+
   var state = {
     view: 'home',
     activeProduct: null,
@@ -34,6 +101,23 @@
     var number = Number(value || 0);
     if (!Number.isFinite(number) || number <= 0) return '暂无';
     return '¥' + (Number.isInteger(number) ? String(number) : number.toFixed(2));
+  }
+
+  function mergeSnapshots(local, remote) {
+    var seen = new Set();
+    var merged = [];
+    var all = (local || []).concat(remote || []);
+    all.forEach(function(s) {
+      var key = (s.capturedAt || '') + '_' + (s.finalPrice || '');
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(s);
+      }
+    });
+    merged.sort(function(a, b) {
+      return new Date(a.capturedAt) - new Date(b.capturedAt);
+    });
+    return merged;
   }
 
   function setMessage(id, text, options) {
@@ -359,24 +443,80 @@
   function bindEvents() {
     $('#parse-form').addEventListener('submit', function(event) {
       event.preventDefault();
-      setMessage('parse-message', '');
+      setMessage('parse-message', '正在解析...');
       var input = $('#product-input').value;
-      var result = parser.parseProductInput(input);
-      if (!result.ok) {
-        var err = result.error;
-        var needsGuide = err.guideSteps || err.extractedTitle || err.isTaoKouLing;
-        if (needsGuide) {
-          setMessage('parse-message', buildGuideHtml(err), { html: true });
-        } else {
-          setMessage('parse-message', err.message);
+
+      function handleLocalFallback() {
+        var result = parser.parseProductInput(input);
+        if (!result.ok) {
+          var err = result.error;
+          var needsGuide = err.guideSteps || err.extractedTitle || err.isTaoKouLing;
+          if (needsGuide) {
+            setMessage('parse-message', buildGuideHtml(err), { html: true });
+          } else {
+            setMessage('parse-message', err.message);
+          }
+          return;
         }
-        return;
+        createParsedProduct(result.data).then(function(product) {
+          renderAnalysis(product, snapshotsForProduct(product.id), watchForProduct(product.id));
+          $('#product-input').value = '';
+        }).catch(function(error) {
+          setMessage('parse-message', error.message || '解析后保存商品失败。');
+        });
       }
-      createParsedProduct(result.data).then(function(product) {
-        renderAnalysis(product, snapshotsForProduct(product.id), watchForProduct(product.id));
-        $('#product-input').value = '';
-      }).catch(function(error) {
-        setMessage('parse-message', error.message || '解析后保存商品失败。');
+
+      priceApi.resolve(input).then(function(remoteResult) {
+        if (!remoteResult || remoteResult.error) {
+          handleLocalFallback();
+          return;
+        }
+
+        var platform = remoteResult.platform || '';
+        var itemId = remoteResult.itemId || '';
+        var title = remoteResult.title || '';
+        var resolved = remoteResult.resolved === true;
+
+        if (!platform && !title) {
+          handleLocalFallback();
+          return;
+        }
+
+        var parsed = {
+          platform: platform || 'unknown',
+          itemId: itemId || ('api_' + Date.now().toString(36)),
+          skuId: remoteResult.skuId || '',
+          shopId: remoteResult.shopId || '',
+          title: title || (platform ? parser.normalizePlatformLabel(platform) + '商品' : '商品'),
+          rawUrl: remoteResult.rawUrl || '',
+          canonicalUrl: remoteResult.canonicalUrl || '',
+          source: resolved ? 'api_resolved' : 'api_partial',
+          isShortLink: !resolved,
+          notice: remoteResult.notice || ''
+        };
+
+        createParsedProduct(parsed).then(function(product) {
+          var localSnapshots = snapshotsForProduct(product.id);
+          if (resolved && remoteResult.itemId) {
+            priceApi.getHistory(platform, itemId).then(function(remoteSnapshots) {
+              if (remoteSnapshots && remoteSnapshots.length > 0) {
+                var merged = mergeSnapshots(localSnapshots, remoteSnapshots);
+                renderAnalysis(product, merged, watchForProduct(product.id));
+              } else {
+                renderAnalysis(product, localSnapshots, watchForProduct(product.id));
+              }
+            }).catch(function() {
+              renderAnalysis(product, localSnapshots, watchForProduct(product.id));
+            });
+          } else {
+            renderAnalysis(product, localSnapshots, watchForProduct(product.id));
+          }
+          $('#product-input').value = '';
+        }).catch(function(error) {
+          setMessage('parse-message', error.message || '解析后保存商品失败。');
+        });
+      }).catch(function() {
+        handleLocalFallback();
       });
     });
 
@@ -415,22 +555,46 @@
       if (!state.activeProduct) return;
       var price = Number($('#snapshot-price').value);
       if (!Number.isFinite(price) || price <= 0) return;
-      ensureActiveProductSaved().then(function(product) {
+      var note = $('#snapshot-note').value;
+      var capturedAt = new Date().toISOString();
+      var product = state.activeProduct;
+
+      ensureActiveProductSaved().then(function(savedProduct) {
+        product = savedProduct;
         return db.addPriceSnapshot({
-          productId: product.id,
-          capturedAt: new Date().toISOString(),
+          productId: savedProduct.id,
+          capturedAt: capturedAt,
           listPrice: price,
           promoPrice: price,
           couponPrice: price,
           finalPrice: price,
-          promotionInfo: $('#snapshot-note').value,
+          promotionInfo: note,
           source: 'manual',
           stockStatus: 'unknown'
         });
       }).then(loadAllData).then(function() {
-        renderAnalysis(state.activeProduct, snapshotsForProduct(state.activeProduct.id), watchForProduct(state.activeProduct.id));
+        renderAnalysis(product, snapshotsForProduct(product.id), watchForProduct(product.id));
         $('#snapshot-price').value = '';
         $('#snapshot-note').value = '';
+
+        if (priceApi.enabled && product.platform && product.itemId &&
+            product.itemId.indexOf('short_') !== 0 &&
+            product.itemId.indexOf('tkl_') !== 0 &&
+            product.itemId.indexOf('text_') !== 0 &&
+            product.itemId.indexOf('unknown_') !== 0) {
+          priceApi.recordSnapshot({
+            platform: product.platform,
+            itemId: product.itemId,
+            finalPrice: price,
+            listPrice: price,
+            promoPrice: null,
+            couponPrice: null,
+            note: note,
+            stockStatus: 'unknown',
+            capturedAt: capturedAt,
+            title: product.title
+          });
+        }
       });
     });
 
@@ -502,5 +666,6 @@
     bindEvents();
     loadAllData();
     registerServiceWorker();
+    priceApi.init();
   });
 })();
