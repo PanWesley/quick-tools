@@ -44,9 +44,12 @@
   var swipeState = null;
   var notificationBackendStatus = { status: 'disabled' };
   var notificationSetupPromise = null;
+  var notificationSetupGeneration = null;
+  var notificationSetupDeadlineCancel = null;
   var notificationRecoveryTimer = null;
-  var notificationRecoveryGeneration = 0;
-  var notificationRecoveryActive = true;
+  var notificationRecoveryPromise = null;
+  var notificationLifecycleGeneration = 0;
+  var notificationLifecycleActive = !document.hidden;
   var pendingNotificationSnapshot = null;
   var notificationSyncPromise = null;
   var missedReminderToastShown = false;
@@ -73,51 +76,64 @@
     }, 2200);
   }
 
-  function setNotificationBackendStatus(result) {
+  function setNotificationBackendStatus(result, generation) {
+    if (generation != null && !isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
     notificationBackendStatus = result && result.status ? result : { status: 'error' };
     updateNotificationUI();
-    scheduleNotificationRecovery();
+    scheduleNotificationRecovery(generation);
     return notificationBackendStatus;
   }
 
-  function handleNotificationBackendFailure(error) {
+  function handleNotificationBackendFailure(error, generation) {
+    if (generation != null && !isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
     console.warn('[TodayYouxu] Notification backend failed:', error);
-    setNotificationBackendStatus({ status: 'error' });
+    return setNotificationBackendStatus({ status: 'error' }, generation);
   }
 
   function withNotificationDeadline(promise, milliseconds) {
     return new Promise(function(resolve, reject) {
       var settled = false;
-      var timer = setTimeout(function() {
+      var timer = null;
+      var cancel = function() {
+        finish(resolve, notificationBackendStatus);
+      };
+
+      function finish(callback, value) {
         if (settled) return;
         settled = true;
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (notificationSetupDeadlineCancel === cancel) notificationSetupDeadlineCancel = null;
+        callback(value);
+      }
+
+      notificationSetupDeadlineCancel = cancel;
+      timer = setTimeout(function() {
         var error = new Error('Notification operation timed out');
         error.notificationDeadline = true;
-        reject(error);
+        finish(reject, error);
       }, milliseconds);
       Promise.resolve(promise).then(function(value) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(value);
+        finish(resolve, value);
       }, function(error) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(error);
+        finish(reject, error);
       });
     });
   }
 
-  function isNotificationSyncCurrent(isCurrent) {
-    return !isCurrent || isCurrent();
+  function cancelNotificationSetupDeadline() {
+    var cancel = notificationSetupDeadlineCancel;
+    notificationSetupDeadlineCancel = null;
+    if (cancel) cancel();
   }
 
-  function syncNotificationSnapshot(data, isCurrent) {
-    if (!isNotificationSyncCurrent(isCurrent)) return Promise.resolve(notificationBackendStatus);
+  function syncNotificationSnapshot(data, generation) {
+    if (!isNotificationLifecycleCurrent(generation)) return Promise.resolve(notificationBackendStatus);
     return NotificationModel.buildReminderRecords(data, appState.todayKey, State.habitDueOn, new Date())
       .then(function(records) {
-        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
         data.reminders = records.map(function(record) {
           return {
             id: record.id,
@@ -127,49 +143,56 @@
             payload: record.encryptedValue
           };
         });
-        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
-        setNotificationBackendStatus({ status: 'syncing' });
-        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+        setNotificationBackendStatus({ status: 'syncing' }, generation);
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
         return NotificationSync.sync(data, appState.todayKey, State.habitDueOn);
       }).then(function(status) {
-        if (!isNotificationSyncCurrent(isCurrent)) return notificationBackendStatus;
-        return setNotificationBackendStatus(status);
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+        return setNotificationBackendStatus(status, generation);
       });
   }
 
-  function queueNotificationSync(data, isCurrent) {
-    if (!NotificationSync || !NotificationModel || !data) {
+  function queueNotificationSync(data, generation) {
+    var syncGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    if (!isNotificationLifecycleCurrent(syncGeneration) || !NotificationSync || !NotificationModel || !data) {
       return Promise.resolve(notificationBackendStatus);
     }
-    pendingNotificationSnapshot = { data: data, isCurrent: isCurrent };
+    pendingNotificationSnapshot = { data: data, generation: syncGeneration };
     if (notificationSyncPromise) return notificationSyncPromise;
 
     function drainLatestSnapshot() {
       var snapshot = pendingNotificationSnapshot;
       pendingNotificationSnapshot = null;
       if (!snapshot) return Promise.resolve(notificationBackendStatus);
-      return syncNotificationSnapshot(snapshot.data, snapshot.isCurrent).then(function(result) {
+      return syncNotificationSnapshot(snapshot.data, snapshot.generation).then(function(result) {
         return pendingNotificationSnapshot ? drainLatestSnapshot() : result;
       });
     }
 
     notificationSyncPromise = drainLatestSnapshot().then(function(result) {
       notificationSyncPromise = null;
-      if (pendingNotificationSnapshot) return queueNotificationSync(pendingNotificationSnapshot.data, pendingNotificationSnapshot.isCurrent);
+      if (pendingNotificationSnapshot) return queueNotificationSync(pendingNotificationSnapshot.data, pendingNotificationSnapshot.generation);
       return result;
     }, function(error) {
       notificationSyncPromise = null;
       if (pendingNotificationSnapshot) {
-        queueNotificationSync(pendingNotificationSnapshot.data, pendingNotificationSnapshot.isCurrent).catch(handleNotificationBackendFailure);
+        var snapshot = pendingNotificationSnapshot;
+        queueNotificationSync(snapshot.data, snapshot.generation).catch(function(nextError) {
+          handleNotificationBackendFailure(nextError, snapshot.generation);
+        });
       }
       throw error;
     });
     return notificationSyncPromise;
   }
 
-  function syncNotificationsWithoutBlocking(data) {
-    if (notificationBackendStatus.status === 'unsupported') return;
-    queueNotificationSync(data).catch(handleNotificationBackendFailure);
+  function syncNotificationsWithoutBlocking(data, generation) {
+    var syncGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    if (!isNotificationLifecycleCurrent(syncGeneration) || notificationBackendStatus.status === 'unsupported') return;
+    queueNotificationSync(data, syncGeneration).catch(function(error) {
+      handleNotificationBackendFailure(error, syncGeneration);
+    });
   }
 
   function showMissedReminderToast(data) {
@@ -1324,26 +1347,29 @@
 
   function rescheduleNotifications() {
     if (!NotificationService) return;
+    var generation = notificationLifecycleGeneration;
     DB.getAllData().then(function(data) {
       appState.data = data;
       showMissedReminderToast(data);
+      if (!isNotificationLifecycleCurrent(generation)) return;
       NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
-      syncNotificationsWithoutBlocking(data);
+      syncNotificationsWithoutBlocking(data, generation);
     }).catch(function() {});
   }
 
   window.TodayYouxuReschedule = rescheduleNotifications;
 
   function loadData() {
+    var generation = notificationLifecycleGeneration;
     return DB.getAllData().then(function(data) {
       appState.data = data;
       render();
       updateNotificationUI();
-      if (NotificationService) {
+      if (NotificationService && isNotificationLifecycleCurrent(generation)) {
         showMissedReminderToast(data);
         NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
       }
-      syncNotificationsWithoutBlocking(data);
+      syncNotificationsWithoutBlocking(data, generation);
     }).catch(function(error) {
       showToast('本地数据库读取失败：' + error.message);
     });
@@ -1713,50 +1739,65 @@
   }
 
   async function handleNotificationAction() {
-    if (!NotificationService) return;
+    var generation = notificationLifecycleGeneration;
+    if (!NotificationService || !isNotificationLifecycleCurrent(generation)) return;
     try {
       if (notificationSetupPromise) await notificationSetupPromise;
-      if (!NotificationSync) return;
+      if (!isNotificationLifecycleCurrent(generation) || !NotificationSync) return;
       var info = getNotificationStatusInfo();
       if (info.status === 'ready') {
-        setNotificationBackendStatus({ status: 'syncing' });
-        setNotificationBackendStatus(await NotificationSync.sendTest());
+        setNotificationBackendStatus({ status: 'syncing' }, generation);
+        if (!isNotificationLifecycleCurrent(generation)) return;
+        var testStatus = await NotificationSync.sendTest();
+        if (!isNotificationLifecycleCurrent(generation)) return;
+        setNotificationBackendStatus(testStatus, generation);
         return;
       }
       var permission = window.Notification && window.Notification.permission;
       if (permission !== 'granted') {
         permission = await Notification.requestPermission();
+        if (!isNotificationLifecycleCurrent(generation)) return;
         if (permission !== 'granted') {
-          setNotificationBackendStatus({ status: permission === 'denied' ? 'error' : 'permission-required' });
+          setNotificationBackendStatus({ status: permission === 'denied' ? 'error' : 'permission-required' }, generation);
           showToast(permission === 'denied' ? '通知权限被拒绝' : '未开启通知权限');
           return;
         }
       }
+      if (!isNotificationLifecycleCurrent(generation)) return;
       NotificationService.setEnabled(true);
       NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
-      setNotificationBackendStatus({ status: 'subscribing' });
+      setNotificationBackendStatus({ status: 'subscribing' }, generation);
+      if (!isNotificationLifecycleCurrent(generation)) return;
       var enabledStatus = await NotificationSync.enable();
-      setNotificationBackendStatus(enabledStatus);
+      if (!isNotificationLifecycleCurrent(generation)) return;
+      setNotificationBackendStatus(enabledStatus, generation);
       if (enabledStatus.status !== 'ready') return;
-      var syncedStatus = await queueNotificationSync(appState.data);
+      var syncedStatus = await queueNotificationSync(appState.data, generation);
+      if (!isNotificationLifecycleCurrent(generation)) return;
       if (syncedStatus.status === 'ready') {
-        setNotificationBackendStatus(await NotificationSync.sendTest());
+        var enabledTestStatus = await NotificationSync.sendTest();
+        if (!isNotificationLifecycleCurrent(generation)) return;
+        setNotificationBackendStatus(enabledTestStatus, generation);
       }
     } catch (error) {
-      handleNotificationBackendFailure(error);
+      handleNotificationBackendFailure(error, generation);
     }
   }
 
   async function handleNotificationDisable() {
-    if (!NotificationService) return;
+    var generation = notificationLifecycleGeneration;
+    if (!NotificationService || !isNotificationLifecycleCurrent(generation)) return;
     try {
       if (notificationSetupPromise) await notificationSetupPromise;
-      if (!NotificationSync || getNotificationStatusInfo().status !== 'ready') return;
+      if (!isNotificationLifecycleCurrent(generation) || !NotificationSync || getNotificationStatusInfo().status !== 'ready') return;
       NotificationService.setEnabled(false);
-      setNotificationBackendStatus({ status: 'pending' });
-      setNotificationBackendStatus(await NotificationSync.disable());
+      setNotificationBackendStatus({ status: 'pending' }, generation);
+      if (!isNotificationLifecycleCurrent(generation)) return;
+      var disabledStatus = await NotificationSync.disable();
+      if (!isNotificationLifecycleCurrent(generation)) return;
+      setNotificationBackendStatus(disabledStatus, generation);
     } catch (error) {
-      handleNotificationBackendFailure(error);
+      handleNotificationBackendFailure(error, generation);
     }
   }
 
@@ -2548,61 +2589,69 @@
       }
     });
     window.addEventListener('online', function() {
-      registerServiceWorker().catch(handleNotificationBackendFailure);
-      recoverNotificationOnline().catch(handleNotificationBackendFailure);
+      var generation = notificationLifecycleGeneration;
+      if (!isNotificationLifecycleCurrent(generation)) return;
+      registerServiceWorker(generation).catch(function(error) {
+        handleNotificationBackendFailure(error, generation);
+      });
+      recoverNotificationOnline(generation).catch(function(error) {
+        handleNotificationBackendFailure(error, generation);
+      });
     });
     document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
         cancelNotificationRecovery();
         return;
       }
-      registerServiceWorker().catch(handleNotificationBackendFailure);
-      recoverNotificationForeground().catch(handleNotificationBackendFailure);
+      var generation = activateNotificationLifecycle();
+      registerServiceWorker(generation).catch(function(error) {
+        handleNotificationBackendFailure(error, generation);
+      });
+      recoverNotificationForeground(generation).catch(function(error) {
+        handleNotificationBackendFailure(error, generation);
+      });
     });
     window.addEventListener('pagehide', cancelNotificationRecovery);
   }
 
-  function startNotificationRecovery() {
-    notificationRecoveryGeneration += 1;
-    notificationRecoveryActive = !document.hidden;
-    return notificationRecoveryGeneration;
+  function activateNotificationLifecycle() {
+    if (document.hidden) return null;
+    notificationLifecycleActive = true;
+    return notificationLifecycleGeneration;
   }
 
-  function isNotificationRecoveryCurrent(generation) {
-    return notificationRecoveryActive && !document.hidden && generation === notificationRecoveryGeneration;
+  function isNotificationLifecycleCurrent(generation) {
+    return generation != null && notificationLifecycleActive && !document.hidden && generation === notificationLifecycleGeneration;
   }
 
   function recoverNotificationLifecycle(method, generation) {
-    if (!NotificationSync || !isNotificationRecoveryCurrent(generation)) return Promise.resolve(notificationBackendStatus);
+    var recoveryGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    if (!NotificationSync || typeof NotificationSync[method] !== 'function' || !isNotificationLifecycleCurrent(recoveryGeneration)) return Promise.resolve(notificationBackendStatus);
     return NotificationSync[method]().then(function(status) {
-      if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
-      setNotificationBackendStatus(status);
+      if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+      setNotificationBackendStatus(status, recoveryGeneration);
       return DB.getAllData().then(function(data) {
-        if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
         appState.data = data;
         if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
-        if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
-        return queueNotificationSync(data, function() {
-          return isNotificationRecoveryCurrent(generation);
-        });
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+        return queueNotificationSync(data, recoveryGeneration);
       }, function(error) {
-        if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
         showToast('本地数据库读取失败：' + error.message);
         return notificationBackendStatus;
       });
     }).catch(function(error) {
-      if (!isNotificationRecoveryCurrent(generation)) return notificationBackendStatus;
+      if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
       throw error;
     });
   }
 
-  function recoverNotificationOnline() {
-    var generation = startNotificationRecovery();
+  function recoverNotificationOnline(generation) {
     return recoverNotificationLifecycle('handleOnline', generation);
   }
 
-  function recoverNotificationForeground() {
-    var generation = startNotificationRecovery();
+  function recoverNotificationForeground(generation) {
     return recoverNotificationLifecycle('handleForeground', generation);
   }
 
@@ -2613,74 +2662,117 @@
     }
   }
 
+  function canScheduleNotificationRecovery(generation) {
+    if (!isNotificationLifecycleCurrent(generation) || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return false;
+    if (NotificationSync) return typeof NotificationSync.handleForeground === 'function';
+    return 'serviceWorker' in navigator && !notificationSetupPromise;
+  }
+
   function scheduleNotificationRecovery(generation) {
-    var recoveryGeneration = generation == null ? notificationRecoveryGeneration : generation;
-    clearNotificationRecoveryTimer();
-    if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || typeof NotificationSync.handleForeground !== 'function' || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
+    var recoveryGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    if (!canScheduleNotificationRecovery(recoveryGeneration)) {
+      clearNotificationRecoveryTimer();
+      return;
+    }
+    if (notificationRecoveryTimer !== null || notificationRecoveryPromise) return;
     notificationRecoveryTimer = setTimeout(function() {
       notificationRecoveryTimer = null;
-      if (!isNotificationRecoveryCurrent(recoveryGeneration) || !NotificationSync || typeof NotificationSync.handleForeground !== 'function' || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return;
-      NotificationSync.handleForeground().then(function(status) {
-        if (!isNotificationRecoveryCurrent(recoveryGeneration)) return notificationBackendStatus;
-        setNotificationBackendStatus(status);
-        return status;
-      }).catch(function(error) {
-        if (!isNotificationRecoveryCurrent(recoveryGeneration)) return notificationBackendStatus;
-        handleNotificationBackendFailure(error);
+      if (!canScheduleNotificationRecovery(recoveryGeneration)) return;
+      var recoveryPromise;
+      if (NotificationSync && typeof NotificationSync.handleForeground === 'function') {
+        recoveryPromise = Promise.resolve().then(function() {
+          if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+          return NotificationSync.handleForeground();
+        });
+      } else {
+        recoveryPromise = registerServiceWorker(recoveryGeneration);
+      }
+      notificationRecoveryPromise = recoveryPromise;
+      recoveryPromise.then(function(status) {
+        if (notificationRecoveryPromise !== recoveryPromise) return notificationBackendStatus;
+        notificationRecoveryPromise = null;
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+        return setNotificationBackendStatus(status && status.status ? status : notificationBackendStatus, recoveryGeneration);
+      }, function(error) {
+        if (notificationRecoveryPromise !== recoveryPromise) return notificationBackendStatus;
+        notificationRecoveryPromise = null;
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+        handleNotificationBackendFailure(error, recoveryGeneration);
         return notificationBackendStatus;
       });
     }, 250);
   }
 
   function cancelNotificationRecovery() {
-    notificationRecoveryGeneration += 1;
-    notificationRecoveryActive = false;
+    notificationLifecycleGeneration += 1;
+    notificationLifecycleActive = false;
     clearNotificationRecoveryTimer();
+    notificationRecoveryPromise = null;
+    notificationSetupPromise = null;
+    notificationSetupGeneration = null;
+    pendingNotificationSnapshot = null;
+    cancelNotificationSetupDeadline();
     if (NotificationSync && NotificationSync.cancelActiveRequests) {
       NotificationSync.cancelActiveRequests();
     }
   }
 
-  function registerServiceWorker() {
-    if (notificationSetupPromise) return notificationSetupPromise;
+  function releaseNotificationSetup(owner) {
+    if (notificationSetupPromise !== owner) return;
+    notificationSetupPromise = null;
+    notificationSetupGeneration = null;
+  }
+
+  function registerServiceWorker(generation) {
+    var setupGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    if (!isNotificationLifecycleCurrent(setupGeneration)) return Promise.resolve(notificationBackendStatus);
+    if (notificationSetupPromise && notificationSetupGeneration === setupGeneration) return notificationSetupPromise;
     if (!('serviceWorker' in navigator)) {
-      setNotificationBackendStatus({ status: 'unsupported' });
+      setNotificationBackendStatus({ status: 'unsupported' }, setupGeneration);
       notificationSetupPromise = Promise.resolve(notificationBackendStatus);
+      notificationSetupGeneration = setupGeneration;
       return notificationSetupPromise;
     }
-    setNotificationBackendStatus({ status: 'subscribing' });
+    setNotificationBackendStatus({ status: 'subscribing' }, setupGeneration);
+    var setupPromise;
     try {
-      notificationSetupPromise = navigator.serviceWorker.register('/tools/time/sw.js').then(function() {
+      setupPromise = navigator.serviceWorker.register('/tools/time/sw.js').then(function() {
+        if (!isNotificationLifecycleCurrent(setupGeneration)) return null;
         return withNotificationDeadline(navigator.serviceWorker.ready, 10000);
       }).then(function(reg) {
+        if (!isNotificationLifecycleCurrent(setupGeneration) || !reg) return notificationBackendStatus;
         if (NotificationService) {
           NotificationService.setServiceWorkerRegistration(reg);
         }
         if (!NotificationSync && NotificationSyncFactory && NotificationSyncFactory.create) {
           NotificationSync = NotificationSyncFactory.create();
         }
-        if (!NotificationSync) return setNotificationBackendStatus({ status: 'unsupported' });
-        return NotificationSync.setup(reg).then(setNotificationBackendStatus).then(function(status) {
+        if (!NotificationSync) return setNotificationBackendStatus({ status: 'unsupported' }, setupGeneration);
+        if (!isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
+        return NotificationSync.setup(reg).then(function(status) {
+          if (!isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
+          setNotificationBackendStatus(status, setupGeneration);
           if (status.status === 'ready' || status.status === 'pending') {
-            syncNotificationsWithoutBlocking(appState.data);
+            syncNotificationsWithoutBlocking(appState.data, setupGeneration);
           }
           return status;
         });
       }).catch(function(error) {
+        if (!isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
         if (error && error.notificationDeadline) {
-          setNotificationBackendStatus({ status: 'pending' });
-          notificationSetupPromise = null;
-          return notificationBackendStatus;
+          releaseNotificationSetup(setupPromise);
+          return setNotificationBackendStatus({ status: 'pending' }, setupGeneration);
         }
         console.warn('[TodayYouxu] Service worker registration failed:', error);
-        setNotificationBackendStatus({ status: 'error' });
-        return notificationBackendStatus;
+        return setNotificationBackendStatus({ status: 'error' }, setupGeneration);
       });
     } catch (error) {
       console.warn('[TodayYouxu] Service worker registration failed:', error);
-      setNotificationBackendStatus({ status: 'error' });
-      notificationSetupPromise = Promise.resolve(notificationBackendStatus);
+      setNotificationBackendStatus({ status: 'error' }, setupGeneration);
+      setupPromise = Promise.resolve(notificationBackendStatus);
     }
+    notificationSetupPromise = setupPromise;
+    notificationSetupGeneration = setupGeneration;
     return notificationSetupPromise;
   }
 

@@ -478,7 +478,7 @@ test('waits for service worker ready, shares one setup promise, and disables ear
   assert.equal(harness.elements.get('notification-setup-button').disabled, false);
 });
 
-test('service worker ready deadline returns pending and allows a new setup attempt', async () => {
+test('service worker ready deadline schedules one automatic setup retry', async () => {
   const timers = createFakeTimers();
   const registration = { source: 'register' };
   const readyRegistration = { source: 'ready' };
@@ -516,16 +516,191 @@ test('service worker ready deadline returns pending and allows a new setup attem
   assert.equal(firstResult.status, 'pending');
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'pending');
   assert.equal(harness.elements.get('notification-setup-button').disabled, false);
+  assert.equal(timers.count(), 1);
 
   ready = Promise.resolve(readyRegistration);
-  const retry = harness.hooks.registerServiceWorker();
-  assert.notStrictEqual(retry, first);
-  await retry;
+  timers.advance(250);
   await settle();
 
   assert.equal(registerCalls, 2);
   assert.equal(setupCalls, 1);
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('pagehide invalidates deferred setup before publication or recovery scheduling', async () => {
+  const timers = createFakeTimers();
+  let resolveSetup;
+  let setupCalls = 0;
+  let syncCalls = 0;
+  let cancellations = 0;
+  const setup = new Promise(resolve => { resolveSetup = resolve; });
+  const registration = {};
+  const sync = {
+    setup() {
+      setupCalls += 1;
+      return setup;
+    },
+    sync: async () => {
+      syncCalls += 1;
+      return { status: 'pending' };
+    },
+    handleForeground: async () => ({ status: 'pending' }),
+    cancelActiveRequests() { cancellations += 1; }
+  };
+  const harness = createHarness({
+    timers,
+    sync,
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        register: async () => registration,
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+
+  const setupResult = harness.hooks.registerServiceWorker();
+  await settle();
+  assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'subscribing');
+
+  harness.listeners.window.pagehide();
+  resolveSetup({ status: 'pending' });
+  await setupResult;
+  await settle();
+
+  assert.equal(cancellations, 1);
+  assert.equal(syncCalls, 0);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'subscribing');
+  assert.equal(timers.count(), 0);
+});
+
+test('pagehide then visible invalidates an ordinary deferred projection completion', async () => {
+  const timers = createFakeTimers();
+  let resolveProjection;
+  let modelCalls = 0;
+  const synced = [];
+  const staleData = { marker: 'stale' };
+  const freshData = { marker: 'fresh' };
+  const projection = new Promise(resolve => { resolveProjection = resolve; });
+  const model = {
+    buildReminderRecords(data) {
+      modelCalls += 1;
+      return data === staleData ? projection : Promise.resolve([]);
+    }
+  };
+  const sync = {
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: async data => {
+      synced.push(data.marker);
+      return { status: data === staleData ? 'pending' : 'ready' };
+    },
+    cancelActiveRequests() {}
+  };
+  const harness = createHarness({
+    timers,
+    model,
+    sync,
+    db: { getAllData: async () => freshData },
+    navigator: { onLine: true }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  const staleProjection = harness.hooks.queueNotificationSync(staleData);
+  await settle();
+  assert.equal(modelCalls, 1);
+
+  harness.document.hidden = true;
+  harness.listeners.window.pagehide();
+  harness.document.hidden = false;
+  harness.listeners.document.visibilitychange();
+  await settle();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+
+  resolveProjection([]);
+  await staleProjection;
+  await settle();
+
+  assert.equal(staleData.reminders, undefined);
+  assert.deepEqual(synced, ['fresh']);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(timers.count(), 0);
+});
+
+test('pagehide invalidates a deferred test-notification publication', async () => {
+  const timers = createFakeTimers();
+  let resolveTest;
+  let cancellations = 0;
+  const testNotification = new Promise(resolve => { resolveTest = resolve; });
+  const sync = {
+    sendTest: () => testNotification,
+    cancelActiveRequests() { cancellations += 1; }
+  };
+  const harness = createHarness({
+    timers,
+    sync,
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    navigator: { onLine: true }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  const action = harness.hooks.handleNotificationAction();
+  await settle();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'syncing');
+
+  harness.listeners.window.pagehide();
+  resolveTest({ status: 'pending' });
+  await action;
+
+  assert.equal(cancellations, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'syncing');
+  assert.equal(timers.count(), 0);
+});
+
+test('hidden online does not start service worker registration or recovery', async () => {
+  let registerCalls = 0;
+  let onlineCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => ({ status: 'ready' }),
+    handleOnline: async () => {
+      onlineCalls += 1;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    sync,
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registration;
+        },
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.document.hidden = true;
+
+  harness.listeners.window.online();
+  await settle();
+
+  assert.equal(registerCalls, 0);
+  assert.equal(onlineCalls, 0);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'disabled');
 });
 
 test('visible pending recovery uses one timer and lifecycle events cancel active work', async () => {
@@ -571,6 +746,45 @@ test('visible pending recovery uses one timer and lifecycle events cancel active
   assert.equal(calls.filter(call => call === 'cancel').length, 1);
   harness.listeners.window.pagehide();
   assert.equal(calls.filter(call => call === 'cancel').length, 2);
+});
+
+test('repeated pending while a foreground drain is deferred does not start a second drain', async () => {
+  const timers = createFakeTimers();
+  let resolveForeground;
+  let foregroundCalls = 0;
+  const foreground = new Promise(resolve => { resolveForeground = resolve; });
+  const sync = {
+    handleForeground() {
+      foregroundCalls += 1;
+      return foregroundCalls === 1 ? foreground : Promise.resolve({ status: 'ready' });
+    }
+  };
+  const harness = createHarness({ timers, sync, navigator: { onLine: true } });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  assert.equal(timers.count(), 1);
+
+  timers.advance(250);
+  await settle();
+  assert.equal(foregroundCalls, 1);
+  assert.equal(timers.count(), 0);
+
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  assert.equal(timers.count(), 0);
+  timers.advance(250);
+  await settle();
+  assert.equal(foregroundCalls, 1);
+
+  resolveForeground({ status: 'pending' });
+  await settle();
+  assert.equal(timers.count(), 1);
+
+  timers.advance(250);
+  await settle();
+  assert.equal(foregroundCalls, 2);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(timers.count(), 0);
 });
 
 test('pending startup projection restores one recovery timer after the syncing timer expires', async () => {

@@ -179,3 +179,59 @@ git diff --check
 ### Commit
 
 `fix(time): drive notification recovery from status`
+
+## Task 4 Lifecycle Race Review Fixes
+
+### RED Evidence
+
+The pre-change integration baseline passed 27 tests. Each review issue was then reproduced with deferred promises before production code changed.
+
+Commands and results:
+
+```sh
+node --test --test-name-pattern='service worker ready deadline schedules one automatic setup retry' tools/time/js/notification-integration.test.js
+# 0 passed, 1 failed: the deadline published pending with zero recovery timers (0 !== 1)
+
+node --test --test-name-pattern='pagehide invalidates deferred setup|pagehide then visible invalidates an ordinary deferred projection completion|pagehide invalidates a deferred test-notification publication|hidden online does not start' tools/time/js/notification-integration.test.js
+# 0 passed, 4 failed: stale setup synced, stale projection mutated reminders, stale click published pending, and hidden online registered the service worker
+
+node --test --test-name-pattern='repeated pending while a foreground drain is deferred' tools/time/js/notification-integration.test.js
+# 0 passed, 1 failed: repeated pending scheduled a second timer while the first drain was in flight (1 !== 0)
+```
+
+### Root Cause
+
+- SW-ready timeout released the setup promise and published `pending`, but recovery scheduling required an existing `NotificationSync`, which is only created after `serviceWorker.ready`.
+- Recovery generation checks were optional and scoped to recovery-owned work. Setup, ordinary projection, user operations, and their failure publications could outlive `pagehide`; every online event also attempted setup before checking visibility.
+- The recovery scheduler owned only its timer. The callback cleared that owner before `handleForeground()` settled, so another `pending` publication could schedule an overlapping drain.
+
+### Implementation
+
+- Introduced one page lifecycle generation/currentness rule and applied it to setup/registration, queue projection and backend sync, online/foreground recovery, failure publication, and enable/disable/test notification actions. Status changes do not advance the generation.
+- `pagehide` and hidden visibility invalidate the lifecycle, cancel the recovery and SW-ready deadline timers, release old setup/recovery ownership, discard stale queued snapshots, and cancel active notification requests. Visible lifecycle activation reuses only the new generation; hidden online events do nothing.
+- The unified recovery scheduler now owns both one timer and one in-flight promise. A pending deadline can schedule registration before `NotificationSync` exists, while a ready sync drains exactly one `handleForeground()` batch. In-flight completion clears ownership before the unified status setter decides whether another batch is needed.
+- Deadline retries release their setup owner before publishing `pending`, avoiding a retry that returns or waits on the setup promise currently completing.
+
+### GREEN Evidence
+
+Commands and results:
+
+```sh
+node --test --test-name-pattern='service worker ready deadline schedules one automatic setup retry|pagehide invalidates deferred setup|pagehide then visible invalidates an ordinary deferred projection completion|pagehide invalidates a deferred test-notification publication|hidden online does not start|repeated pending while a foreground drain is deferred' tools/time/js/notification-integration.test.js
+# 6 passed, 0 failed
+
+node --test tools/time/js/notification-integration.test.js
+# 32 passed, 0 failed
+
+node --test tools/time/js/notification-integration.test.js tools/time/js/notification-sync.test.js
+# 97 passed, 0 failed
+
+node --check tools/time/js/app.js
+node --check tools/time/js/notification-integration.test.js
+git diff --check
+# all exited 0
+```
+
+### Commit
+
+`fix(time): guard notification lifecycle races`
