@@ -43,6 +43,34 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 
 `pnpm check` 只做 Wrangler dry-run，不验证 Cloudflare 账号、远端 D1、secrets、route 或真机 Web Push。
 
+### 自动生产部署
+
+GitHub Actions 的 `Deploy production` 工作流是 `main` 的生产发布控制器，也可通过 `workflow_dispatch` 手动触发。`deploy-notifications` 会先安装依赖、运行 Worker 测试和 Wrangler dry-run，再部署 Notifications Worker；只有该 job 成功后，`deploy-vercel` 才会构建并发布同一提交到 Vercel。Worker 失败时 Vercel job 会被跳过，线上 PWA 保持上一版本。
+
+`vercel.json` 禁止 Vercel Git 集成直接发布 `main`，避免它与 GitHub Actions 竞速；其他分支仍保留 PR Preview。GitHub 仓库仅保存以下 Actions Secrets，值不得写入变量、日志或仓库：
+
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+VERCEL_TOKEN
+VERCEL_ORG_ID
+VERCEL_PROJECT_ID
+```
+
+Cloudflare token 应只允许目标账号和 `billnest.top` 的 Worker script/route 部署，Vercel token 应只作用于持有本项目的账号或 team。为 token 设置到期时间，并在到期前更新对应 GitHub Secret。`VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY` 和 `VAPID_SUBJECT` 继续只存于 Cloudflare Worker Secrets；常规发布不创建 D1、不执行 migration，也不轮换 VAPID keys。
+
+故障排查先查看两个 job 的边界：`deploy-notifications` 失败时检查测试、dry-run、Cloudflare token scope、Account ID、D1 binding 和 routes；`deploy-vercel` 失败时检查三个 Vercel Secret 是否属于同一个现有项目，以及 `vercel pull`、`vercel build`、`vercel deploy` 中最先失败的命令。修复配置后可从 Actions 页面手动重跑工作流。
+
+两个平台必须独立回滚。Worker 使用下文的 `wrangler deployments list` 和 `wrangler rollback`；PWA 使用已链接项目的 Vercel CLI：
+
+```bash
+vercel list --prod
+vercel rollback
+vercel rollback status
+```
+
+需要恢复指定的已知良好部署时，可执行 `vercel rollback <deployment-id-or-url>`；Hobby 计划只支持回滚到紧邻的上一生产版本。回滚后用 `vercel promote <deployment-id-or-url>` 发布修复版本并恢复正常的生产域名指向。
+
 ### 生产准备与部署
 
 以下命令必须由具备 Cloudflare 权限的 controller 在 `workers/notifications/` 执行；不得将 VAPID 私钥或 token 复制到日志或提交到仓库。
