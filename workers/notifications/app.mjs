@@ -11,7 +11,7 @@ import {
   validateSubscription
 } from './core.mjs';
 
-const MAX_BODY_BYTES = 128 * 1024;
+const MAX_JSON_BYTES = 128 * 1024;
 const MAX_RECONCILE_REMINDERS = 500;
 // Client projection remains 30 local-calendar days; this is a DST-safe server envelope.
 const RECONCILE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
@@ -50,19 +50,44 @@ async function readJson(request) {
     };
   }
   const contentLength = Number(request.headers.get('Content-Length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+  if (Number.isFinite(contentLength) && contentLength > MAX_JSON_BYTES) {
     return { ok: false, status: 413, code: 'payload_too_large', message: 'Request body is too large.' };
   }
 
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
-    return { ok: false, status: 413, code: 'payload_too_large', message: 'Request body is too large.' };
+  const reader = request.body?.getReader();
+  if (!reader) {
+    return { ok: false, status: 400, code: 'invalid_json', message: 'Request body must be valid JSON.' };
   }
 
   try {
-    return { ok: true, value: JSON.parse(text) };
+    const chunks = [];
+    let byteLength = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > MAX_JSON_BYTES) {
+        try {
+          await reader.cancel('payload_too_large');
+        } catch {
+          // The response remains a 413 even if an upstream cancellation rejects.
+        }
+        return { ok: false, status: 413, code: 'payload_too_large', message: 'Request body is too large.' };
+      }
+      chunks.push(value);
+    }
+
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { ok: true, value: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) };
   } catch {
     return { ok: false, status: 400, code: 'invalid_json', message: 'Request body must be valid JSON.' };
+  } finally {
+    reader.releaseLock();
   }
 }
 
