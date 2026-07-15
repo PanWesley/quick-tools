@@ -10,9 +10,12 @@
   var DB_NAME = 'todayYouxuNotificationDB';
   var DB_VERSION = 1;
   var KEY_STORE = 'secrets';
-  var KEY_ID = 'payload-key-v1';
+  var LEGACY_KEY_ID = 'payload-key-v1';
+  var CURRENT_KEY_ID = 'payload-key-v2';
+  var CURRENT_ENCRYPTION_VERSION = 2;
   var STORE_NAMES = ['secrets', 'installation', 'queue', 'meta'];
   var IV_BYTES = 12;
+  var KEY_BYTES = 32;
 
   function toBytes(value) {
     if (value instanceof Uint8Array) return value;
@@ -64,7 +67,7 @@
       || !Object.prototype.hasOwnProperty.call(envelope, 'iv')
       || !Object.prototype.hasOwnProperty.call(envelope, 'ciphertext')
       || Object.keys(envelope).sort().join(',') !== 'ciphertext,iv,v'
-      || envelope.v !== 1
+      || (envelope.v !== 1 && envelope.v !== 2)
       || typeof envelope.iv !== 'string'
       || typeof envelope.ciphertext !== 'string') {
       throw new Error('Unsupported notification payload version');
@@ -74,7 +77,33 @@
     if (iv.length !== IV_BYTES || ciphertext.length < 16) {
       throw new Error('Invalid notification payload');
     }
-    return { iv: iv, ciphertext: ciphertext };
+    return { version: envelope.v, iv: iv, ciphertext: ciphertext };
+  }
+
+  function validateCurrentKeyRecord(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+      || Object.getPrototypeOf(value) !== Object.prototype
+      || Object.keys(value).sort().join(',') !== 'algorithm,rawKey,version'
+      || value.version !== CURRENT_ENCRYPTION_VERSION
+      || value.algorithm !== 'AES-GCM'
+      || typeof value.rawKey !== 'string') {
+      throw new Error('Notification key record is invalid');
+    }
+    var bytes;
+    try {
+      bytes = base64UrlDecode(value.rawKey);
+    } catch (error) {
+      throw new Error('Notification key record is invalid');
+    }
+    if (bytes.length !== KEY_BYTES) throw new Error('Notification key record is invalid');
+    return bytes;
+  }
+
+  function importAesKey(cryptoApi, bytes) {
+    if (!cryptoApi || !cryptoApi.subtle || typeof cryptoApi.subtle.importKey !== 'function') {
+      return Promise.reject(new Error('Web Crypto is not available'));
+    }
+    return cryptoApi.subtle.importKey('raw', bytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
   }
 
   function openDatabase(indexedDBApi) {
@@ -141,46 +170,68 @@
     var cryptoApi = options.crypto || defaultCrypto;
     var indexedDBApi = options.indexedDB || root && root.indexedDB;
     var databasePromise;
+    var currentKeyPromise;
 
     function getDatabase() {
       if (!databasePromise) databasePromise = openDatabase(indexedDBApi);
       return databasePromise;
     }
 
-    async function getKey() {
+    async function getKey(version) {
       var database = await getDatabase();
-      return await readRecord(database, KEY_STORE, KEY_ID) || null;
+      var selectedVersion = version === undefined ? CURRENT_ENCRYPTION_VERSION : version;
+      if (selectedVersion === 1) return await readRecord(database, KEY_STORE, LEGACY_KEY_ID) || null;
+      if (selectedVersion !== CURRENT_ENCRYPTION_VERSION) return null;
+      var record = await readRecord(database, KEY_STORE, CURRENT_KEY_ID);
+      return record ? importAesKey(cryptoApi, validateCurrentKeyRecord(record)) : null;
     }
 
     async function getOrCreateKey() {
-      if (!cryptoApi || !cryptoApi.subtle || typeof cryptoApi.subtle.generateKey !== 'function') {
+      if (currentKeyPromise) return currentKeyPromise;
+      if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function'
+        || !cryptoApi.subtle || typeof cryptoApi.subtle.importKey !== 'function') {
         throw new Error('Web Crypto is not available');
       }
-      var database = await getDatabase();
-      var key = await readRecord(database, KEY_STORE, KEY_ID);
-      if (key) return key;
-      key = await cryptoApi.subtle.generateKey(
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt']
-      );
-      if (await addRecord(database, KEY_STORE, KEY_ID, key)) return key;
-      var winner = await readRecord(database, KEY_STORE, KEY_ID);
-      if (!winner) throw new Error('IndexedDB key winner is unavailable');
-      return winner;
+      currentKeyPromise = (async function() {
+        var database = await getDatabase();
+        var record = await readRecord(database, KEY_STORE, CURRENT_KEY_ID);
+        if (!record) {
+          var bytes = cryptoApi.getRandomValues(new Uint8Array(KEY_BYTES));
+          var candidate = {
+            version: CURRENT_ENCRYPTION_VERSION,
+            algorithm: 'AES-GCM',
+            rawKey: base64UrlEncode(bytes)
+          };
+          if (await addRecord(database, KEY_STORE, CURRENT_KEY_ID, candidate)) {
+            record = candidate;
+          } else {
+            record = await readRecord(database, KEY_STORE, CURRENT_KEY_ID);
+          }
+        }
+        if (!record) throw new Error('IndexedDB key winner is unavailable');
+        return importAesKey(cryptoApi, validateCurrentKeyRecord(record));
+      })().catch(function(error) {
+        currentKeyPromise = null;
+        throw error;
+      });
+      return currentKeyPromise;
     }
 
     return { getKey: getKey, getOrCreateKey: getOrCreateKey };
   }
 
-  async function encryptPayload(key, value) {
+  async function encryptPayload(key, value, version) {
     if (!defaultCrypto || !defaultCrypto.subtle || !defaultCrypto.getRandomValues) {
       throw new Error('Web Crypto is not available');
+    }
+    var selectedVersion = version === undefined ? CURRENT_ENCRYPTION_VERSION : version;
+    if (selectedVersion !== 1 && selectedVersion !== CURRENT_ENCRYPTION_VERSION) {
+      throw new Error('Unsupported notification payload version');
     }
     var iv = defaultCrypto.getRandomValues(new Uint8Array(IV_BYTES));
     var plainText = new TextEncoderApi().encode(JSON.stringify(value));
     var ciphertext = await defaultCrypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, plainText);
-    return { v: 1, iv: base64UrlEncode(iv), ciphertext: base64UrlEncode(ciphertext) };
+    return { v: selectedVersion, iv: base64UrlEncode(iv), ciphertext: base64UrlEncode(ciphertext) };
   }
 
   async function decryptPayload(key, envelope) {
@@ -201,6 +252,7 @@
   var defaultStore = create();
 
   return {
+    CURRENT_ENCRYPTION_VERSION: CURRENT_ENCRYPTION_VERSION,
     getKey: defaultStore.getKey,
     getOrCreateKey: defaultStore.getOrCreateKey,
     encryptPayload: encryptPayload,
