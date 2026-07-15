@@ -1,9 +1,9 @@
-﻿/**
+/**
  * Expense Tracker - Service Worker
  * Provides offline caching and installed PWA startup support.
  */
 
-const CACHE_NAME = 'expense-tracker-v1.6.11';
+const CACHE_NAME = 'expense-tracker-v1.6.12';
 const STATIC_ASSETS = [
   '/tools/expense/',
   '/tools/expense/index.html',

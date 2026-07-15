@@ -26,20 +26,23 @@
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <title>BillNest - 隐私记账本</title>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=171">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=172">
 </head>
 <body>
 
 <header id="app-header" data-active-view="add">
-  <a class="logo" href="." onclick="switchView('add'); return false;">
-    <span style="width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, #2DBAA3 0%, #1a7f6b 100%); display: inline-flex; align-items: center; justify-content: center; font-size: 15px;" aria-hidden="true">💰</span>
-    <h1>BillNest</h1>
-  </a>
-  <div class="header-actions">
-    <button class="theme-toggle" onclick="switchView('settings')" title="设置" aria-label="打开设置">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-    </button>
+  <div class="header-top">
+    <a class="logo" href="." onclick="switchView('add'); return false;">
+      <span class="logo-icon" aria-hidden="true">💰</span>
+      <h1 id="header-title">记一笔</h1>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" onclick="switchView('settings')" title="设置" aria-label="打开设置">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
   </div>
+  <p class="header-subtitle" id="header-subtitle">几秒钟，把今天的小花费记好 🌿</p>
 </header>
 
 <main id="app">
@@ -148,11 +151,6 @@
 
   <!-- Dashboard View -->
   <section class="view-section" id="view-dashboard">
-    <div class="dashboard-header">
-      <h2>概览</h2>
-      <p class="subtitle">看看这个月的生活节奏</p>
-    </div>
-
     <!-- Filter Bar -->
     <div class="filter-bar dashboard-filter" id="dashboard-filter-bar">
       <select id="dash-time-range" title="时间范围" aria-label="选择时间范围">
@@ -284,12 +282,12 @@
 
   <!-- Add Expense View (Default) -->
   <section class="view-section active" id="view-add">
-    <div class="page-header">
-      <h2>记一笔</h2>
-      <p class="subtitle">几秒钟，把今天的小花费用温柔地收好</p>
+    <div class="quick-entry-hint" id="quick-entry-hint" hidden>
+      <span>💡</span>
+      <span>快捷模板已隐藏</span>
+      <button type="button" onclick="setQuickTemplateEnabled(true)" class="btn-text-link">开启</button>
     </div>
-
-    <section class="quick-start-card" aria-label="今日记账快捷入口">
+    <section class="quick-start-card" id="quick-start-card" aria-label="今日记账快捷入口">
       <div class="quick-start-copy">
         <span class="quick-start-kicker">今日小账本</span>
         <strong>从最常见的一笔开始</strong>
@@ -365,10 +363,6 @@
 
   <!-- Expense List View -->
   <section class="view-section" id="view-list">
-    <div class="page-header">
-      <h2>📋 账单明细</h2>
-      <p class="subtitle">查看和管理所有支出记录</p>
-    </div>
     <div class="filter-bar">
       <input type="text" id="list-search" placeholder="搜索备注或分类…" oninput="renderExpenseList()">
       <button type="button" class="list-category-trigger" id="list-category-trigger" onclick="openListCategoryPicker()" aria-expanded="false" aria-controls="list-category-modal">
@@ -397,10 +391,6 @@
 
   <!-- Tags View -->
   <section class="view-section" id="view-tags">
-    <div class="page-header">
-      <h2>🏷️ 标签管理</h2>
-      <p class="subtitle">管理支出分类和自定义标签</p>
-    </div>
     <div class="form-card tag-create-card">
       <div class="form-group inline tags-form-row">
         <input type="text" id="new-group-name" placeholder="输入新分组名称…">
@@ -545,10 +535,6 @@
 
   <!-- Settings View -->
   <section class="view-section" id="view-settings">
-    <div class="page-header">
-      <h2>⚙️ 设置</h2>
-      <p class="subtitle">数据管理与个性化选项</p>
-    </div>
     <div class="settings-group">
       <h3>外观</h3>
       <div class="setting-item theme-setting">
@@ -594,6 +580,19 @@
             <span><i class="accent-swatch sage" aria-hidden="true"></i>鼠尾草</span>
           </label>
         </div>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h3>记账偏好</h3>
+      <div class="setting-item">
+        <div class="setting-info">
+          <span class="setting-title">显示快捷记账模板</span>
+          <span class="setting-desc">在首页显示"今日小账本"快速按钮，一键记录常见开销</span>
+        </div>
+        <label class="toggle-switch" aria-label="显示快捷记账模板">
+          <input type="checkbox" id="quick-template-toggle" checked onchange="handleQuickTemplateToggle(this)">
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
     <div class="settings-group">
@@ -1008,6 +1007,63 @@ if (themeMediaQuery) {
 }
 
 // View switching (inline for immediate nav response)
+// View header configuration
+const VIEW_HEADERS = {
+  add: { title: '记一笔', subtitle: '几秒钟，把今天的小花费记好 🌿' },
+  dashboard: { title: '概览', subtitle: '这个月的生活节奏，一目了然 📊' },
+  list: { title: '账单明细', subtitle: '每一笔花费，都值得被温柔记录 📝' },
+  tags: { title: '标签管理', subtitle: '整理好分类，记账更顺手 🏷️' },
+  settings: { title: '设置', subtitle: '按你的习惯，调整成舒服的样子 ⚙️' },
+  onboarding: { title: 'BillNest', subtitle: '把每天的小花费，收进一个温柔的小账本' }
+};
+
+const QUICK_TEMPLATE_STORAGE_KEY = 'expense-quick-template-enabled';
+
+function getQuickTemplateEnabled() {
+  try {
+    const val = localStorage.getItem(QUICK_TEMPLATE_STORAGE_KEY);
+    return val === null ? true : val === '1';
+  } catch (e) {
+    return true;
+  }
+}
+
+function setQuickTemplateEnabled(enabled) {
+  try {
+    localStorage.setItem(QUICK_TEMPLATE_STORAGE_KEY, enabled ? '1' : '0');
+  } catch (e) {}
+  updateQuickTemplateVisibility();
+  const toggle = document.getElementById('quick-template-toggle');
+  if (toggle) toggle.checked = enabled;
+}
+
+function updateQuickTemplateVisibility() {
+  const enabled = getQuickTemplateEnabled();
+  const quickCard = document.getElementById('quick-start-card');
+  const hint = document.getElementById('quick-entry-hint');
+  if (quickCard) quickCard.hidden = !enabled;
+  if (hint) hint.hidden = enabled;
+}
+
+function updateHeaderContent(viewName) {
+  const config = VIEW_HEADERS[viewName];
+  if (!config) return;
+  const titleEl = document.getElementById('header-title');
+  const subtitleEl = document.getElementById('header-subtitle');
+  if (titleEl) {
+    titleEl.textContent = config.title;
+    titleEl.style.animation = 'none';
+    titleEl.offsetHeight;
+    titleEl.style.animation = 'headerFadeIn 0.35s ease';
+  }
+  if (subtitleEl) {
+    subtitleEl.textContent = config.subtitle;
+    subtitleEl.style.animation = 'none';
+    subtitleEl.offsetHeight;
+    subtitleEl.style.animation = 'headerFadeIn 0.35s ease';
+  }
+}
+
 function switchView(viewName, skipHistory) {
   document.querySelectorAll('.view-section').forEach(function(sec) {
     sec.classList.remove('active');
@@ -1022,6 +1078,7 @@ function switchView(viewName, skipHistory) {
   const header = document.getElementById('app-header');
   if (header) header.setAttribute('data-active-view', viewName);
   document.body.setAttribute('data-active-view', viewName);
+  updateHeaderContent(viewName);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   // Push state for browser back button support
@@ -1029,6 +1086,13 @@ function switchView(viewName, skipHistory) {
     history.pushState(viewName, '', '#view=' + viewName);
   }
 }
+
+function handleQuickTemplateToggle(checkbox) {
+  setQuickTemplateEnabled(checkbox.checked);
+}
+
+window.setQuickTemplateEnabled = setQuickTemplateEnabled;
+window.handleQuickTemplateToggle = handleQuickTemplateToggle;
 
 // Handle browser back/forward buttons
 window.addEventListener('popstate', function(e) {
@@ -1044,7 +1108,12 @@ window.addEventListener('popstate', function(e) {
   }
 });
 
-document.addEventListener('DOMContentLoaded', initTheme);
+document.addEventListener('DOMContentLoaded', function() {
+  initTheme();
+  updateQuickTemplateVisibility();
+  const toggle = document.getElementById('quick-template-toggle');
+  if (toggle) toggle.checked = getQuickTemplateEnabled();
+});
 </script>
 <div id="toast" class="toast" aria-live="polite"></div>
 

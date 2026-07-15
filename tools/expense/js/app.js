@@ -200,21 +200,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   _appReady = true;
-
-  // Scroll shrink header (v1.5.0 mobile optimization)
-  let lastScrollY = 0;
-  window.addEventListener('scroll', () => {
-    const header = document.querySelector('header');
-    const currentScrollY = window.scrollY;
-    if (window.innerWidth <= 768) {
-      if (currentScrollY > 40 && currentScrollY > lastScrollY) {
-        header.classList.add('shrink');
-      } else if (currentScrollY < 10) {
-        header.classList.remove('shrink');
-      }
-    }
-    lastScrollY = currentScrollY;
-  }, { passive: true });
 });
 
 // ============================================
