@@ -638,6 +638,37 @@
       if (first) openSample(first.id);
     });
 
+    var pasteBtn = $('#paste-button');
+    if (pasteBtn) {
+      pasteBtn.addEventListener('click', function() {
+        var input = $('#product-input');
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then(function(text) {
+            if (text && text.trim()) {
+              input.value = text.trim();
+              pasteBtn.textContent = '已粘贴';
+              pasteBtn.classList.add('pasted');
+              setTimeout(function() {
+                pasteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>粘贴';
+                pasteBtn.classList.remove('pasted');
+              }, 1500);
+              input.focus();
+            }
+          }).catch(function() {
+            input.focus();
+            try {
+              document.execCommand('paste');
+            } catch (e) {}
+          });
+        } else {
+          input.focus();
+          try {
+            document.execCommand('paste');
+          } catch (e) {}
+        }
+      });
+    }
+
     document.addEventListener('click', function(event) {
       var openButton = event.target.closest('[data-open-product]');
       var viewButton = event.target.closest('[data-view], [data-view-link]');
