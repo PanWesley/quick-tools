@@ -124,6 +124,21 @@ test('reminders accept ciphertext but reject plaintext fields', () => {
   assert.equal(validateReminder({ ...valid.value, encryptedPayload: hiddenPayload }, now).ok, false);
 });
 
+test('reminders accept encryption versions one and two only when envelope versions match', () => {
+  const now = new Date('2026-07-11T10:00:00.000Z');
+  const v2 = {
+    tool: 'time', sourceIdHash: 'a'.repeat(64), notifyAt: '2026-07-11T10:30:00.000Z',
+    encryptedPayload: { v: 2, iv: 'abc', ciphertext: 'def' }, encryptionVersion: 2, revision: 3
+  };
+
+  assert.equal(validateReminder(v2, now).ok, true);
+  assert.equal(validateReminder({ ...v2, encryptionVersion: 3 }, now).ok, false);
+  assert.equal(validateReminder({
+    ...v2,
+    encryptedPayload: { ...v2.encryptedPayload, v: 1 }
+  }, now).ok, false);
+});
+
 test('reminders reject schedules beyond the 31-day server envelope and non-integer revisions', () => {
   const now = new Date('2026-07-11T10:00:00.000Z');
   const reminder = {

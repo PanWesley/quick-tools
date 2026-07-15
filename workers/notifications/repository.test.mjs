@@ -80,13 +80,13 @@ async function createFixture() {
   return { db, repository };
 }
 
-function reminder(revision, notifyAt = DUE) {
+function reminder(revision, notifyAt = DUE, encryptionVersion = 1) {
   return {
     tool: 'time',
     sourceIdHash: 'b'.repeat(64),
     notifyAt,
-    encryptedPayload: { v: 1, iv: 'abc', ciphertext: 'def' },
-    encryptionVersion: 1,
+    encryptedPayload: { v: encryptionVersion, iv: 'abc', ciphertext: 'def' },
+    encryptionVersion,
     revision
   };
 }
@@ -111,6 +111,38 @@ test('real SQL authenticates token hashes and enforces reminder revision semanti
   assert.equal((await repository.cancelReminder('device-1', 'reminder-1', 5, AT)).outcome, 'cancelled');
   const restored = await repository.upsertReminder('device-1', 'reminder-1', reminder(6), AT);
   assert.equal(restored.reminder.status, 'pending');
+});
+
+test('equal revision upgrades encryption only for future reminders in recoverable states', async () => {
+  const { db, repository } = await createFixture();
+  const future = '2026-07-11T10:30:00.000Z';
+
+  await repository.upsertReminder('device-1', 'pending', reminder(4, future, 1), AT);
+  const pending = await repository.upsertReminder('device-1', 'pending', reminder(4, future, 2), AT);
+  assert.equal(pending.outcome, 'updated');
+  assert.equal(pending.reminder.encryptionVersion, 2);
+  assert.equal((await repository.upsertReminder('device-1', 'pending', reminder(4, future, 2), AT)).outcome, 'unchanged');
+  assert.equal((await repository.upsertReminder('device-1', 'pending', reminder(4, future, 1), AT)).outcome, 'unchanged');
+
+  await repository.upsertReminder('device-1', 'retry', reminder(4, future, 1), AT);
+  await repository.upsertReminder('device-1', 'failed', reminder(4, future, 1), AT);
+  db.database.prepare("UPDATE reminders SET status = 'retry' WHERE id = 'retry'").run();
+  db.database.prepare("UPDATE reminders SET status = 'failed' WHERE id = 'failed'").run();
+  assert.equal((await repository.upsertReminder('device-1', 'retry', reminder(4, future, 2), AT)).outcome, 'updated');
+  assert.equal((await repository.upsertReminder('device-1', 'failed', reminder(4, future, 2), AT)).outcome, 'updated');
+
+  await repository.upsertReminder('device-1', 'past', reminder(4, DUE, 1), AT);
+  assert.equal((await repository.upsertReminder('device-1', 'past', reminder(4, DUE, 2), AT)).outcome, 'unchanged');
+
+  for (const status of ['sent', 'expired']) {
+    await repository.upsertReminder('device-1', status, reminder(4, future, 1), AT);
+    db.database.prepare('UPDATE reminders SET status = ? WHERE id = ?').run(status, status);
+    assert.equal((await repository.upsertReminder('device-1', status, reminder(4, future, 2), AT)).outcome, 'unchanged');
+  }
+
+  await repository.upsertReminder('device-1', 'cancelled', reminder(4, future, 1), AT);
+  await repository.cancelReminder('device-1', 'cancelled', 5, AT);
+  assert.equal((await repository.upsertReminder('device-1', 'cancelled', reminder(5, future, 2), AT)).outcome, 'unchanged');
 });
 
 test('real SQL atomically claims the device test-push interval', async () => {

@@ -188,6 +188,12 @@ export function createD1Repository(db) {
               AND reminders.status = 'cancelled'
               AND reminders.last_error_code = 'subscription_disabled'
             )
+            OR (
+              excluded.revision = reminders.revision
+              AND excluded.encryption_version > reminders.encryption_version
+              AND excluded.notify_at > excluded.updated_at
+              AND reminders.status IN ('pending', 'retry', 'failed')
+            )
           )
       `).bind(
         id,
