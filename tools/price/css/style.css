@@ -122,6 +122,11 @@
 html {
   min-height: 100%;
   background: var(--color-page);
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+  touch-action: manipulation;
 }
 
 body {
@@ -136,12 +141,25 @@ body {
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 button,
 input,
 textarea {
   font: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button,
+.nav-item,
+.text-button,
+.brand {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 button:focus-visible,
@@ -453,6 +471,7 @@ input {
   color: var(--color-ink);
   padding: 12px 14px;
   resize: vertical;
+  font-size: 16px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
