@@ -891,6 +891,49 @@ test('stale projection rejection cannot publish an error into a fresh generation
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
 });
 
+test('a never-settling stale projection does not own the fresh generation', async () => {
+  const staleData = { marker: 'stale' };
+  const freshData = { marker: 'fresh' };
+  const projected = [];
+  const synced = [];
+  const model = {
+    buildReminderRecords(data) {
+      projected.push(data.marker);
+      return data === staleData ? new Promise(() => {}) : Promise.resolve([]);
+    }
+  };
+  const sync = {
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: async data => {
+      synced.push(data.marker);
+      return { status: 'ready' };
+    },
+    cancelActiveRequests() {}
+  };
+  const harness = createHarness({
+    model,
+    sync,
+    db: { getAllData: async () => freshData },
+    navigator: { onLine: true }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  harness.hooks.queueNotificationSync(staleData);
+  await settle();
+  harness.document.hidden = true;
+  harness.listeners.window.pagehide();
+  harness.document.hidden = false;
+  harness.listeners.document.visibilitychange();
+  await settle();
+
+  assert.deepEqual(projected, ['stale', 'fresh']);
+  assert.deepEqual(synced, ['fresh']);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
 test('pagehide invalidates a deferred test-notification publication', async () => {
   const timers = createFakeTimers();
   let resolveTest;
@@ -1327,6 +1370,49 @@ test('successful setup survives pagehide without registering again when visible'
 
   assert.equal(registerCalls, 1);
   assert.equal(setupCalls, 1);
+});
+
+test('pagehide detaches a never-settling registration so visible recovery retries', async () => {
+  let registerCalls = 0;
+  let setupCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: async () => ({ status: 'ready' }),
+    cancelActiveRequests() {}
+  };
+  const harness = createHarness({
+    sync,
+    db: { getAllData: async () => ({ marker: 'fresh' }) },
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registerCalls === 1 ? new Promise(() => {}) : registration;
+        },
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+
+  harness.hooks.registerServiceWorker();
+  await settle();
+  harness.document.hidden = true;
+  harness.listeners.window.pagehide();
+  harness.document.hidden = false;
+  harness.listeners.document.visibilitychange();
+  await settle();
+
+  assert.equal(registerCalls, 2);
+  assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
 });
 
 test('coalesces concurrent projections to the latest snapshot', async () => {

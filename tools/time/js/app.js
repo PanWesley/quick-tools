@@ -43,7 +43,7 @@
   var journalSaveTimer = null;
   var swipeState = null;
   var notificationBackendStatus = { status: 'disabled' };
-  var notificationRegistrationPromise = null;
+  var notificationRegistration = null;
   var notificationSetupState = 'idle';
   var notificationSetupOwner = null;
   var notificationRecoveryTimer = null;
@@ -51,7 +51,7 @@
   var notificationLifecycleGeneration = 0;
   var notificationLifecycleActive = !document.hidden;
   var pendingNotificationSnapshot = null;
-  var notificationSyncPromise = null;
+  var notificationSyncOwner = null;
   var missedReminderToastShown = false;
 
   function $(id) {
@@ -172,24 +172,39 @@
       return Promise.resolve(notificationBackendStatus);
     }
     pendingNotificationSnapshot = { data: data, generation: syncGeneration };
-    if (notificationSyncPromise) return notificationSyncPromise;
+    if (notificationSyncOwner && notificationSyncOwner.generation === syncGeneration) {
+      return notificationSyncOwner.promise;
+    }
 
-    function drainLatestSnapshot() {
+    var owner = { generation: syncGeneration, promise: null };
+    notificationSyncOwner = owner;
+
+    function takeLatestSnapshot() {
+      if (!pendingNotificationSnapshot || pendingNotificationSnapshot.generation !== syncGeneration) return null;
       var snapshot = pendingNotificationSnapshot;
       pendingNotificationSnapshot = null;
+      return snapshot;
+    }
+
+    function drainLatestSnapshot() {
+      var snapshot = takeLatestSnapshot();
       if (!snapshot) return Promise.resolve(notificationBackendStatus);
       return syncNotificationSnapshot(snapshot.data, snapshot.generation).then(function(result) {
-        return pendingNotificationSnapshot ? drainLatestSnapshot() : result;
+        return pendingNotificationSnapshot && pendingNotificationSnapshot.generation === syncGeneration
+          ? drainLatestSnapshot()
+          : result;
       });
     }
 
-    notificationSyncPromise = drainLatestSnapshot().then(function(result) {
-      notificationSyncPromise = null;
-      if (pendingNotificationSnapshot) return queueNotificationSync(pendingNotificationSnapshot.data, pendingNotificationSnapshot.generation);
+    owner.promise = drainLatestSnapshot().then(function(result) {
+      if (notificationSyncOwner === owner) notificationSyncOwner = null;
+      if (pendingNotificationSnapshot && pendingNotificationSnapshot.generation === syncGeneration) {
+        return queueNotificationSync(pendingNotificationSnapshot.data, syncGeneration);
+      }
       return result;
     }, function(error) {
-      notificationSyncPromise = null;
-      if (pendingNotificationSnapshot) {
+      if (notificationSyncOwner === owner) notificationSyncOwner = null;
+      if (pendingNotificationSnapshot && pendingNotificationSnapshot.generation === syncGeneration) {
         var snapshot = pendingNotificationSnapshot;
         queueNotificationSync(snapshot.data, snapshot.generation).catch(function(nextError) {
           handleNotificationBackendFailure(nextError, snapshot.generation);
@@ -197,7 +212,7 @@
       }
       throw error;
     });
-    return notificationSyncPromise;
+    return owner.promise;
   }
 
   function syncNotificationsWithoutBlocking(data, generation) {
@@ -1760,7 +1775,7 @@
       if (!NotificationSync || notificationSetupState === 'idle' || notificationSetupOwner) {
         await registerServiceWorker(generation);
       }
-      if (notificationSyncPromise) await notificationSyncPromise;
+      if (notificationSyncOwner) await notificationSyncOwner.promise;
       if (!isNotificationLifecycleCurrent(generation) || notificationSetupState !== 'complete' || !NotificationSync) return;
       var info = getNotificationStatusInfo();
       if (info.status === 'ready') {
@@ -2771,6 +2786,7 @@
     clearNotificationRecoveryTimer();
     notificationLifecycleOperation = null;
     pendingNotificationSnapshot = null;
+    notificationSyncOwner = null;
     cancelNotificationSetup();
     if (NotificationSync && NotificationSync.cancelActiveRequests) {
       NotificationSync.cancelActiveRequests();
@@ -2782,27 +2798,22 @@
   }
 
   function cacheNotificationRegistration(registration) {
-    notificationRegistrationPromise = Promise.resolve(registration);
+    notificationRegistration = registration;
     return registration;
   }
 
-  function getNotificationRegistration() {
-    if (notificationRegistrationPromise) return notificationRegistrationPromise;
+  function getNotificationRegistration(owner) {
+    if (notificationRegistration) return Promise.resolve(notificationRegistration);
     var registrationResult;
     try {
       registrationResult = navigator.serviceWorker.register('/tools/time/sw.js');
     } catch (error) {
       return Promise.reject(error);
     }
-    var registrationPromise = Promise.resolve(registrationResult);
-    var cacheOwner = registrationPromise.then(function(registration) {
+    return Promise.resolve(registrationResult).then(function(registration) {
+      if (owner.cancelled || notificationSetupOwner !== owner) throw createNotificationCancellationError();
       return cacheNotificationRegistration(registration);
-    }, function(error) {
-      if (notificationRegistrationPromise === cacheOwner) notificationRegistrationPromise = null;
-      throw error;
     });
-    notificationRegistrationPromise = cacheOwner;
-    return cacheOwner;
   }
 
   function registerServiceWorker(generation) {
@@ -2825,10 +2836,11 @@
       promise: null
     };
     notificationSetupOwner = owner;
-    var setupWork = getNotificationRegistration().then(function() {
+    var registrationReady = getNotificationRegistration(owner).then(function() {
       if (owner.cancelled) throw createNotificationCancellationError();
-      return withNotificationDeadline(navigator.serviceWorker.ready, 10000, owner);
-    }).then(function(reg) {
+      return navigator.serviceWorker.ready;
+    });
+    var setupWork = withNotificationDeadline(registrationReady, 10000, owner).then(function(reg) {
         if (owner.cancelled) throw createNotificationCancellationError();
         cacheNotificationRegistration(reg);
         if (NotificationService) {

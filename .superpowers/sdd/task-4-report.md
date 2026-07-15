@@ -283,3 +283,37 @@ git diff --check
 ### Commit
 
 `fix(time): own notification lifecycle operations`
+
+## Task 4 Never-settling Owner Fixes
+
+### RED Evidence
+
+```sh
+node --test --test-name-pattern='never-settling stale projection|never-settling registration' tools/time/js/notification-integration.test.js
+# 0 passed, 2 failed
+# fresh projection was never started; visible recovery reused the first unresolved registration
+```
+
+### Implementation
+
+- Replaced the raw projection promise with a generation-owned queue. `pagehide` detaches the stale owner, and completion from an old owner cannot drain or clear a fresh generation.
+- Cache only a successfully resolved service-worker registration. A pending registration belongs to the cancellable setup owner and is detached on lifecycle invalidation.
+- Apply the 10-second setup deadline to the complete `register + ready` boundary, so either promise can time out into the bounded retry path.
+
+### GREEN Evidence
+
+```sh
+node --test --test-name-pattern='never-settling stale projection|never-settling registration' tools/time/js/notification-integration.test.js
+# 2 passed, 0 failed
+
+node --test tools/time/js/notification-integration.test.js tools/time/js/notification-sync.test.js
+# 108 passed, 0 failed
+
+node --check tools/time/js/app.js
+git diff --check
+# all exited 0
+```
+
+### Commit
+
+`fix(time): detach stale notification owners`
