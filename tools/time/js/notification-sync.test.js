@@ -252,6 +252,7 @@ function createHarness(overrides = {}) {
     ? overrides.locks
     : locksFor(indexedDB);
   const calls = [];
+  const encryptedValues = [];
   const storage = {
     writes: [],
     getItem() { return null; },
@@ -277,8 +278,12 @@ function createHarness(overrides = {}) {
     }
   };
   const crypto = {
+    CURRENT_ENCRYPTION_VERSION: 2,
     async getOrCreateKey() { return 'key'; },
-    async encryptPayload() { return { v: 1, iv: 'iv', ciphertext: 'ciphertext' }; },
+    async encryptPayload(_key, value, version) {
+      encryptedValues.push(clone(value));
+      return { v: version, iv: 'iv', ciphertext: 'ciphertext' };
+    },
     base64UrlDecode(value) {
       if (overrides.vapidDecodeError) throw overrides.vapidDecodeError;
       return Uint8Array.from(Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
@@ -310,6 +315,7 @@ function createHarness(overrides = {}) {
     sync,
     indexedDB,
     storage,
+    encryptedValues,
     calls,
     registration,
     getSubscription: () => currentSubscription,
@@ -1074,6 +1080,106 @@ test('same revision preserves retry state and ciphertext refresh while higher re
   assert.equal(queued.body.revision, 5);
   assert.equal(queued.attempts, 1);
   assert.equal(queued.nextRetryAt, 2000);
+});
+
+test('same revision v2 replaces and reactivates a terminal legacy v1 reminder intent', async () => {
+  let online = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    online: () => online,
+    fetch: async (url, init, calls) => {
+      if (/\/reminders\//.test(url)) throw new Error('offline');
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  const base = {
+    id: 'crypto-upgrade', revision: 7, sourceIdHash: '8'.repeat(64),
+    notifyAt: '2026-07-11T15:00:00.000Z'
+  };
+  await harness.sync.sync({ reminders: [{
+    ...base,
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'legacy' }
+  }] });
+  const queue = harness.indexedDB.dump('todayYouxuNotificationDB', 'queue');
+  const legacy = Array.from(queue.values()).find(entry => entry.kind === 'upsert');
+  legacy.attempts = 5;
+  legacy.terminal = true;
+  legacy.nextRetryAt = null;
+  delete legacy.encryptionVersion;
+
+  online = false;
+  await harness.sync.sync({ reminders: [{
+    ...base,
+    encryptedPayload: { v: 2, iv: 'iv', ciphertext: 'portable' }
+  }] });
+
+  const upgraded = Array.from(
+    harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values()
+  ).find(entry => entry.kind === 'upsert');
+  assert.equal(upgraded.version, 7);
+  assert.equal(upgraded.encryptionVersion, 2);
+  assert.equal(upgraded.body.encryptionVersion, 2);
+  assert.equal(upgraded.body.encryptedPayload.ciphertext, 'portable');
+  assert.equal(upgraded.attempts, 0);
+  assert.equal(upgraded.terminal, false);
+  assert.equal(upgraded.nextRetryAt, 1000);
+});
+
+test('newly encrypted reminders and test pushes use v2 with a strict notification payload', async () => {
+  const standard = responsePlan();
+  const submitted = [];
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/reminders/batch') {
+        submitted.push(...JSON.parse(init.body).operations);
+        return batchResponse(init);
+      }
+      if (url === '/api/notifications/test') {
+        submitted.push({ kind: 'test', body: JSON.parse(init.body) });
+        return jsonResponse(204);
+      }
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  const payload = {
+    title: '吃饭',
+    body: '12:20 开始 · 还有 15 分钟',
+    tag: 'task:meal:123',
+    data: { type: 'task', id: 'meal', date: '2026-07-15', url: '/tools/time/#today' },
+    scheduledAt: '2026-07-15T04:05:00.000Z',
+    v: 1
+  };
+  await harness.sync.sync({ reminders: [{
+    id: 'new-v2', revision: 8, sourceIdHash: '9'.repeat(64),
+    notifyAt: '2026-07-15T04:05:00.000Z', payload
+  }] }, '2026-07-15');
+  await harness.sync.sendTest({ title: 'ignored plaintext' });
+
+  const upsert = submitted.find(operation => operation.kind === 'upsert');
+  assert.equal(upsert.reminder.encryptionVersion, 2);
+  assert.equal(upsert.reminder.encryptedPayload.v, 2);
+  const testPush = submitted.find(operation => operation.kind === 'test').body;
+  assert.equal(testPush.encryptionVersion, 2);
+  assert.equal(testPush.encryptedPayload.v, 2);
+  assert.deepEqual(harness.encryptedValues[0], payload);
+  assert.deepEqual(Object.keys(harness.encryptedValues[1]).sort(), [
+    'body', 'data', 'scheduledAt', 'tag', 'title', 'v'
+  ]);
+  assert.deepEqual(harness.encryptedValues[1], {
+    title: '测试提醒',
+    body: '后台提醒已连接',
+    tag: 'today-youxu-test:1000',
+    data: {
+      type: 'task',
+      id: 'notification-test',
+      date: '1970-01-01',
+      url: '/tools/time/#today'
+    },
+    scheduledAt: '1970-01-01T00:00:01.000Z',
+    v: 1
+  });
 });
 
 test('full foreground recovery followed by same-revision sync remains bounded to five attempts', async () => {
