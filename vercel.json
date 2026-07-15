@@ -1,4 +1,10 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "main": false,
+      "*": true
+    }
+  },
   "redirects": [
     {
       "source": "/",
