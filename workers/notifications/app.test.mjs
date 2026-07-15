@@ -329,6 +329,33 @@ test('batch applies mixed reminders only after complete validation', async () =>
   });
 });
 
+test('single and batch reminder routes accept strict v2 ciphertext without plaintext fields', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const v2Reminder = reminder(8);
+  v2Reminder.encryptionVersion = 2;
+  v2Reminder.encryptedPayload = { v: 2, iv: 'abc', ciphertext: 'def' };
+
+  const single = await context.app.fetch(jsonRequest(
+    '/api/notifications/reminders/v2-single', 'PUT', v2Reminder, credentials.deviceToken
+  ), context.env);
+  assert.equal(single.status, 201);
+
+  const batch = await context.app.fetch(jsonRequest('/api/notifications/reminders/batch', 'POST', {
+    operations: [
+      { kind: 'upsert', id: 'v1-batch', reminder: reminder(7) },
+      { kind: 'upsert', id: 'v2-batch', reminder: v2Reminder }
+    ]
+  }, credentials.deviceToken), context.env);
+  assert.equal(batch.status, 200);
+  assert.deepEqual((await batch.json()).results.map((result) => result.id), ['v1-batch', 'v2-batch']);
+
+  const plaintext = await context.app.fetch(jsonRequest(
+    '/api/notifications/reminders/v2-plaintext', 'PUT', { ...v2Reminder, title: '吃饭' }, credentials.deviceToken
+  ), context.env);
+  assert.equal(plaintext.status, 400);
+});
+
 test('batch route supports POST preflight and requires JSON', async () => {
   const context = fixture();
   const credentials = await register(context);

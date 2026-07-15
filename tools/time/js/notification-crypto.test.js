@@ -101,7 +101,7 @@ test('AES-GCM round trips Unicode notification payloads with a fresh IV', async 
   const first = await cryptoApi.encryptPayload(key, value);
   const second = await cryptoApi.encryptPayload(key, value);
 
-  assert.equal(first.v, 1);
+  assert.equal(first.v, 2);
   assert.notEqual(first.iv, second.iv);
   assert.deepEqual(await cryptoApi.decryptPayload(key, first), value);
 });
@@ -112,7 +112,7 @@ test('encrypted payloads reject unsupported versions and tampering', async () =>
   const envelope = await cryptoApi.encryptPayload(key, { title: '喝水', body: '今日打卡 · 健康' });
   const tampered = { ...envelope, ciphertext: envelope.ciphertext.slice(0, -1) + (envelope.ciphertext.endsWith('A') ? 'B' : 'A') };
 
-  await assert.rejects(() => cryptoApi.decryptPayload(key, { ...envelope, v: 2 }), /Unsupported notification payload version/);
+  await assert.rejects(() => cryptoApi.decryptPayload(key, { ...envelope, v: 3 }), /Unsupported notification payload version/);
   await assert.rejects(() => cryptoApi.decryptPayload(key, tampered));
 });
 
@@ -140,16 +140,17 @@ test('decrypt accepts only a plain own-object with exact envelope keys', async (
   }
 });
 
-test('getOrCreateKey stores one non-extractable AES-GCM 256-bit key in IndexedDB', async () => {
+test('getOrCreateKey stores portable raw AES bytes and imports one non-extractable key', async () => {
   const indexedDB = createFakeIndexedDB();
-  const generated = [];
+  const imports = [];
   const cryptoSpy = {
-    getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+    getRandomValues(value) {
+      return webcrypto.getRandomValues(value);
+    },
     subtle: {
-      ...webcrypto.subtle,
-      generateKey(algorithm, extractable, usages) {
-        generated.push({ algorithm, extractable, usages });
-        return webcrypto.subtle.generateKey(algorithm, extractable, usages);
+      importKey(format, keyData, algorithm, extractable, usages) {
+        imports.push({ format, bytes: new Uint8Array(keyData).length, algorithm, extractable, usages });
+        return webcrypto.subtle.importKey(format, keyData, algorithm, extractable, usages);
       }
     }
   };
@@ -159,17 +160,25 @@ test('getOrCreateKey stores one non-extractable AES-GCM 256-bit key in IndexedDB
   const second = await keyStore.getOrCreateKey();
 
   assert.strictEqual(first, second);
-  assert.deepEqual(generated, [{
-    algorithm: { name: 'AES-GCM', length: 256 },
+  assert.deepEqual(imports, [{
+    format: 'raw',
+    bytes: 32,
+    algorithm: { name: 'AES-GCM' },
     extractable: false,
     usages: ['encrypt', 'decrypt']
   }]);
+  assert.equal(first.extractable, false);
   assert.equal(indexedDB.opens[0].name, 'todayYouxuNotificationDB');
   assert.equal(indexedDB.opens[0].version, 1);
-  assert.strictEqual(indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v1'), first);
+  const persisted = indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v2');
+  assert.deepEqual(Object.keys(persisted).sort(), ['algorithm', 'rawKey', 'version']);
+  assert.equal(persisted.version, 2);
+  assert.equal(persisted.algorithm, 'AES-GCM');
+  assert.equal(typeof persisted.rawKey, 'string');
+  assert.equal(cryptoApi.base64UrlDecode(persisted.rawKey).length, 32);
 });
 
-test('concurrent independent key stores return the same persisted winner', async () => {
+test('concurrent independent key stores import the same persisted winner across contexts', async () => {
   const indexedDB = createFakeIndexedDB();
   const cryptoApi = require('./notification-crypto.js');
   const firstStore = cryptoApi.create({ indexedDB, crypto: webcrypto });
@@ -180,6 +189,49 @@ test('concurrent independent key stores return the same persisted winner', async
     secondStore.getOrCreateKey()
   ]);
 
-  assert.strictEqual(first, second);
-  assert.strictEqual(indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v1'), first);
+  const envelope = await cryptoApi.encryptPayload(first, { title: '跨上下文提醒' }, 2);
+  assert.deepEqual(await cryptoApi.decryptPayload(second, envelope), { title: '跨上下文提醒' });
+  assert.equal(indexedDB.dump('todayYouxuNotificationDB', 'secrets').size, 1);
+  assert.equal(cryptoApi.base64UrlDecode(
+    indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v2').rawKey
+  ).length, 32);
+});
+
+test('v2 migration retains and reads a legacy v1 CryptoKey', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const cryptoApi = require('./notification-crypto.js');
+  const store = cryptoApi.create({ indexedDB, crypto: webcrypto });
+  assert.equal(await store.getKey(1), null);
+  const legacy = await webcrypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+  indexedDB.dump('todayYouxuNotificationDB', 'secrets').set('payload-key-v1', legacy);
+
+  await store.getOrCreateKey();
+
+  assert.strictEqual(await store.getKey(1), legacy);
+  assert.ok(await store.getKey(2));
+  assert.strictEqual(indexedDB.dump('todayYouxuNotificationDB', 'secrets').get('payload-key-v1'), legacy);
+});
+
+test('versioned key lookup rejects malformed v2 records and unknown envelope versions', async () => {
+  const indexedDB = createFakeIndexedDB();
+  const cryptoApi = require('./notification-crypto.js');
+  const store = cryptoApi.create({ indexedDB, crypto: webcrypto });
+  assert.equal(await store.getKey(2), null);
+  indexedDB.dump('todayYouxuNotificationDB', 'secrets').set('payload-key-v2', {
+    version: 2,
+    algorithm: 'AES-GCM',
+    rawKey: cryptoApi.base64UrlEncode(new Uint8Array(31))
+  });
+
+  await assert.rejects(() => store.getKey(2), /Notification key record is invalid/);
+  const key = await webcrypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
+  const envelope = await cryptoApi.encryptPayload(key, { title: '提醒' }, 2);
+  await assert.rejects(
+    () => cryptoApi.decryptPayload(key, { ...envelope, v: 3 }),
+    /Unsupported notification payload version/
+  );
 });

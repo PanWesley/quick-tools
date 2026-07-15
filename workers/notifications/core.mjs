@@ -1,5 +1,6 @@
 const DEVICE_TOKEN_BYTES = 32;
 const MAX_BATCH_OPERATIONS = 25;
+const ENCRYPTION_VERSIONS = new Set([1, 2]);
 // The client horizon remains 30 local-calendar days. This 31-day validation
 // envelope only absorbs timezone and DST differences at the HTTP boundary.
 const MAX_REMINDER_DELAY_MS = 31 * 24 * 60 * 60 * 1000;
@@ -140,7 +141,7 @@ export function validateReminder(value, now) {
     return failure('invalid_reminder', 'Reminder time is outside the server validation envelope.');
   }
 
-  if (!Number.isSafeInteger(value.encryptionVersion) || value.encryptionVersion !== 1) {
+  if (!Number.isSafeInteger(value.encryptionVersion) || !ENCRYPTION_VERSIONS.has(value.encryptionVersion)) {
     return failure('invalid_reminder', 'Reminder encryption version is invalid.');
   }
 

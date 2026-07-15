@@ -7,12 +7,19 @@
 - 新增安装级设备身份。`device_id` 对应浏览器/PWA 安装实例而非硬件，清除站点数据或重装后会变化，并为未来 nullable `user_id` 账号绑定保留字段。
 - 通知标题、正文、tag 和点击目标使用 AES-GCM 应用层端到端加密，密钥只保存在 IndexedDB；后端仍可见提醒时间等调度元数据和 PushSubscription。
 - 新增通知同步队列与 pending、unsupported、error 状态。本地任务和习惯 CRUD 与通知后端失败解耦，恢复网络后重试。
+- 新增匿名送达回执，页面和 Service Worker 可跨上下文识别已显示的提醒；回执不含提醒内容并在 48 小时后过期。
+
+### 修复
+- 修复 iOS 主屏 PWA 后台推送只能显示模糊兜底文案的问题：v2 密钥改为可跨页面与 Service Worker 导入的本地 raw key 记录，新提醒自动升级为 v2 加密。
+- 修复打开 App 后补发过时且重复的明确提醒：前台不再补调已经错过的提醒，计时器晚醒超过 60 秒时不显示，并检查后台回执与系统可见通知。
+- 测试提醒现在发送完整、严格校验的加密载荷，通知栏直接显示“测试提醒 / 后台提醒已连接”。
 
 ### 技术与兼容性
 - 后台通知同步使用 Web Locks 串行化页面与 Service Worker 生命周期；缺少原生 `navigator.locks` 时明确显示不支持。
 - Notifications Worker/D1 与 Analytics Worker/D1 隔离，只允许复用无状态基础模块，不共享业务数据库或密钥。
 - 修正旧版说明：Service Worker 只能由 Push 等事件唤醒，不能仅依靠现有 Service Worker 在本地到点后台定时。
 - 本地 Node、Worker 测试和 Wrangler dry-run 已纳入发布验证；生产 Cloudflare D1、VAPID secrets、route、Cron/deploy 与 iOS/iPadOS、Android、桌面真机投递尚需外部验证，当前不声明生产后台提醒已可用。
+- Notifications Worker 兼容加密版本 1 和 2；本次升级不需要 D1 schema migration。发布顺序必须先部署 Worker，再发布 PWA v32 资源。
 
 ## v0.6.0 (2026-07-10)
 

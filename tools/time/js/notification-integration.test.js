@@ -176,6 +176,7 @@ function createHarness(overrides = {}) {
 test('loads cache-busted notification dependencies in strict order', () => {
   const names = [
     'notification-crypto.js',
+    'notification-receipt.js',
     'notification-model.js',
     'notification-sync.js',
     'notification.js',
@@ -185,6 +186,14 @@ test('loads cache-busted notification dependencies in strict order', () => {
   names.slice(1).forEach((name, index) => {
     assert.ok(scriptPosition(names[index]) < scriptPosition(name), names[index] + ' must load before ' + name);
   });
+  [
+    '/tools/time/js/notification-crypto.js?v=2',
+    '/tools/time/js/notification-receipt.js?v=1',
+    '/tools/time/js/notification-model.js?v=2',
+    '/tools/time/js/notification-sync.js?v=4',
+    '/tools/time/js/notification.js?v=7',
+    '/tools/time/js/app.js?v=138'
+  ].forEach(asset => assert.ok(index.includes(asset), asset + ' must use the release version'));
 });
 
 test('projects encrypted reminder records and preserves the exact sync call', () => {

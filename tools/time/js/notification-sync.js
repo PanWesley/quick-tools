@@ -222,6 +222,10 @@
       return leftSignature !== null && leftSignature === reconcileBodySignature(right);
     }
 
+    function encryptionVersionOf(value) {
+      return Number.isSafeInteger(value) ? value : 1;
+    }
+
     async function queueOperation(kind, method, path, body, queueOptions) {
       queueOptions = queueOptions || {};
       var database = await getDatabase();
@@ -254,16 +258,26 @@
             finish({ entry: entry });
             return;
           }
+          var sameRevisionEncryptionIntent = entry && kind === 'upsert' && entry.kind === 'upsert'
+            && Number.isSafeInteger(queueOptions.version) && entry.version === queueOptions.version;
+          if (sameRevisionEncryptionIntent
+            && encryptionVersionOf(entry.encryptionVersion) > encryptionVersionOf(queueOptions.encryptionVersion)) {
+            finish({ entry: entry });
+            return;
+          }
           if (entry) {
             var sameVersion = Number.isSafeInteger(queueOptions.version)
               && Number.isSafeInteger(entry.version) && entry.version === queueOptions.version;
-            var sameIntent = sameVersion || (kind === 'reconcile' && entry.kind === 'reconcile'
+            var sameIntent = (sameVersion && (!sameRevisionEncryptionIntent
+              || encryptionVersionOf(entry.encryptionVersion) === encryptionVersionOf(queueOptions.encryptionVersion)))
+              || (kind === 'reconcile' && entry.kind === 'reconcile'
               && sameReconcileBody(entry.body, body));
             entry.kind = kind;
             entry.method = method;
             entry.path = path;
             entry.body = body || null;
             entry.version = queueOptions.version;
+            entry.encryptionVersion = kind === 'upsert' ? queueOptions.encryptionVersion : undefined;
             entry.generation = Number.isSafeInteger(entry.generation) ? entry.generation + 1 : 1;
             if (!sameIntent) {
               entry.attempts = 0;
@@ -296,6 +310,7 @@
           var sequence = Number.isSafeInteger(values[1]) ? values[1] + 1 : 1;
           entry = createQueueEntry(sequence, kind, method, path, queueOptions.logicalKey || null);
           entry.version = queueOptions.version;
+          entry.encryptionVersion = kind === 'upsert' ? queueOptions.encryptionVersion : undefined;
           entry.body = body || null;
           metaStore.put(sequence, 'queue-sequence');
           queueStore.put(entry, entry.id);
@@ -1022,20 +1037,29 @@
             continue;
           }
           var encryptedPayload = reminder.encryptedPayload;
+          var encryptionVersion = encryptedPayload && encryptedPayload.v;
           if (!encryptedPayload) {
+            encryptionVersion = Number.isSafeInteger(notificationCrypto.CURRENT_ENCRYPTION_VERSION)
+              ? notificationCrypto.CURRENT_ENCRYPTION_VERSION : 2;
             var key = await notificationCrypto.getOrCreateKey();
-            encryptedPayload = await notificationCrypto.encryptPayload(key, reminder.payload || {});
+            encryptedPayload = await notificationCrypto.encryptPayload(
+              key, reminder.payload || {}, encryptionVersion
+            );
+          }
+          if (encryptionVersion !== 1 && encryptionVersion !== 2) {
+            throw new Error('Notification encryption version is invalid');
           }
           await queueOperation('upsert', 'PUT', '/api/notifications/reminders/' + encodeURIComponent(serverId), {
             tool: 'time',
             sourceIdHash: reminder.sourceIdHash,
             notifyAt: reminder.notifyAt,
             encryptedPayload: encryptedPayload,
-            encryptionVersion: 1,
+            encryptionVersion: encryptionVersion,
             revision: reminder.revision
           }, {
             logicalKey: 'reminder:' + serverId,
             version: reminder.revision,
+            encryptionVersion: encryptionVersion,
             requireEnabled: true
           });
         }
@@ -1054,7 +1078,7 @@
       }
     }
 
-    async function sendTestImpl(value) {
+    async function sendTestImpl() {
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
         return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
@@ -1063,13 +1087,28 @@
         return getStatusImpl();
       }
       try {
+        var encryptionVersion = Number.isSafeInteger(notificationCrypto.CURRENT_ENCRYPTION_VERSION)
+          ? notificationCrypto.CURRENT_ENCRYPTION_VERSION : 2;
+        var currentTime = now();
+        var scheduledAt = new Date(currentTime).toISOString();
+        var payload = {
+          title: '测试提醒',
+          body: '后台提醒已连接',
+          tag: 'today-youxu-test:' + currentTime,
+          data: {
+            type: 'task',
+            id: 'notification-test',
+            date: scheduledAt.slice(0, 10),
+            url: '/tools/time/#today'
+          },
+          scheduledAt: scheduledAt,
+          v: 1
+        };
         var key = await notificationCrypto.getOrCreateKey();
-        var encryptedPayload = await notificationCrypto.encryptPayload(key, value || {
-          title: '测试通知', body: '后台提醒已连接'
-        });
+        var encryptedPayload = await notificationCrypto.encryptPayload(key, payload, encryptionVersion);
         var response = await request('POST', '/api/notifications/test', {
           encryptedPayload: encryptedPayload,
-          encryptionVersion: 1
+          encryptionVersion: encryptionVersion
         }, installation, true);
         if (response.status === 401 || response.status === 403) {
           await resetAuthentication();

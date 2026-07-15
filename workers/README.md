@@ -29,6 +29,8 @@ It does not store bill amounts, notes, tag names, or imported file contents. DAU
 
 `device_id` 是浏览器/PWA 安装实例标识，不是硬件 ID；清除站点数据或重装后会变化。`devices.user_id` 与 `reminders.user_id` 保持 nullable，供未来账号绑定。
 
+Notifications Worker 同时接受加密版本 1 和 2。PWA v2 使用可跨页面与 Service Worker 导入的本地密钥记录，未来提醒会在客户端正常同步时自动重加密；密钥和明文均不会上传。本次协议升级不修改 D1 schema，不需要执行新的 D1 migration。
+
 Notifications JSON 请求体上限为 128 KiB；reconcile 每次最多接受 500 条、每个 ID 最多 128 字符的摘要。提醒写入使用已认证的 `POST /api/notifications/reminders/batch`，每批最多 25 个 operations，整个 Notifications JSON body 仍受 128 KiB 上限约束。客户端仍只投影本地日历 30 天，Worker 的 reminder validation 与 reconcile window 使用 `31 * 24h` 包络吸收全球时区和 DST 边界，不扩大客户端 horizon。
 
 ### 本地验证
@@ -82,7 +84,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
    pnpm exec wrangler secret put VAPID_SUBJECT
    ```
 
-5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署。必须先发布 Worker，再发布客户端，以保证客户端批处理请求到达已支持的服务端：
+5. 添加并审阅真实的 `NOTIFICATIONS_DB` binding 与两条生产 routes 后，先 dry-run，再部署。必须先发布支持 `encryptionVersion: 2` 的 Worker，再发布 PWA v32 客户端，以保证客户端批处理请求到达已支持的服务端：
 
    ```bash
    env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy pnpm check
