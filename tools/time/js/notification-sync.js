@@ -460,13 +460,22 @@
       var expected = {};
       snapshots.forEach(function(snapshot) {
         var operation = batchOperation(snapshot);
-        if (operation) expected[operation.id] = true;
+        if (operation) {
+          expected[operation.id] = operation.kind === 'upsert'
+            ? operation.reminder.revision
+            : operation.revision;
+        }
       });
       var seen = {};
       return body.results.every(function(result) {
-        if (!result || typeof result.id !== 'string' || !expected[result.id] || seen[result.id]
+        if (!result || typeof result.id !== 'string' || !Object.prototype.hasOwnProperty.call(expected, result.id) || seen[result.id]
           || !Number.isSafeInteger(result.revision)) return false;
         if (result.outcome !== 'applied' && result.outcome !== 'stale' && result.outcome !== 'unknown') return false;
+        if (result.outcome === 'stale') {
+          if (result.revision < expected[result.id]) return false;
+        } else if (result.revision !== expected[result.id]) {
+          return false;
+        }
         seen[result.id] = true;
         return true;
       });
@@ -545,9 +554,9 @@
 
     async function unsubscribeBrowser() {
       if (!registration || !registration.pushManager || typeof registration.pushManager.getSubscription !== 'function') return true;
-      var current = await registration.pushManager.getSubscription();
+      var current = await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
       if (!current || typeof current.unsubscribe !== 'function') return true;
-      return await current.unsubscribe() !== false;
+      return await withDeadline(current.unsubscribe(), subscriptionTimeoutMs) !== false;
     }
 
     async function retireAuthenticationSubscription(installation) {
@@ -922,9 +931,9 @@
       try {
         subscription = installation.forceNewSubscription
           ? null
-          : await registration.pushManager.getSubscription();
+          : await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
         if (subscription && Number.isFinite(subscription.expirationTime) && subscription.expirationTime <= now()) {
-          if (await subscription.unsubscribe() === false) throw new Error('Expired subscription cleanup failed');
+          if (await withDeadline(subscription.unsubscribe(), subscriptionTimeoutMs) === false) throw new Error('Expired subscription cleanup failed');
           subscription = null;
         }
         if (!subscription) {
@@ -1095,7 +1104,7 @@
         try {
           currentSubscription = registration && registration.pushManager
             && typeof registration.pushManager.getSubscription === 'function'
-            ? await registration.pushManager.getSubscription()
+            ? await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs)
             : null;
         } catch (error) {
           currentSubscription = true;

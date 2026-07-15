@@ -459,6 +459,51 @@ test('PushSubscription timeout produces an error and clears enable pending inten
   assert.equal(installation.enableFailed, true);
 });
 
+test('PushManager subscription lookup timeout releases enable with an error', async () => {
+  const timers = createFakeTimers();
+  const lookup = deferred();
+  const harness = createHarness({
+    subscriptionTimeoutMs: 1,
+    setTimer: timers.setTimer,
+    clearTimer: timers.clearTimer,
+    fetch: responsePlan(),
+    registration: {
+      pushManager: {
+        getSubscription() { return lookup.promise; },
+        subscribe() { throw new Error('subscribe must not run'); }
+      }
+    }
+  });
+
+  const enabling = harness.sync.enable();
+  await waitFor(() => timers.pendingCount === 1);
+  timers.runAll();
+
+  assert.deepEqual(await enabling, { status: 'error' });
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').enablePending, false);
+});
+
+test('expired PushSubscription unsubscribe timeout releases enable with an error', async () => {
+  const timers = createFakeTimers();
+  const expired = subscription('https://push.example/expired-timeout');
+  expired.expirationTime = 1000;
+  expired.unsubscribe = () => new Promise(() => {});
+  const harness = createHarness({
+    subscription: expired,
+    subscriptionTimeoutMs: 1,
+    setTimer: timers.setTimer,
+    clearTimer: timers.clearTimer,
+    fetch: responsePlan()
+  });
+
+  const enabling = harness.sync.enable();
+  await waitFor(() => timers.pendingCount === 1);
+  timers.runAll();
+
+  assert.deepEqual(await enabling, { status: 'error' });
+  assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').enablePending, false);
+});
+
 test('active requests can be cancelled without clearing enable intent', async () => {
   const harness = createHarness({
     fetch(url, init) {
@@ -824,6 +869,53 @@ test('batch acknowledgement completes applied stale and unknown reminder results
   assert.equal(Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
     .some(entry => entry.kind === 'upsert'), false);
   assert.deepEqual(await harness.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
+});
+
+test('batch acknowledgement keeps queued intents when result revisions do not confirm submissions', async () => {
+  const standard = responsePlan();
+  let batchCalls = 0;
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/reminders/batch') {
+        batchCalls += 1;
+        const operations = JSON.parse(init.body).operations;
+        if (batchCalls === 1) {
+          const outcomes = ['applied', 'unknown', 'stale'];
+          return jsonResponse(200, {
+            results: operations.map((operation, index) => ({
+              id: operation.id,
+              outcome: outcomes[index],
+              revision: index === 0 ? operation.reminder.revision - 1
+                : index === 1 ? operation.reminder.revision + 1
+                  : operation.reminder.revision - 1
+            }))
+          });
+        }
+        return batchResponse(init);
+      }
+      return standard(url, init, calls);
+    }
+  });
+
+  await harness.sync.enable();
+  const reminders = ['applied', 'unknown', 'stale'].map((outcome, index) => ({
+    id: `invalid-revision-${outcome}`,
+    revision: index + 1,
+    sourceIdHash: 'v'.repeat(64),
+    notifyAt: '2026-07-11T13:00:00.000Z',
+    encryptedPayload: { v: 1, iv: 'iv', ciphertext: outcome }
+  }));
+  assert.equal((await harness.sync.sync({ reminders })).status, 'pending');
+
+  const queued = Array.from(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').values())
+    .filter(entry => entry.kind === 'upsert');
+  assert.equal(queued.length, 3);
+  assert.ok(queued.every(entry => entry.attempts === 1));
+
+  harness.advance(1000);
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'pending', deviceId: 'device-1' });
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'ready', deviceId: 'device-1' });
+  assert.equal(batchCalls, 2);
 });
 
 test('batch transport falls back to one-entry requests only for a missing or unsupported endpoint', async () => {

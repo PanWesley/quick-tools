@@ -95,3 +95,39 @@ Result: focused review coverage passed 4/4. Full notification-sync coverage pass
 - Batch 404/405 responses now disable batching and send only the first snapshot before any batch response commit, so remaining selected snapshots retain their attempt count and immediate eligibility.
 - Valid 200 batch acknowledgements remove only generation-matching snapshots; a newer generation remains queued.
 - Coverage verifies multibyte UTF-8 payload byte bounds, mixed applied/stale/unknown completion, and immediate two-reminder fallback draining for both 404 and 405.
+
+## Final Review Fix: Push Deadlines and Batch Revisions
+
+### RED Evidence
+
+```sh
+node --test --test-name-pattern='subscription lookup timeout|unsubscribe timeout|result revisions do not confirm' tools/time/js/notification-sync.test.js
+# 0 passed, 3 failed
+```
+
+`getSubscription()` and expired-subscription `unsubscribe()` created no deadline timer. A batch response with valid IDs but unrelated revisions deleted all three submitted intents.
+
+### Implementation
+
+- Applied the existing 20-second subscription deadline to PushManager lookup and every browser unsubscribe path used inside the lifecycle lock.
+- Batch acknowledgement now maps each operation ID to its submitted revision. `applied` and `unknown` must match exactly; `stale` must report a revision at least as new as the submission.
+- Invalid acknowledgement revisions keep the queue entries and normal retry backoff. They are removed only after a valid response.
+
+### GREEN Evidence
+
+```sh
+node --test --test-name-pattern='subscription lookup timeout|unsubscribe timeout|result revisions do not confirm' tools/time/js/notification-sync.test.js
+# 3 passed, 0 failed
+
+node --test tools/time/js/notification-sync.test.js
+node --test tools/time/js/*.test.js
+# client total: 168 passed, 0 failed
+
+node --check tools/time/js/notification-sync.js
+git diff --check
+# all exited 0
+```
+
+### Commit
+
+`fix(time): bound push lifecycle and validate batch revisions`
