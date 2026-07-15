@@ -210,3 +210,63 @@
 ### Concerns
 
 - A real browser integration test that terminates a Worker while it holds or waits for the native Web Lock remains intentionally deferred to Task 8/9. This gate uses the deterministic fake LockManager only and does not claim Worker termination coverage.
+
+## Task 5 Cache and Operations Documentation (2026-07-15)
+
+### RED/GREEN Evidence
+
+- RED: `node --test tools/time/js/service-worker-notification.test.js` exited 1 with 14 passing subtests and one expected cache-consistency failure: the test required `today-youxu-v31` while `sw.js` still declared `today-youxu-v30`.
+- GREEN: the same command exited 0 with 15 passing subtests and 0 failures after the version updates.
+
+### Cache Versions
+
+- `notification-sync.js?v=3`
+- `app.js?v=138`
+- `CACHE_NAME = today-youxu-v31`
+
+Only those two runtime query versions changed. `index.html` and the Service Worker app shell use the same values.
+
+### Operations Documentation
+
+- Authenticated reminder batches use `POST /api/notifications/reminders/batch`.
+- Each batch has at most 25 operations, while the entire Notifications JSON request body remains limited to 128 KiB.
+- The Worker must be published before the client.
+- A visible, online client recovers `pending` work through bounded batches.
+- Production checks must not include real device IDs, tokens, endpoints, keys, or payloads.
+
+### Verification
+
+- `node --test tools/time/js/service-worker-notification.test.js`: passed, 15 tests, 0 failures.
+- `node --check tools/time/sw.js`: passed.
+- `git diff --check`: passed.
+
+### Commit
+
+`docs(time): document bounded background sync`
+
+This report is included in that commit; the resulting commit ID is recorded in the task completion response.
+
+## Final Verification and Browser QA
+
+### Automated Verification
+
+- `node --test tools/time/js/*.test.js`: 165 passed, 0 failed.
+- `node --check` passed for `app.js`, `notification-sync.js`, and `sw.js`.
+- Notifications Worker: 52 passed, 0 failed.
+- `pnpm check`: Wrangler 4.110.0 dry-run succeeded with the Notifications D1 binding.
+- `git diff --check 84376ec..HEAD`: passed.
+
+### Chromium Verification
+
+Ran a clean Chromium context with Service Workers blocked and mocked Notification, PushManager, PushSubscription, and Notifications HTTP responses so an installed production worker could not affect the local origin.
+
+- Desktop viewport: 1440 x 900; mobile viewport: 390 x 844.
+- Notification setup reached `后台提醒已开启` with one registration and one subscription.
+- 84 reminders drained as four bounded batches: `[25, 25, 25, 9]`, followed by reconcile.
+- Holding the native notification lifecycle Web Lock changed the UI immediately to `等待同步`; releasing it recovered to `后台提醒已开启`.
+- Dispatching `pagehide` while a test request was active produced `net::ERR_ABORTED`; visible recovery returned to `后台提醒已开启`.
+- Request inspection found no task title or note plaintext.
+- Desktop and mobile had no horizontal overflow; notification status and action controls did not overlap.
+- Service Worker automated tests separately verify encrypted test payload decryption, duplicate-tag suppression, and date-target sanitization.
+
+Screenshots were captured under `output/playwright/` for local inspection and intentionally excluded from the commit.

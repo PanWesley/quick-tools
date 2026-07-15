@@ -126,6 +126,36 @@ function jsonRequest(path, method, body, token, headers = {}) {
   });
 }
 
+function chunkedJsonRequest(path, chunks, headers = {}) {
+  const encoder = new TextEncoder();
+  const source = {
+    pulls: 0,
+    cancellations: [],
+    index: 0
+  };
+  const stream = new ReadableStream({
+    pull(controller) {
+      source.pulls += 1;
+      const chunk = chunks[source.index++];
+      if (chunk === undefined) controller.close();
+      else if (chunk instanceof Error) controller.error(chunk);
+      else controller.enqueue(typeof chunk === 'string' ? encoder.encode(chunk) : chunk);
+    },
+    cancel(reason) {
+      source.cancellations.push(reason);
+    }
+  });
+  return {
+    request: new Request(`https://billnest.top${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://billnest.top', ...headers },
+      body: stream,
+      duplex: 'half'
+    }),
+    source
+  };
+}
+
 function fixture({ sendPush, now } = {}) {
   const repository = createMemoryRepository();
   const pushes = [];
@@ -264,6 +294,71 @@ test('cancellation requires a newer revision and a newer upsert restores pending
   assert.equal(context.repository.reminders[0].status, 'cancelled');
   assert.equal((await context.app.fetch(jsonRequest(path, 'PUT', reminder(6), credentials.deviceToken), context.env)).status, 200);
   assert.equal(context.repository.reminders[0].status, 'pending');
+});
+
+test('batch applies mixed reminders only after complete validation', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const invalid = await context.app.fetch(jsonRequest('/api/notifications/reminders/batch', 'POST', {
+    operations: [
+      { kind: 'upsert', id: 'one', reminder: reminder(2) },
+      { kind: 'cancel', id: 'invalid', revision: 3.5 }
+    ]
+  }, credentials.deviceToken), context.env);
+  assert.equal(invalid.status, 400);
+  assert.equal(context.repository.reminders.length, 0);
+
+  const existing = await context.app.fetch(jsonRequest('/api/notifications/reminders/stale', 'PUT',
+    reminder(4), credentials.deviceToken), context.env);
+  assert.equal(existing.status, 201);
+
+  const response = await context.app.fetch(jsonRequest('/api/notifications/reminders/batch', 'POST', {
+    operations: [
+      { kind: 'upsert', id: 'stale', reminder: reminder(3) },
+      { kind: 'upsert', id: 'one', reminder: reminder(2) },
+      { kind: 'cancel', id: 'missing', revision: 3 }
+    ]
+  }, credentials.deviceToken), context.env);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    results: [
+      { id: 'stale', outcome: 'stale', revision: 4 },
+      { id: 'one', outcome: 'applied', revision: 2 },
+      { id: 'missing', outcome: 'unknown', revision: 3 }
+    ]
+  });
+});
+
+test('batch route supports POST preflight and requires JSON', async () => {
+  const context = fixture();
+  const credentials = await register(context);
+  const preflight = await context.app.fetch(new Request(
+    'https://billnest.top/api/notifications/reminders/batch',
+    {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://billnest.top',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Authorization, Content-Type'
+      }
+    }
+  ), context.env);
+  assert.equal(preflight.status, 204);
+
+  const response = await context.app.fetch(new Request(
+    'https://billnest.top/api/notifications/reminders/batch',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://billnest.top',
+        Authorization: `Bearer ${credentials.deviceToken}`,
+        'Content-Type': 'text/plain'
+      },
+      body: '{}'
+    }
+  ), context.env);
+  assert.equal(response.status, 415);
+  assert.equal((await response.json()).error.code, 'unsupported_media_type');
 });
 
 test('HTTP disable and re-enable restores only bulk-disabled reminders at the same revision', async () => {
@@ -494,6 +589,75 @@ test('requests reject oversized bodies and origins outside the allowlist', async
   assert.equal(rejected.status, 403);
   assert.equal(rejected.headers.has('access-control-allow-origin'), false);
   assert.equal(repository.devices.length, 0);
+});
+
+test('chunked JSON cancels the reader as soon as its cumulative bytes exceed the limit', async () => {
+  const { app, env } = fixture();
+  const { request, source } = chunkedJsonRequest('/api/notifications/devices', [
+    new Uint8Array(64 * 1024),
+    new Uint8Array((64 * 1024) + 1),
+    new Uint8Array(1)
+  ]);
+
+  const response = await app.fetch(request, env);
+
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, 'payload_too_large');
+  assert.equal(source.pulls, 2);
+  assert.deepEqual(source.cancellations, ['payload_too_large']);
+});
+
+test('chunked JSON at the byte limit parses a multi-byte payload across chunks', async () => {
+  const { app, env, repository } = fixture();
+  const encoder = new TextEncoder();
+  const prefix = '{"platform":"mobile","timezone":"Asia/Shanghai","clientVersion":"v-汉"}';
+  const payload = `${prefix}${' '.repeat((128 * 1024) - encoder.encode(prefix).byteLength)}`;
+  const bytes = encoder.encode(payload);
+  const multiByteStart = encoder.encode('{"platform":"mobile","timezone":"Asia/Shanghai","clientVersion":"v-').byteLength;
+  const { request, source } = chunkedJsonRequest('/api/notifications/devices', [
+    bytes.subarray(0, multiByteStart + 1),
+    bytes.subarray(multiByteStart + 1, multiByteStart + 2),
+    bytes.subarray(multiByteStart + 2)
+  ]);
+
+  const response = await app.fetch(request, env);
+
+  assert.equal(response.status, 201);
+  assert.equal(repository.devices.length, 1);
+  assert.deepEqual(source.cancellations, []);
+});
+
+test('Content-Length rejects oversized JSON without reading past Request prefetch', async () => {
+  const { app, env } = fixture();
+  const { request, source } = chunkedJsonRequest('/api/notifications/devices', [
+    new Uint8Array(1),
+    new Uint8Array(1)
+  ], { 'Content-Length': String((128 * 1024) + 1) });
+
+  const response = await app.fetch(request, env);
+
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error.code, 'payload_too_large');
+  assert.equal(source.pulls, 1);
+  assert.deepEqual(source.cancellations, []);
+});
+
+test('JSON reads report empty bodies, stream errors, and invalid UTF-8 as invalid JSON', async () => {
+  const { app, env } = fixture();
+  const empty = new Request('https://billnest.top/api/notifications/devices', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://billnest.top' }
+  });
+  assert.equal((await app.fetch(empty, env)).status, 400);
+
+  const errored = chunkedJsonRequest('/api/notifications/devices', [new Error('stream failed')]);
+  const erroredResponse = await app.fetch(errored.request, env);
+  assert.equal(erroredResponse.status, 400);
+  assert.equal((await erroredResponse.json()).error.code, 'invalid_json');
+
+  const invalidUtf8 = chunkedJsonRequest('/api/notifications/devices', [new Uint8Array([0x22, 0xff, 0x22])]);
+  const invalidUtf8Response = await app.fetch(invalidUtf8.request, env);
+  assert.equal(invalidUtf8Response.status, 400);
+  assert.equal((await invalidUtf8Response.json()).error.code, 'invalid_json');
 });
 
 function scheduledRepository(claimed) {

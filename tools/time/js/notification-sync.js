@@ -14,6 +14,8 @@
   var RETRY_MAX_MS = 30 * 60 * 1000;
   var MAX_RETRY_ATTEMPTS = 5;
   var MAX_QUEUE_SIZE = 500;
+  var MAX_BATCH_OPERATIONS = 25;
+  var MAX_BATCH_BYTES = 120 * 1024;
 
   function openDatabase(indexedDBApi) {
     return new Promise(function(resolve, reject) {
@@ -132,8 +134,15 @@
     var locks = Object.prototype.hasOwnProperty.call(options, 'locks')
       ? options.locks : root && root.navigator && root.navigator.locks;
     var apiBase = options.apiBase || '';
+    var requestTimeoutMs = options.requestTimeoutMs === undefined ? 15 * 1000 : options.requestTimeoutMs;
+    var subscriptionTimeoutMs = options.subscriptionTimeoutMs === undefined ? 20 * 1000 : options.subscriptionTimeoutMs;
+    var AbortControllerImpl = options.AbortController || root && root.AbortController;
+    var setTimer = options.setTimer || (root && root.setTimeout ? root.setTimeout.bind(root) : setTimeout);
+    var clearTimer = options.clearTimer || (root && root.clearTimeout ? root.clearTimeout.bind(root) : clearTimeout);
     var databasePromise;
     var state = 'disabled';
+    var batchSupported = true;
+    var activeControllers = new Set();
     var randomUUID = options.randomUUID
       || (root && root.crypto && typeof root.crypto.randomUUID === 'function'
         ? root.crypto.randomUUID.bind(root.crypto)
@@ -313,6 +322,24 @@
       return entries.find(function(entry) { return entry.logicalKey === logicalKey; });
     }
 
+    function withDeadline(promise, timeoutMs, onTimeout) {
+      return new Promise(function(resolve, reject) {
+        var timer = setTimer(function() {
+          if (onTimeout) onTimeout();
+          var error = new Error('Notification operation timed out');
+          error.name = 'TimeoutError';
+          reject(error);
+        }, timeoutMs);
+        Promise.resolve(promise).then(function(value) {
+          clearTimer(timer);
+          resolve(value);
+        }, function(error) {
+          clearTimer(timer);
+          reject(error);
+        });
+      });
+    }
+
     async function request(method, path, body, installation, authenticated) {
       if (typeof fetchImpl !== 'function') throw new Error('Fetch is not available');
       var headers = {};
@@ -321,8 +348,18 @@
         if (!installation || !installation.deviceToken) throw new Error('Device credentials are required');
         headers.Authorization = 'Bearer ' + installation.deviceToken;
       }
-      return fetchImpl(apiBase + path, { method: method, headers: headers,
-        body: body === undefined || body === null ? undefined : JSON.stringify(body) });
+      var controller = AbortControllerImpl ? new AbortControllerImpl() : null;
+      if (controller) activeControllers.add(controller);
+      try {
+        var init = { method: method, headers: headers,
+          body: body === undefined || body === null ? undefined : JSON.stringify(body) };
+        if (controller) init.signal = controller.signal;
+        return await withDeadline(fetchImpl(apiBase + path, init), requestTimeoutMs, function() {
+          if (controller) controller.abort();
+        });
+      } finally {
+        if (controller) activeControllers.delete(controller);
+      }
     }
 
     function applyAuthenticationReset(installationStore, queueStore, installation, entries, current) {
@@ -368,6 +405,80 @@
       return { id: 'notification-' + sequence + '-' + randomUUID(), sequence: sequence, generation: 1,
         logicalKey: logicalKey, kind: kind, method: method, path: path, body: null,
         attempts: 0, nextRetryAt: now(), terminal: false };
+    }
+
+    function batchOperation(entry) {
+      var prefix = '/api/notifications/reminders/';
+      if (!entry.path.startsWith(prefix)) return null;
+      var id;
+      try {
+        id = decodeURIComponent(entry.path.slice(prefix.length));
+      } catch (error) {
+        return null;
+      }
+      if (!id) return null;
+      if (entry.kind === 'upsert') return { kind: 'upsert', id: id, reminder: entry.body };
+      if (entry.kind === 'cancel') return { kind: 'cancel', id: id, revision: entry.body && entry.body.revision };
+      return null;
+    }
+
+    function encodedJsonBytes(value) {
+      return encodeURIComponent(value).replace(/%[0-9A-F]{2}|./g, 'x').length;
+    }
+
+    function entryIsEligible(entry, forceRetry) {
+      return !entry.terminal && (forceRetry || entry.nextRetryAt <= now());
+    }
+
+    function selectQueueDrain(entries, forceRetry) {
+      for (var index = 0; index < entries.length; index += 1) {
+        var entry = entries[index];
+        if (!entryIsEligible(entry, forceRetry)) continue;
+        var operation = batchSupported && batchOperation(entry);
+        if (!operation) return { entry: entry };
+
+        var snapshots = [];
+        var operations = [];
+        for (var batchIndex = index; batchIndex < entries.length; batchIndex += 1) {
+          var candidate = entries[batchIndex];
+          if (!entryIsEligible(candidate, forceRetry)) continue;
+          var candidateOperation = batchOperation(candidate);
+          if (!candidateOperation) break;
+          var nextOperations = operations.concat([candidateOperation]);
+          if (encodedJsonBytes(JSON.stringify({ operations: nextOperations })) > MAX_BATCH_BYTES) break;
+          snapshots.push(candidate);
+          operations = nextOperations;
+          if (operations.length === MAX_BATCH_OPERATIONS) break;
+        }
+        return snapshots.length ? { entries: snapshots, operations: operations } : { entry: entry };
+      }
+      return null;
+    }
+
+    function validBatchResults(snapshots, body) {
+      if (!body || !Array.isArray(body.results) || body.results.length !== snapshots.length) return false;
+      var expected = {};
+      snapshots.forEach(function(snapshot) {
+        var operation = batchOperation(snapshot);
+        if (operation) {
+          expected[operation.id] = operation.kind === 'upsert'
+            ? operation.reminder.revision
+            : operation.revision;
+        }
+      });
+      var seen = {};
+      return body.results.every(function(result) {
+        if (!result || typeof result.id !== 'string' || !Object.prototype.hasOwnProperty.call(expected, result.id) || seen[result.id]
+          || !Number.isSafeInteger(result.revision)) return false;
+        if (result.outcome !== 'applied' && result.outcome !== 'stale' && result.outcome !== 'unknown') return false;
+        if (result.outcome === 'stale') {
+          if (result.revision < expected[result.id]) return false;
+        } else if (result.revision !== expected[result.id]) {
+          return false;
+        }
+        seen[result.id] = true;
+        return true;
+      });
     }
 
     function buildServerReminderId(deviceId, reminderId) {
@@ -443,9 +554,9 @@
 
     async function unsubscribeBrowser() {
       if (!registration || !registration.pushManager || typeof registration.pushManager.getSubscription !== 'function') return true;
-      var current = await registration.pushManager.getSubscription();
+      var current = await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
       if (!current || typeof current.unsubscribe !== 'function') return true;
-      return await current.unsubscribe() !== false;
+      return await withDeadline(current.unsubscribe(), subscriptionTimeoutMs) !== false;
     }
 
     async function retireAuthenticationSubscription(installation) {
@@ -547,6 +658,66 @@
       }, 'IndexedDB queue response commit failed');
     }
 
+    async function commitBatchQueueResponse(snapshots, response, body) {
+      var database = await getDatabase();
+      return runTransaction(database, ['queue', 'installation'], 'readwrite', function(transaction, finish) {
+        var queueStore = transaction.objectStore('queue');
+        var installationStore = transaction.objectStore('installation');
+        afterReads([queueStore.getAll(), installationStore.get(INSTALLATION_KEY)], function(values) {
+          var entries = values[0] || [];
+          var installation = values[1] || {};
+          if (response && (response.status === 401 || response.status === 403)) {
+            applyAuthenticationReset(installationStore, queueStore, installation, entries);
+            finish({ authenticationError: true });
+            return;
+          }
+          if (response && response.ok && validBatchResults(snapshots, body)) {
+            snapshots.forEach(function(snapshot) {
+              var current = entries.find(function(entry) { return entry.id === snapshot.id; });
+              if (current && current.generation === snapshot.generation) queueStore.delete(current.id);
+            });
+            finish({ success: true });
+            return;
+          }
+          var failed = false;
+          snapshots.forEach(function(snapshot) {
+            var current = entries.find(function(entry) { return entry.id === snapshot.id; });
+            if (!current || current.generation !== snapshot.generation) return;
+            current.attempts += 1;
+            current.terminal = current.attempts >= MAX_RETRY_ATTEMPTS;
+            current.nextRetryAt = current.terminal
+              ? null
+              : now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, current.attempts - 1));
+            queueStore.put(current, current.id);
+            failed = true;
+          });
+          finish({ failed: failed });
+        });
+      }, 'IndexedDB batch queue response commit failed');
+    }
+
+    async function sendQueueEntry(entry, installation) {
+      var response;
+      try {
+        response = await request(entry.method, entry.path, entry.body, installation, true);
+      } catch (error) {
+        response = null;
+      }
+      return commitQueueResponse(entry, response);
+    }
+
+    async function sendReminderBatch(entries, operations, installation) {
+      var response;
+      var body;
+      try {
+        response = await request('POST', '/api/notifications/reminders/batch', { operations: operations }, installation, true);
+        if (response.ok) body = await response.json();
+      } catch (error) {
+        response = null;
+      }
+      return { response: response, body: body };
+    }
+
     async function flushQueue(forceRetry) {
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
@@ -576,16 +747,20 @@
         return toPublicStatus('pending', installation);
       }
 
-      for (var index = 0; index < entries.length; index += 1) {
-        var entry = entries[index];
-        if (entry.terminal || (!forceRetry && entry.nextRetryAt > now())) continue;
-        var response;
-        try {
-          response = await request(entry.method, entry.path, entry.body, installation, true);
-        } catch (error) {
-          response = null;
+      var selection = selectQueueDrain(entries, forceRetry);
+      if (selection) {
+        var committed;
+        if (selection.entries) {
+          var batch = await sendReminderBatch(selection.entries, selection.operations, installation);
+          if (batch.response && (batch.response.status === 404 || batch.response.status === 405)) {
+            batchSupported = false;
+            committed = await sendQueueEntry(selection.entries[0], installation);
+          } else {
+            committed = await commitBatchQueueResponse(selection.entries, batch.response, batch.body);
+          }
+        } else {
+          committed = await sendQueueEntry(selection.entry, installation);
         }
-        var committed = await commitQueueResponse(entry, response);
         if (committed.authenticationError) {
           state = 'error';
           return toPublicStatus('error');
@@ -598,7 +773,6 @@
           if (await completeDisable()) return toPublicStatus('disabled');
           return toPublicStatus('pending', await getInstallation());
         }
-        if (committed.failed && !committed.terminal) break;
       }
 
       installation = await getInstallation();
@@ -757,16 +931,16 @@
       try {
         subscription = installation.forceNewSubscription
           ? null
-          : await registration.pushManager.getSubscription();
+          : await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
         if (subscription && Number.isFinite(subscription.expirationTime) && subscription.expirationTime <= now()) {
-          if (await subscription.unsubscribe() === false) throw new Error('Expired subscription cleanup failed');
+          if (await withDeadline(subscription.unsubscribe(), subscriptionTimeoutMs) === false) throw new Error('Expired subscription cleanup failed');
           subscription = null;
         }
         if (!subscription) {
-          subscription = await registration.pushManager.subscribe({
+          subscription = await withDeadline(registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: notificationCrypto.base64UrlDecode(config.vapidPublicKey)
-          });
+          }), subscriptionTimeoutMs);
         }
         subscriptionValue = subscription && typeof subscription.toJSON === 'function'
           ? subscription.toJSON()
@@ -930,7 +1104,7 @@
         try {
           currentSubscription = registration && registration.pushManager
             && typeof registration.pushManager.getSubscription === 'function'
-            ? await registration.pushManager.getSubscription()
+            ? await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs)
             : null;
         } catch (error) {
           currentSubscription = true;
@@ -972,7 +1146,11 @@
     function runLocked(operation, args) {
       if (!hasLocks()) return Promise.resolve(toPublicStatus('unsupported'));
       return Promise.resolve().then(function() {
-        return locks.request(LIFECYCLE_LOCK, function() {
+        return locks.request(LIFECYCLE_LOCK, { ifAvailable: true }, function(lock) {
+          if (!lock) {
+            state = 'pending';
+            return toPublicStatus('pending');
+          }
           return operation.apply(null, args);
         });
       }).catch(function() {
@@ -989,6 +1167,15 @@
       });
     }
 
+    function cancelActiveRequests() {
+      activeControllers.forEach(function(controller) {
+        try {
+          controller.abort();
+        } catch (error) {}
+      });
+      activeControllers.clear();
+    }
+
     return {
       setup: function() { return runLocked(setupImpl, arguments); },
       getStatus: getStatus,
@@ -997,7 +1184,8 @@
       sync: function() { return runLocked(syncImpl, arguments); },
       sendTest: function() { return runLocked(sendTestImpl, arguments); },
       handleOnline: function() { return runLocked(handleOnlineImpl, arguments); },
-      handleForeground: function() { return runLocked(handleOnlineImpl, arguments); }
+      handleForeground: function() { return runLocked(handleOnlineImpl, arguments); },
+      cancelActiveRequests: cancelActiveRequests
     };
   }
 
