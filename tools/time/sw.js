@@ -3,7 +3,8 @@
  * Cache-first app shell + notification support for the standalone time tool.
  */
 
-importScripts('/tools/time/js/notification-crypto.js?v=1');
+importScripts('/tools/time/js/notification-crypto.js?v=2');
+importScripts('/tools/time/js/notification-receipt.js?v=1');
 
 const CACHE_NAME = 'today-youxu-v31';
 const DEFAULT_TARGET_URL = '/tools/time/#today';
@@ -14,6 +15,7 @@ const GENERIC_NOTIFICATION = {
   tag: GENERIC_NOTIFICATION_TAG,
   data: { url: DEFAULT_TARGET_URL }
 };
+const NOTIFICATION_RECEIPTS = self.TodayYouxuNotificationReceipt.create();
 const APP_SHELL = [
   '/tools/time/',
   '/tools/time/index.html',
@@ -24,7 +26,8 @@ const APP_SHELL = [
   '/tools/time/js/export.js?v=135',
   '/tools/time/js/import-utils.js?v=135',
   '/tools/time/js/db.js?v=135',
-  '/tools/time/js/notification-crypto.js?v=1',
+  '/tools/time/js/notification-crypto.js?v=2',
+  '/tools/time/js/notification-receipt.js?v=1',
   '/tools/time/js/notification-model.js?v=2',
   '/tools/time/js/notification-sync.js?v=3',
   '/tools/time/js/notification.js?v=6',
@@ -81,6 +84,16 @@ function validateNotificationPayload(payload) {
   return payload;
 }
 
+function validateEncryptedEnvelope(envelope) {
+  if (!hasExactKeys(envelope, ['v', 'iv', 'ciphertext'])
+    || ![1, 2].includes(envelope.v)
+    || !isBoundedString(envelope.iv, 1, 128)
+    || !isBoundedString(envelope.ciphertext, 1, 16384)) {
+    throw new Error('Invalid encrypted notification envelope');
+  }
+  return envelope;
+}
+
 function notificationOptions(payload) {
   return {
     body: payload.body,
@@ -96,24 +109,55 @@ async function showNotificationOnce(payload) {
   try {
     visible = await self.registration.getNotifications({ tag: payload.tag });
   } catch (error) {}
-  if (visible.length) return;
+  if (visible.length) return false;
   await self.registration.showNotification(payload.title, notificationOptions(payload));
+  return true;
 }
 
 async function handlePush(event) {
-  let payload = GENERIC_NOTIFICATION;
-  try {
-    if (!event.data) throw new Error('Push data is unavailable');
-    const envelope = JSON.parse(event.data.text());
-    const key = await self.TodayYouxuNotificationCrypto.getKey();
-    if (!key) throw new Error('Notification key is unavailable');
-    payload = validateNotificationPayload(
-      await self.TodayYouxuNotificationCrypto.decryptPayload(key, envelope)
-    );
-  } catch (error) {
-    payload = GENERIC_NOTIFICATION;
+  if (!event.data) {
+    await NOTIFICATION_RECEIPTS.recordFailure('missing_data');
+    await showNotificationOnce(GENERIC_NOTIFICATION);
+    return;
   }
+
+  let envelope;
+  try {
+    envelope = validateEncryptedEnvelope(JSON.parse(event.data.text()));
+  } catch (error) {
+    await NOTIFICATION_RECEIPTS.recordFailure('invalid_envelope');
+    await showNotificationOnce(GENERIC_NOTIFICATION);
+    return;
+  }
+
+  const key = await self.TodayYouxuNotificationCrypto.getKey(envelope.v);
+  if (!key) {
+    await NOTIFICATION_RECEIPTS.recordFailure('missing_key');
+    await showNotificationOnce(GENERIC_NOTIFICATION);
+    return;
+  }
+
+  let decrypted;
+  try {
+    decrypted = await self.TodayYouxuNotificationCrypto.decryptPayload(key, envelope);
+  } catch (error) {
+    await NOTIFICATION_RECEIPTS.recordFailure('decrypt_failed');
+    await showNotificationOnce(GENERIC_NOTIFICATION);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = validateNotificationPayload(decrypted);
+  } catch (error) {
+    await NOTIFICATION_RECEIPTS.recordFailure('invalid_payload');
+    await showNotificationOnce(GENERIC_NOTIFICATION);
+    return;
+  }
+
   await showNotificationOnce(payload);
+  await NOTIFICATION_RECEIPTS.clearFailure();
+  await NOTIFICATION_RECEIPTS.record(payload.tag, Date.parse(payload.scheduledAt));
 }
 
 function safeTargetUrl(value) {
