@@ -245,3 +245,28 @@ Only those two runtime query versions changed. `index.html` and the Service Work
 `docs(time): document bounded background sync`
 
 This report is included in that commit; the resulting commit ID is recorded in the task completion response.
+
+## Final Verification and Browser QA
+
+### Automated Verification
+
+- `node --test tools/time/js/*.test.js`: 165 passed, 0 failed.
+- `node --check` passed for `app.js`, `notification-sync.js`, and `sw.js`.
+- Notifications Worker: 52 passed, 0 failed.
+- `pnpm check`: Wrangler 4.110.0 dry-run succeeded with the Notifications D1 binding.
+- `git diff --check 84376ec..HEAD`: passed.
+
+### Chromium Verification
+
+Ran a clean Chromium context with Service Workers blocked and mocked Notification, PushManager, PushSubscription, and Notifications HTTP responses so an installed production worker could not affect the local origin.
+
+- Desktop viewport: 1440 x 900; mobile viewport: 390 x 844.
+- Notification setup reached `后台提醒已开启` with one registration and one subscription.
+- 84 reminders drained as four bounded batches: `[25, 25, 25, 9]`, followed by reconcile.
+- Holding the native notification lifecycle Web Lock changed the UI immediately to `等待同步`; releasing it recovered to `后台提醒已开启`.
+- Dispatching `pagehide` while a test request was active produced `net::ERR_ABORTED`; visible recovery returned to `后台提醒已开启`.
+- Request inspection found no task title or note plaintext.
+- Desktop and mobile had no horizontal overflow; notification status and action controls did not overlap.
+- Service Worker automated tests separately verify encrypted test payload decryption, duplicate-tag suppression, and date-target sanitization.
+
+Screenshots were captured under `output/playwright/` for local inspection and intentionally excluded from the commit.
