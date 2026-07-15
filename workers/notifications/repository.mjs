@@ -187,6 +187,7 @@ export function createD1Repository(db) {
               excluded.revision = reminders.revision
               AND reminders.status = 'cancelled'
               AND reminders.last_error_code = 'subscription_disabled'
+              AND excluded.encryption_version >= reminders.encryption_version
             )
             OR (
               excluded.revision = reminders.revision

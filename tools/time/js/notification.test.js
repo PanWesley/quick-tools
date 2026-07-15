@@ -214,8 +214,8 @@ test('successful foreground delivery records the shared notification receipt', a
     has: async () => false,
     async record(tag, scheduledAt) { recorded.push([tag, scheduledAt]); return true; }
   });
-  const notifyTime = new Date(2026, 6, 11, 9, 55);
-  const dueTime = new Date(2026, 6, 11, 10, 0);
+  const notifyTime = new Date();
+  const dueTime = new Date(notifyTime.getTime() + 5 * 60 * 1000);
   await service.fireNotification('task', {
     id: 'foreground', title: '前台提醒', date: '2026-07-11', startTime: '10:00'
   }, notifyTime, dueTime);
@@ -225,6 +225,51 @@ test('successful foreground delivery records the shared notification receipt', a
     model.buildNotificationTag('task', 'foreground', dueTime),
     notifyTime.getTime()
   ]]);
+});
+
+test('foreground delivery rechecks the 60-second grace after asynchronous deduplication', async (t) => {
+  installBrowserGlobals();
+  const originalDate = global.Date;
+  const originalNotification = global.Notification;
+  let shown = 0;
+  let clock = new originalDate(2026, 6, 11, 10, 0).getTime();
+  global.Date = class extends originalDate {
+    constructor(...args) { super(...(args.length ? args : [clock])); }
+    static now() { return clock; }
+  };
+  global.Notification = function Notification() { shown += 1; };
+  global.Notification.permission = 'granted';
+  global.window.Notification = global.Notification;
+  t.after(() => {
+    global.Date = originalDate;
+    global.Notification = originalNotification;
+    global.window.Notification = originalNotification;
+  });
+
+  const service = loadServiceWithReceipt({
+    async has() {
+      clock += 61 * 1000;
+      return false;
+    },
+    record: async () => true
+  });
+  const notifyTime = new global.Date(clock);
+  await service.fireNotification('task', {
+    id: 'slow-dedup', title: '延迟检查', date: '2026-07-11'
+  }, notifyTime, new global.Date(clock + 5 * 60 * 1000));
+
+  assert.equal(shown, 0);
+});
+
+test('foreground notification startup clears expired shared receipts', async () => {
+  let cleanupCalls = 0;
+  loadServiceWithReceipt({
+    async clearExpired() { cleanupCalls += 1; return true; },
+    has: async () => false,
+    record: async () => true
+  });
+  await Promise.resolve();
+  assert.equal(cleanupCalls, 1);
 });
 
 test('foreground timer and encrypted push payload use the same notification tag without renotify', async (t) => {

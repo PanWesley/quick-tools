@@ -20,6 +20,9 @@
   var deliveryReceipts = NotificationReceipt && typeof NotificationReceipt.create === 'function'
     ? NotificationReceipt.create()
     : null;
+  if (deliveryReceipts && typeof deliveryReceipts.clearExpired === 'function') {
+    Promise.resolve(deliveryReceipts.clearExpired()).catch(function() {});
+  }
 
   function getStoredState() {
     try {
@@ -201,6 +204,7 @@
       markNotified(logKey);
       return;
     }
+    if (Date.now() - notifyTime.getTime() > DELIVERY_GRACE_MS) return;
     try {
       await showNotification(copy.title, {
         body: copy.body,

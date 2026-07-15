@@ -31,10 +31,13 @@ async function createHarness(options = {}) {
   const imported = [];
   const consoleCalls = [];
   const cacheCalls = [];
+  const deletedCaches = [];
   const fetchCalls = [];
   const receiptCalls = [];
   const keyVersions = [];
   let showAttempts = 0;
+  let receiptCleanupCalls = 0;
+  const deliveredTags = new Set(options.receiptTags || []);
   const key = options.key === undefined
     ? await webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
     : options.key;
@@ -64,8 +67,8 @@ async function createHarness(options = {}) {
     addEventListener(type, callback) { listeners[type] = callback; }
   };
   const caches = {
-    async keys() { return []; },
-    async delete() {},
+    async keys() { return options.cacheNames || []; },
+    async delete(name) { deletedCaches.push(name); return true; },
     async match(request, matchOptions) {
       cacheCalls.push({ operation: 'match', request, options: matchOptions });
       return options.cachedResponse;
@@ -90,16 +93,25 @@ async function createHarness(options = {}) {
         self.TodayYouxuNotificationCrypto = {
           async getKey(version) {
             keyVersions.push(version);
+            if (options.getKeyError) throw options.getKeyError;
             return key;
           },
+          base64UrlDecode: cryptoApi.base64UrlDecode,
           decryptPayload: cryptoApi.decryptPayload
         };
       }
       if (url.includes('notification-receipt')) {
         self.TodayYouxuNotificationReceipt = {
+          CACHE_NAME: 'today-youxu-notification-receipts-v1',
           create() {
             return {
-              async record(tag, scheduledAt) { receiptCalls.push(['record', tag, scheduledAt]); return true; },
+              async clearExpired() { receiptCleanupCalls += 1; return true; },
+              async has(tag) { receiptCalls.push(['has', tag]); return deliveredTags.has(tag); },
+              async record(tag, scheduledAt) {
+                receiptCalls.push(['record', tag, scheduledAt]);
+                deliveredTags.add(tag);
+                return true;
+              },
               async recordFailure(code) { receiptCalls.push(['recordFailure', code]); return true; },
               async clearFailure() { receiptCalls.push(['clearFailure']); return true; }
             };
@@ -144,10 +156,12 @@ async function createHarness(options = {}) {
     imported,
     consoleCalls,
     cacheCalls,
+    deletedCaches,
     fetchCalls,
     receiptCalls,
     keyVersions,
     get showAttempts() { return showAttempts; },
+    get receiptCleanupCalls() { return receiptCleanupCalls; },
     dispatch,
     listeners
   };
@@ -170,6 +184,7 @@ test('push decrypts a strict envelope and shows one restrained notification', as
     '/tools/time/js/notification-receipt.js?v=1'
   ]);
   assert.deepEqual(harness.keyVersions, [2]);
+  assert.equal(harness.receiptCleanupCalls, 1);
   assert.equal(harness.shown.length, 1);
   assert.equal(harness.shown[0].title, VALID_PAYLOAD.title);
   assert.deepEqual(JSON.parse(JSON.stringify(harness.shown[0].options)), {
@@ -182,6 +197,7 @@ test('push decrypts a strict envelope and shows one restrained notification', as
   assert.equal('renotify' in harness.shown[0].options, false);
   assert.equal('requireInteraction' in harness.shown[0].options, false);
   assert.deepEqual(harness.receiptCalls, [
+    ['has', VALID_PAYLOAD.tag],
     ['clearFailure'],
     ['record', VALID_PAYLOAD.tag, Date.parse(VALID_PAYLOAD.scheduledAt)]
   ]);
@@ -215,6 +231,32 @@ test('an already visible notification with the same tag is not shown again', asy
   assert.equal(harness.shown.length, 0);
 });
 
+test('a background receipt suppresses a repeated push after the system banner is gone', async () => {
+  const harness = await createHarness({ receiptTags: [VALID_PAYLOAD.tag] });
+  const envelope = await cryptoApi.encryptPayload(harness.key, VALID_PAYLOAD);
+
+  await push(harness, JSON.stringify(envelope));
+
+  assert.equal(harness.shown.length, 0);
+  assert.deepEqual(harness.receiptCalls, [
+    ['has', VALID_PAYLOAD.tag],
+    ['clearFailure'],
+    ['record', VALID_PAYLOAD.tag, Date.parse(VALID_PAYLOAD.scheduledAt)]
+  ]);
+});
+
+test('key storage errors use the missing-key fallback instead of rejecting push', async () => {
+  const harness = await createHarness({ getKeyError: new Error('IndexedDB unavailable') });
+  const envelope = await cryptoApi.encryptPayload(harness.key, VALID_PAYLOAD);
+
+  await push(harness, JSON.stringify(envelope));
+
+  assert.equal(harness.shown[0].title, '你有一项提醒');
+  assert.deepEqual(harness.receiptCalls.filter(call => call[0] === 'recordFailure'), [
+    ['recordFailure', 'missing_key']
+  ]);
+});
+
 test('malformed JSON and envelopes with extra keys use the generic fallback', async () => {
   const malformed = await createHarness();
   await push(malformed, '{not-json');
@@ -226,6 +268,19 @@ test('malformed JSON and envelopes with extra keys use the generic fallback', as
   await push(extra, JSON.stringify({ ...envelope, extra: 'reject me' }));
   assert.equal(extra.shown[0].title, '你有一项提醒');
   assert.deepEqual(extra.receiptCalls, [['recordFailure', 'invalid_envelope']]);
+});
+
+test('invalid base64url and IV length are classified as invalid envelopes', async () => {
+  for (const envelope of [
+    { v: 2, iv: 'not+base64', ciphertext: 'validlookingvalue1234' },
+    { v: 2, iv: 'c2hvcnQ', ciphertext: 'validlookingvalue1234' }
+  ]) {
+    const harness = await createHarness();
+    await push(harness, JSON.stringify(envelope));
+    assert.deepEqual(harness.receiptCalls.filter(call => call[0] === 'recordFailure'), [
+      ['recordFailure', 'invalid_envelope']
+    ]);
+  }
 });
 
 test('push failure diagnostics distinguish missing data, decrypt failure, and invalid plaintext', async () => {
@@ -495,14 +550,14 @@ test('app source renders stable notification attributes and owns message targeti
 });
 
 test('service worker cache matches current index assets and notification API is network-only', async () => {
-  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v31['"]/);
+  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v32['"]/);
   [
     '/tools/time/css/style.css?v=137',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
-    '/tools/time/js/notification-sync.js?v=3',
-    '/tools/time/js/notification.js?v=6',
+    '/tools/time/js/notification-sync.js?v=4',
+    '/tools/time/js/notification.js?v=7',
     '/tools/time/js/app.js?v=138'
   ].forEach(asset => {
     assert.ok(indexSource.includes(asset), asset + ' must be referenced by index');
@@ -523,6 +578,22 @@ test('service worker cache matches current index assets and notification API is 
   assert.equal(harness.fetchCalls.length, 4);
   assert.equal(harness.cacheCalls.length, 0);
   assert.match(swSource, /isNotificationApiPath\(url\.pathname\)[\s\S]*event\.respondWith\(fetch\(request\)\)/);
+});
+
+test('service worker activation keeps delivery receipts while removing old app shells', async () => {
+  const harness = await createHarness({
+    cacheNames: [
+      'today-youxu-v31',
+      'today-youxu-v32',
+      'today-youxu-notification-receipts-v1',
+      'unrelated-cache'
+    ]
+  });
+
+  await harness.dispatch('activate', {});
+
+  assert.deepEqual(harness.deletedCaches, ['today-youxu-v31']);
+  assert.equal(harness.receiptCleanupCalls, 1);
 });
 
 test('crypto helper exposes read-only key access without regressing getOrCreateKey', () => {

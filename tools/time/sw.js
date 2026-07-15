@@ -6,7 +6,7 @@
 importScripts('/tools/time/js/notification-crypto.js?v=2');
 importScripts('/tools/time/js/notification-receipt.js?v=1');
 
-const CACHE_NAME = 'today-youxu-v31';
+const CACHE_NAME = 'today-youxu-v32';
 const DEFAULT_TARGET_URL = '/tools/time/#today';
 const GENERIC_NOTIFICATION_TAG = 'today-youxu-generic-reminder';
 const GENERIC_NOTIFICATION = {
@@ -16,6 +16,7 @@ const GENERIC_NOTIFICATION = {
   data: { url: DEFAULT_TARGET_URL }
 };
 const NOTIFICATION_RECEIPTS = self.TodayYouxuNotificationReceipt.create();
+const NOTIFICATION_RECEIPT_CACHE_NAME = self.TodayYouxuNotificationReceipt.CACHE_NAME;
 const APP_SHELL = [
   '/tools/time/',
   '/tools/time/index.html',
@@ -29,8 +30,8 @@ const APP_SHELL = [
   '/tools/time/js/notification-crypto.js?v=2',
   '/tools/time/js/notification-receipt.js?v=1',
   '/tools/time/js/notification-model.js?v=2',
-  '/tools/time/js/notification-sync.js?v=3',
-  '/tools/time/js/notification.js?v=6',
+  '/tools/time/js/notification-sync.js?v=4',
+  '/tools/time/js/notification.js?v=7',
   '/tools/time/js/app.js?v=138',
   '/shared/css/pwa.css?v=3',
   '/shared/js/app-update.js?v=1',
@@ -91,6 +92,13 @@ function validateEncryptedEnvelope(envelope) {
     || !isBoundedString(envelope.ciphertext, 1, 16384)) {
     throw new Error('Invalid encrypted notification envelope');
   }
+  try {
+    const iv = self.TodayYouxuNotificationCrypto.base64UrlDecode(envelope.iv);
+    const ciphertext = self.TodayYouxuNotificationCrypto.base64UrlDecode(envelope.ciphertext);
+    if (iv.length !== 12 || ciphertext.length < 16) throw new Error('Invalid encrypted notification bytes');
+  } catch (error) {
+    throw new Error('Invalid encrypted notification envelope');
+  }
   return envelope;
 }
 
@@ -105,6 +113,7 @@ function notificationOptions(payload) {
 }
 
 async function showNotificationOnce(payload) {
+  if (payload.tag !== GENERIC_NOTIFICATION_TAG && await NOTIFICATION_RECEIPTS.has(payload.tag)) return false;
   let visible = [];
   try {
     visible = await self.registration.getNotifications({ tag: payload.tag });
@@ -115,6 +124,7 @@ async function showNotificationOnce(payload) {
 }
 
 async function handlePush(event) {
+  await NOTIFICATION_RECEIPTS.clearExpired();
   if (!event.data) {
     await NOTIFICATION_RECEIPTS.recordFailure('missing_data');
     await showNotificationOnce(GENERIC_NOTIFICATION);
@@ -130,7 +140,12 @@ async function handlePush(event) {
     return;
   }
 
-  const key = await self.TodayYouxuNotificationCrypto.getKey(envelope.v);
+  let key;
+  try {
+    key = await self.TodayYouxuNotificationCrypto.getKey(envelope.v);
+  } catch (error) {
+    key = null;
+  }
   if (!key) {
     await NOTIFICATION_RECEIPTS.recordFailure('missing_key');
     await showNotificationOnce(GENERIC_NOTIFICATION);
@@ -196,10 +211,15 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((names) => Promise.all(
-      names.filter((name) => name.startsWith('today-youxu-') && name !== CACHE_NAME)
-        .map((name) => caches.delete(name))
-    ))
+    Promise.all([
+      NOTIFICATION_RECEIPTS.clearExpired(),
+      caches.keys().then((names) => Promise.all(
+        names.filter((name) => name.startsWith('today-youxu-')
+          && name !== CACHE_NAME
+          && name !== NOTIFICATION_RECEIPT_CACHE_NAME)
+          .map((name) => caches.delete(name))
+      ))
+    ])
   );
   self.clients.claim();
 });

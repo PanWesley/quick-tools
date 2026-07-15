@@ -327,6 +327,20 @@ test('same revision restores only reminders cancelled by bulk subscription disab
   assert.equal(explicit.outcome, 'unchanged');
   assert.equal(explicit.reminder.status, 'cancelled');
   assert.notEqual(explicit.reminder.lastErrorCode, 'subscription_disabled');
+
+  await repository.upsertReminder('device-1', 'bulk-v2', reminder(9, DUE, 2), AT);
+  await repository.removeSubscriptionAndCancelReminders('device-1', '2026-07-11T10:05:00.000Z');
+  const downgrade = await repository.upsertReminder(
+    'device-1', 'bulk-v2', reminder(9, DUE, 1), '2026-07-11T10:06:00.000Z'
+  );
+  assert.equal(downgrade.outcome, 'unchanged');
+  assert.equal(downgrade.reminder.status, 'cancelled');
+  assert.equal(downgrade.reminder.encryptionVersion, 2);
+  const v2Restore = await repository.upsertReminder(
+    'device-1', 'bulk-v2', reminder(9, DUE, 2), '2026-07-11T10:07:00.000Z'
+  );
+  assert.equal(v2Restore.outcome, 'updated');
+  assert.equal(v2Restore.reminder.encryptionVersion, 2);
 });
 
 test('empty reconcile clears bulk-disable restoration without reviving an equal revision', async () => {

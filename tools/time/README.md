@@ -50,7 +50,8 @@
 - 本地数据库：IndexedDB `todayYouxuDB`。
 - 本地偏好：复用站点主题偏好 `quick-tools-theme`。
 - 默认不需要账号；后台提醒使用浏览器/PWA 安装实例的安装级 `device_id`，不是硬件 ID。正常刷新、升级和重启后保持稳定，清除站点数据或重装后会变化；未来可通过 nullable `user_id` 绑定账号。
-- 通知标题、正文、tag 和点击目标通过 AES-GCM 在应用层端到端加密，密钥只保存在页面与 Service Worker 共用的 IndexedDB。通知后端仍可见调度所需元数据（例如安装级设备 ID、提醒时间和版本）以及 PushSubscription endpoint、`p256dh`、`auth`。
+- 通知标题、正文、tag 和点击目标通过 AES-GCM 在应用层端到端加密，密钥只保存在页面与 Service Worker 共用的 IndexedDB。v2 密钥以本地 raw key 记录保存，页面和 Service Worker 各自导入为不可导出的 AES-GCM `CryptoKey`；迁移期间保留旧 v1 key，未来提醒会在正常同步时自动重加密，无需用户重新开启提醒。通知后端仍可见调度所需元数据（例如安装级设备 ID、提醒时间和版本）以及 PushSubscription endpoint、`p256dh`、`auth`。
+- 页面与 Service Worker 使用不含提醒内容的匿名送达回执去重；缓存键只包含通知 tag 的 SHA-256，值只包含显示时间和计划时间，48 小时后过期。前台计时器晚于计划时间 60 秒时放弃横幅，避免打开 App 后补发过时提醒。
 - 本地任务、习惯、日记和备注不因通知后端不可用而回滚或阻塞；通知同步独立排队并在网络恢复、启动或回到前台后重试。设置页分别显示等待同步、当前设备不支持和需要重新授权等状态。
 - Notifications Worker、Notifications D1、VAPID 密钥和路由与 Analytics Worker/D1 隔离。服务间可以复用无状态 HTTP、校验等基础模块，但不共享业务数据库或业务密钥。
 - 页面接入站点级匿名统计脚本，仅用于工具打开、路由和活跃时长等匿名指标；用户输入内容不进入统计事件。
@@ -60,6 +61,7 @@
 
 - 服务端使用独立 Notifications D1 和每分钟一次的 Cloudflare Cron 调度；到点提醒的误差目标是一分钟以内，不承诺秒级。
 - 到期超过 15 分钟的服务端提醒标记为过期，不补发系统横幅；回到应用后只可显示应用内错过摘要。
+- 若系统显示“你有一项提醒 / 打开今日有序查看详情”，说明 Web Push 已唤醒 Service Worker，但客户端缺少数据、密钥读取、解密或载荷校验失败；这不是 Notifications Worker 未发送的直接证据。客户端只保存固定失败类别，不保存密文或提醒内容。
 - 后台同步要求原生 `navigator.locks`。缺少 Web Locks 时返回“当前设备不支持”，不使用存在并发竞态的降级实现。
 - iOS/iPadOS 需要支持 Web Push 的系统版本并从主屏幕安装后使用；Android 和桌面端需要浏览器/PWA 上下文实际提供上述 API。普通标签页、隐私模式、企业策略、通知权限、系统省电策略和浏览器实现均可能限制投递。
 - 浏览器能力检测通过不等于生产可达。真实后台/关闭状态推送仍需在 iOS/iPadOS 主屏 PWA、Android Chromium PWA 和桌面 Chromium 上逐一验证；不支持的平台应保持明确的 unsupported 状态。
@@ -83,6 +85,7 @@ tools/time/
     ├── export.js           # 导出数据结构
     ├── import-utils.js     # 导入校验与合并规则
     ├── notification-crypto.js # 安装身份与 AES-GCM 密钥/载荷
+    ├── notification-receipt.js # 匿名送达回执与固定失败类别
     ├── notification-model.js  # 提醒投影、ID 与通知文案
     ├── notification-sync.js   # Web Push 注册、队列与后端同步
     └── notification.js        # 前台权限、定时器与通知显示
@@ -91,11 +94,12 @@ tools/time/
 ## 本地验证
 
 ```bash
-node --test tools/time/js/date-utils.test.js tools/time/js/export.test.js tools/time/js/app-state.test.js tools/time/js/import-utils.test.js tools/time/js/notification-crypto.test.js tools/time/js/notification-sync.test.js tools/time/js/notification-model.test.js tools/time/js/notification.test.js tools/time/js/notification-integration.test.js tools/time/js/service-worker-notification.test.js
+node --test tools/time/js/*.test.js
 node --check tools/time/js/date-utils.js
 node --check tools/time/js/app-state.js
 node --check tools/time/js/db.js
 node --check tools/time/js/notification-crypto.js
+node --check tools/time/js/notification-receipt.js
 node --check tools/time/js/notification-model.js
 node --check tools/time/js/notification-sync.js
 node --check tools/time/js/notification.js
