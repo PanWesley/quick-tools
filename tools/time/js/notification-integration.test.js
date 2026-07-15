@@ -128,7 +128,10 @@ function createHarness(overrides = {}) {
       bindEvents: bindEvents,
       queueNotificationSync: queueNotificationSync,
       setNotificationBackendStatus: setNotificationBackendStatus,
-      setNotificationSync: function(value) { NotificationSync = value; },
+      setNotificationSync: function(value) {
+        NotificationSync = value;
+        notificationSetupState = value ? 'complete' : 'idle';
+      },
       setAppData: function(value) { appState.data = value; },
       getNotificationBackendStatus: function() { return notificationBackendStatus; },
       setElements: function() {
@@ -522,8 +525,208 @@ test('service worker ready deadline schedules one automatic setup retry', async 
   timers.advance(250);
   await settle();
 
+  assert.equal(registerCalls, 1);
+  assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('register rejection releases setup ownership for an explicit retry', async () => {
+  let registerCalls = 0;
+  let setupCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    sync,
+    navigator: {
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          if (registerCalls === 1) throw new Error('register unavailable');
+          return registration;
+        },
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+
+  await harness.hooks.registerServiceWorker();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'error');
+
+  await harness.hooks.registerServiceWorker();
+  await settle();
+
   assert.equal(registerCalls, 2);
   assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('synchronous register failure releases setup ownership for retry', async () => {
+  let registerCalls = 0;
+  let setupCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    sync,
+    navigator: {
+      serviceWorker: {
+        register() {
+          registerCalls += 1;
+          if (registerCalls === 1) throw new Error('register threw');
+          return Promise.resolve(registration);
+        },
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+
+  await harness.hooks.registerServiceWorker();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'error');
+
+  await harness.hooks.registerServiceWorker();
+  await settle();
+
+  assert.equal(registerCalls, 2);
+  assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('service worker ready rejection retries without registering again', async () => {
+  let registerCalls = 0;
+  let readyCalls = 0;
+  let setupCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    sync,
+    navigator: {
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registration;
+        },
+        get ready() {
+          readyCalls += 1;
+          return readyCalls === 1
+            ? Promise.reject(new Error('ready unavailable'))
+            : Promise.resolve(registration);
+        }
+      }
+    }
+  });
+
+  await harness.hooks.registerServiceWorker();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'error');
+
+  await harness.hooks.registerServiceWorker();
+  await settle();
+
+  assert.equal(registerCalls, 1);
+  assert.equal(readyCalls, 2);
+  assert.equal(setupCalls, 1);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('setup rejection releases ownership so online recovery retries setup', async () => {
+  let registerCalls = 0;
+  let setupCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      if (setupCalls === 1) throw new Error('setup unavailable');
+      return { status: 'ready' };
+    },
+    handleOnline: async () => ({ status: 'ready' }),
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    sync,
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registration;
+        },
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+
+  await harness.hooks.registerServiceWorker();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'error');
+
+  harness.listeners.window.online();
+  await settle();
+
+  assert.equal(registerCalls, 1);
+  assert.equal(setupCalls, 2);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
+test('notification action actively sets up a missing sync client', async () => {
+  let registerCalls = 0;
+  let setupCalls = 0;
+  let testCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    sync: async () => ({ status: 'ready' }),
+    sendTest: async () => {
+      testCalls += 1;
+      return { status: 'ready' };
+    }
+  };
+  const harness = createHarness({
+    sync,
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    navigator: {
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registration;
+        },
+        ready: Promise.resolve(registration)
+      }
+    },
+    legacy: {
+      getPermissionStatus: () => 'granted',
+      setEnabled() {},
+      scheduleAll() {},
+      getMissedCount: () => 0,
+      setServiceWorkerRegistration() {}
+    }
+  });
+
+  await harness.hooks.handleNotificationAction();
+  await settle();
+
+  assert.equal(registerCalls, 1);
+  assert.equal(setupCalls, 1);
+  assert.equal(testCalls, 1);
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
 });
 
@@ -632,6 +835,62 @@ test('pagehide then visible invalidates an ordinary deferred projection completi
   assert.equal(timers.count(), 0);
 });
 
+test('stale projection rejection cannot publish an error into a fresh generation', async () => {
+  let rejectStaleProjection;
+  let resolveFreshProjection;
+  const staleData = { marker: 'stale' };
+  const freshData = { marker: 'fresh' };
+  const staleProjection = new Promise((resolve, reject) => { rejectStaleProjection = reject; });
+  const freshProjection = new Promise(resolve => { resolveFreshProjection = resolve; });
+  const projected = [];
+  const synced = [];
+  const model = {
+    buildReminderRecords(data) {
+      projected.push(data.marker);
+      return data === staleData ? staleProjection : freshProjection;
+    }
+  };
+  const sync = {
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: async data => {
+      synced.push(data.marker);
+      return { status: 'ready' };
+    },
+    cancelActiveRequests() {}
+  };
+  const harness = createHarness({
+    model,
+    sync,
+    db: { getAllData: async () => freshData },
+    navigator: { onLine: true }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  const staleResult = harness.hooks.queueNotificationSync(staleData).catch(() => null);
+  await settle();
+  harness.document.hidden = true;
+  harness.listeners.window.pagehide();
+  harness.document.hidden = false;
+  harness.listeners.document.visibilitychange();
+  await settle();
+
+  rejectStaleProjection(new Error('stale projection failed'));
+  await settle();
+  const statusAfterStaleReject = harness.hooks.getNotificationBackendStatus().status;
+
+  resolveFreshProjection([]);
+  await staleResult;
+  await settle();
+
+  assert.notEqual(statusAfterStaleReject, 'error');
+  assert.deepEqual(projected, ['stale', 'fresh']);
+  assert.deepEqual(synced, ['fresh']);
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+});
+
 test('pagehide invalidates a deferred test-notification publication', async () => {
   const timers = createFakeTimers();
   let resolveTest;
@@ -721,7 +980,7 @@ test('visible pending recovery uses one timer and lifecycle events cancel active
   harness.hooks.bindEvents();
 
   harness.listeners.document.visibilitychange();
-  await settle();
+  await harness.hooks.recoverNotificationForeground();
   assert.deepEqual(calls, ['foreground']);
   assert.equal(timers.count(), 1);
 
@@ -738,7 +997,7 @@ test('visible pending recovery uses one timer and lifecycle events cancel active
 
   status = 'pending';
   harness.listeners.document.visibilitychange();
-  await settle();
+  await harness.hooks.recoverNotificationForeground();
   assert.equal(timers.count(), 1);
   harness.document.hidden = true;
   harness.listeners.document.visibilitychange();
@@ -784,6 +1043,78 @@ test('repeated pending while a foreground drain is deferred does not start a sec
   await settle();
   assert.equal(foregroundCalls, 2);
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(timers.count(), 0);
+});
+
+test('direct foreground recovery owns the lifecycle operation while deferred', async () => {
+  const timers = createFakeTimers();
+  let resolveForeground;
+  let foregroundCalls = 0;
+  const foreground = new Promise(resolve => { resolveForeground = resolve; });
+  const sync = {
+    handleForeground() {
+      foregroundCalls += 1;
+      return foregroundCalls === 1 ? foreground : Promise.resolve({ status: 'ready' });
+    },
+    sync: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({ timers, sync, navigator: { onLine: true } });
+  harness.hooks.setNotificationSync(sync);
+
+  const recovery = harness.hooks.recoverNotificationForeground();
+  await settle();
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  timers.advance(250);
+  await settle();
+  const callsBeforeCompletion = foregroundCalls;
+
+  resolveForeground({ status: 'ready' });
+  await recovery;
+  await settle();
+
+  assert.equal(callsBeforeCompletion, 1);
+});
+
+test('deferred disable owns the lifecycle operation and blocks foreground timers', async () => {
+  const timers = createFakeTimers();
+  let resolveDisable;
+  let foregroundCalls = 0;
+  const disable = new Promise(resolve => { resolveDisable = resolve; });
+  const sync = {
+    disable: () => disable,
+    handleForeground: async () => {
+      foregroundCalls += 1;
+      return { status: 'ready' };
+    }
+  };
+  const harness = createHarness({
+    timers,
+    sync,
+    navigator: { onLine: true },
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    legacy: {
+      getPermissionStatus: () => 'granted',
+      setEnabled() {},
+      scheduleAll() {},
+      getMissedCount: () => 0
+    }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'ready' });
+
+  const disabling = harness.hooks.handleNotificationDisable();
+  await settle();
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  harness.hooks.setNotificationBackendStatus({ status: 'pending' });
+  timers.advance(250);
+  await settle();
+  const callsBeforeCompletion = foregroundCalls;
+
+  resolveDisable({ status: 'disabled' });
+  await disabling;
+
+  assert.equal(callsBeforeCompletion, 0);
   assert.equal(timers.count(), 0);
 });
 
@@ -955,6 +1286,47 @@ test('successful setup projects the current snapshot missed before registration'
   await harness.hooks.registerServiceWorker();
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(synced, 1);
+});
+
+test('successful setup survives pagehide without registering again when visible', async () => {
+  let registerCalls = 0;
+  let setupCalls = 0;
+  const registration = {};
+  const sync = {
+    setup: async () => {
+      setupCalls += 1;
+      return { status: 'ready' };
+    },
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: async () => ({ status: 'ready' }),
+    cancelActiveRequests() {}
+  };
+  const harness = createHarness({
+    sync,
+    navigator: {
+      onLine: true,
+      serviceWorker: {
+        register: async () => {
+          registerCalls += 1;
+          return registration;
+        },
+        ready: Promise.resolve(registration)
+      }
+    }
+  });
+  harness.hooks.cacheElements();
+  harness.hooks.bindEvents();
+
+  await harness.hooks.registerServiceWorker();
+  await settle();
+  harness.document.hidden = true;
+  harness.listeners.window.pagehide();
+  harness.document.hidden = false;
+  harness.listeners.document.visibilitychange();
+  await settle();
+
+  assert.equal(registerCalls, 1);
+  assert.equal(setupCalls, 1);
 });
 
 test('coalesces concurrent projections to the latest snapshot', async () => {

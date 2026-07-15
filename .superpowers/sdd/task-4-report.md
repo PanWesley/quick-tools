@@ -235,3 +235,51 @@ git diff --check
 ### Commit
 
 `fix(time): guard notification lifecycle races`
+
+## Task 4 Lifecycle Ownership Review Fixes
+
+### RED Evidence
+
+The follow-up review reproduced four remaining ownership gaps before the implementation changed:
+
+- a stale projection rejection published `error` into a fresh visible generation;
+- rejected registration, ready, or setup work retained ownership and blocked retry;
+- direct foreground recovery and disable did not share the timer drain owner;
+- a completed setup was discarded on `pagehide`, causing redundant registration on return.
+
+Deferred-promise regression tests were added for each path and failed against `bc3f18d`.
+
+### Root Cause
+
+- Successful service-worker registration and transient setup ownership were represented by the same promise.
+- Timer drains used an in-flight owner, while event recovery and user disable paths bypassed it.
+- The projection queue guarded stale resolution but propagated stale rejection to callers in the next lifecycle.
+
+### Implementation
+
+- Split cached successful registration, setup state, and cancellable setup ownership. Recoverable registration, ready, and setup failures release only the transient owner; completed registration survives `pagehide`.
+- Added one lifecycle-operation owner shared by timer drains, online/foreground recovery, enable/test, and disable work. `pending` cannot schedule another timer until the owner settles.
+- Stale projection rejection now resolves to the current backend state and cannot publish into a newer generation. Fresh queued snapshots continue independently.
+- Notification actions actively ensure setup when the sync client is missing.
+
+### GREEN Evidence
+
+```sh
+node --test tools/time/js/notification-integration.test.js
+# 41 passed, 0 failed
+
+node --test tools/time/js/notification-integration.test.js tools/time/js/notification-sync.test.js
+# 106 passed, 0 failed
+
+node --test tools/time/js/*.test.js
+# 163 passed, 0 failed
+
+node --check tools/time/js/app.js
+node --check tools/time/js/notification-integration.test.js
+git diff --check
+# all exited 0
+```
+
+### Commit
+
+`fix(time): own notification lifecycle operations`

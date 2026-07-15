@@ -43,11 +43,11 @@
   var journalSaveTimer = null;
   var swipeState = null;
   var notificationBackendStatus = { status: 'disabled' };
-  var notificationSetupPromise = null;
-  var notificationSetupGeneration = null;
-  var notificationSetupDeadlineCancel = null;
+  var notificationRegistrationPromise = null;
+  var notificationSetupState = 'idle';
+  var notificationSetupOwner = null;
   var notificationRecoveryTimer = null;
-  var notificationRecoveryPromise = null;
+  var notificationLifecycleOperation = null;
   var notificationLifecycleGeneration = 0;
   var notificationLifecycleActive = !document.hidden;
   var pendingNotificationSnapshot = null;
@@ -90,12 +90,18 @@
     return setNotificationBackendStatus({ status: 'error' }, generation);
   }
 
-  function withNotificationDeadline(promise, milliseconds) {
+  function createNotificationCancellationError() {
+    var error = new Error('Notification operation cancelled');
+    error.notificationCancelled = true;
+    return error;
+  }
+
+  function withNotificationDeadline(promise, milliseconds, owner) {
     return new Promise(function(resolve, reject) {
       var settled = false;
       var timer = null;
       var cancel = function() {
-        finish(resolve, notificationBackendStatus);
+        finish(reject, createNotificationCancellationError());
       };
 
       function finish(callback, value) {
@@ -105,11 +111,11 @@
           clearTimeout(timer);
           timer = null;
         }
-        if (notificationSetupDeadlineCancel === cancel) notificationSetupDeadlineCancel = null;
+        if (owner.cancelDeadline === cancel) owner.cancelDeadline = null;
         callback(value);
       }
 
-      notificationSetupDeadlineCancel = cancel;
+      owner.cancelDeadline = cancel;
       timer = setTimeout(function() {
         var error = new Error('Notification operation timed out');
         error.notificationDeadline = true;
@@ -123,9 +129,13 @@
     });
   }
 
-  function cancelNotificationSetupDeadline() {
-    var cancel = notificationSetupDeadlineCancel;
-    notificationSetupDeadlineCancel = null;
+  function cancelNotificationSetup() {
+    var owner = notificationSetupOwner;
+    notificationSetupOwner = null;
+    if (!owner) return;
+    owner.cancelled = true;
+    var cancel = owner.cancelDeadline;
+    owner.cancelDeadline = null;
     if (cancel) cancel();
   }
 
@@ -150,6 +160,9 @@
       }).then(function(status) {
         if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
         return setNotificationBackendStatus(status, generation);
+      }).catch(function(error) {
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+        throw error;
       });
   }
 
@@ -1742,16 +1755,20 @@
     var generation = notificationLifecycleGeneration;
     if (!NotificationService || !isNotificationLifecycleCurrent(generation)) return;
     try {
-      if (notificationSetupPromise) await notificationSetupPromise;
-      if (!isNotificationLifecycleCurrent(generation) || !NotificationSync) return;
+      await waitForNotificationLifecycleOperation(generation);
+      if (!isNotificationLifecycleCurrent(generation)) return;
+      if (!NotificationSync || notificationSetupState === 'idle' || notificationSetupOwner) {
+        await registerServiceWorker(generation);
+      }
+      if (notificationSyncPromise) await notificationSyncPromise;
+      if (!isNotificationLifecycleCurrent(generation) || notificationSetupState !== 'complete' || !NotificationSync) return;
       var info = getNotificationStatusInfo();
       if (info.status === 'ready') {
-        setNotificationBackendStatus({ status: 'syncing' }, generation);
-        if (!isNotificationLifecycleCurrent(generation)) return;
-        var testStatus = await NotificationSync.sendTest();
-        if (!isNotificationLifecycleCurrent(generation)) return;
-        setNotificationBackendStatus(testStatus, generation);
-        return;
+        return await runNotificationLifecycleOperation(generation, function() {
+          setNotificationBackendStatus({ status: 'syncing' }, generation);
+          if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+          return NotificationSync.sendTest();
+        }, true);
       }
       var permission = window.Notification && window.Notification.permission;
       if (permission !== 'granted') {
@@ -1764,21 +1781,21 @@
         }
       }
       if (!isNotificationLifecycleCurrent(generation)) return;
-      NotificationService.setEnabled(true);
-      NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
-      setNotificationBackendStatus({ status: 'subscribing' }, generation);
-      if (!isNotificationLifecycleCurrent(generation)) return;
-      var enabledStatus = await NotificationSync.enable();
-      if (!isNotificationLifecycleCurrent(generation)) return;
-      setNotificationBackendStatus(enabledStatus, generation);
-      if (enabledStatus.status !== 'ready') return;
-      var syncedStatus = await queueNotificationSync(appState.data, generation);
-      if (!isNotificationLifecycleCurrent(generation)) return;
-      if (syncedStatus.status === 'ready') {
-        var enabledTestStatus = await NotificationSync.sendTest();
-        if (!isNotificationLifecycleCurrent(generation)) return;
-        setNotificationBackendStatus(enabledTestStatus, generation);
-      }
+      return await runNotificationLifecycleOperation(generation, function() {
+        NotificationService.setEnabled(true);
+        NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
+        setNotificationBackendStatus({ status: 'subscribing' }, generation);
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+        return NotificationSync.enable().then(function(enabledStatus) {
+          if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+          setNotificationBackendStatus(enabledStatus, generation);
+          if (enabledStatus.status !== 'ready') return enabledStatus;
+          return queueNotificationSync(appState.data, generation).then(function(syncedStatus) {
+            if (!isNotificationLifecycleCurrent(generation) || syncedStatus.status !== 'ready') return syncedStatus;
+            return NotificationSync.sendTest();
+          });
+        });
+      }, true);
     } catch (error) {
       handleNotificationBackendFailure(error, generation);
     }
@@ -1788,14 +1805,18 @@
     var generation = notificationLifecycleGeneration;
     if (!NotificationService || !isNotificationLifecycleCurrent(generation)) return;
     try {
-      if (notificationSetupPromise) await notificationSetupPromise;
-      if (!isNotificationLifecycleCurrent(generation) || !NotificationSync || getNotificationStatusInfo().status !== 'ready') return;
-      NotificationService.setEnabled(false);
-      setNotificationBackendStatus({ status: 'pending' }, generation);
+      await waitForNotificationLifecycleOperation(generation);
       if (!isNotificationLifecycleCurrent(generation)) return;
-      var disabledStatus = await NotificationSync.disable();
-      if (!isNotificationLifecycleCurrent(generation)) return;
-      setNotificationBackendStatus(disabledStatus, generation);
+      if (!NotificationSync || notificationSetupState === 'idle' || notificationSetupOwner) {
+        await registerServiceWorker(generation);
+      }
+      if (!isNotificationLifecycleCurrent(generation) || notificationSetupState !== 'complete' || !NotificationSync || getNotificationStatusInfo().status !== 'ready') return;
+      return await runNotificationLifecycleOperation(generation, function() {
+        NotificationService.setEnabled(false);
+        setNotificationBackendStatus({ status: 'pending' }, generation);
+        if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
+        return NotificationSync.disable();
+      }, true);
     } catch (error) {
       handleNotificationBackendFailure(error, generation);
     }
@@ -2591,9 +2612,6 @@
     window.addEventListener('online', function() {
       var generation = notificationLifecycleGeneration;
       if (!isNotificationLifecycleCurrent(generation)) return;
-      registerServiceWorker(generation).catch(function(error) {
-        handleNotificationBackendFailure(error, generation);
-      });
       recoverNotificationOnline(generation).catch(function(error) {
         handleNotificationBackendFailure(error, generation);
       });
@@ -2604,9 +2622,6 @@
         return;
       }
       var generation = activateNotificationLifecycle();
-      registerServiceWorker(generation).catch(function(error) {
-        handleNotificationBackendFailure(error, generation);
-      });
       recoverNotificationForeground(generation).catch(function(error) {
         handleNotificationBackendFailure(error, generation);
       });
@@ -2624,26 +2639,77 @@
     return generation != null && notificationLifecycleActive && !document.hidden && generation === notificationLifecycleGeneration;
   }
 
+  function waitForNotificationLifecycleOperation(generation) {
+    var owner = notificationLifecycleOperation;
+    if (!owner || !isNotificationLifecycleCurrent(generation)) return Promise.resolve(notificationBackendStatus);
+    return owner.promise.then(function() {
+      return notificationBackendStatus;
+    }, function() {
+      return notificationBackendStatus;
+    });
+  }
+
+  function runNotificationLifecycleOperation(generation, operation, waitForCurrent) {
+    var operationGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    if (!isNotificationLifecycleCurrent(operationGeneration)) return Promise.resolve(notificationBackendStatus);
+    if (notificationLifecycleOperation) {
+      if (!waitForCurrent) return notificationLifecycleOperation.promise;
+      return waitForNotificationLifecycleOperation(operationGeneration).then(function() {
+        return runNotificationLifecycleOperation(operationGeneration, operation, true);
+      });
+    }
+
+    var owner = { generation: operationGeneration, promise: null };
+    notificationLifecycleOperation = owner;
+    var operationResult;
+    try {
+      operationResult = operation();
+    } catch (error) {
+      operationResult = Promise.reject(error);
+    }
+    owner.promise = Promise.resolve(operationResult).then(function(status) {
+      if (notificationLifecycleOperation !== owner) return notificationBackendStatus;
+      notificationLifecycleOperation = null;
+      if (!isNotificationLifecycleCurrent(operationGeneration)) return notificationBackendStatus;
+      return setNotificationBackendStatus(status && status.status ? status : notificationBackendStatus, operationGeneration);
+    }, function(error) {
+      if (notificationLifecycleOperation !== owner) return notificationBackendStatus;
+      notificationLifecycleOperation = null;
+      if (!isNotificationLifecycleCurrent(operationGeneration)) return notificationBackendStatus;
+      throw error;
+    });
+    return owner.promise;
+  }
+
+  function ensureNotificationSetup(generation) {
+    if (notificationSetupState === 'complete' && NotificationSync) return Promise.resolve(notificationBackendStatus);
+    return registerServiceWorker(generation);
+  }
+
   function recoverNotificationLifecycle(method, generation) {
     var recoveryGeneration = generation == null ? notificationLifecycleGeneration : generation;
-    if (!NotificationSync || typeof NotificationSync[method] !== 'function' || !isNotificationLifecycleCurrent(recoveryGeneration)) return Promise.resolve(notificationBackendStatus);
-    return NotificationSync[method]().then(function(status) {
-      if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-      setNotificationBackendStatus(status, recoveryGeneration);
-      return DB.getAllData().then(function(data) {
+    return runNotificationLifecycleOperation(recoveryGeneration, function() {
+      return ensureNotificationSetup(recoveryGeneration).then(function(setupStatus) {
         if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-        appState.data = data;
-        if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
-        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-        return queueNotificationSync(data, recoveryGeneration);
-      }, function(error) {
-        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-        showToast('本地数据库读取失败：' + error.message);
-        return notificationBackendStatus;
+        if (notificationSetupState !== 'complete' || !NotificationSync || typeof NotificationSync[method] !== 'function') {
+          return setupStatus && setupStatus.status ? setupStatus : notificationBackendStatus;
+        }
+        return NotificationSync[method]().then(function(status) {
+          if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+          setNotificationBackendStatus(status, recoveryGeneration);
+          return DB.getAllData().then(function(data) {
+            if (!isNotificationLifecycleCurrent(recoveryGeneration) || !data) return notificationBackendStatus;
+            appState.data = data;
+            if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
+            if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+            return queueNotificationSync(data, recoveryGeneration);
+          }, function(error) {
+            if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+            showToast('本地数据库读取失败：' + error.message);
+            return notificationBackendStatus;
+          });
+        });
       });
-    }).catch(function(error) {
-      if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-      throw error;
     });
   }
 
@@ -2655,6 +2721,19 @@
     return recoverNotificationLifecycle('handleForeground', generation);
   }
 
+  function drainNotificationForeground(generation) {
+    var recoveryGeneration = generation == null ? notificationLifecycleGeneration : generation;
+    return runNotificationLifecycleOperation(recoveryGeneration, function() {
+      return ensureNotificationSetup(recoveryGeneration).then(function(setupStatus) {
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+        if (notificationSetupState !== 'complete' || !NotificationSync || typeof NotificationSync.handleForeground !== 'function') {
+          return setupStatus && setupStatus.status ? setupStatus : notificationBackendStatus;
+        }
+        return NotificationSync.handleForeground();
+      });
+    });
+  }
+
   function clearNotificationRecoveryTimer() {
     if (notificationRecoveryTimer !== null) {
       clearTimeout(notificationRecoveryTimer);
@@ -2663,9 +2742,10 @@
   }
 
   function canScheduleNotificationRecovery(generation) {
-    if (!isNotificationLifecycleCurrent(generation) || navigator.onLine === false || notificationBackendStatus.status !== 'pending') return false;
-    if (NotificationSync) return typeof NotificationSync.handleForeground === 'function';
-    return 'serviceWorker' in navigator && !notificationSetupPromise;
+    if (!isNotificationLifecycleCurrent(generation) || navigator.onLine === false || notificationBackendStatus.status !== 'pending' || notificationLifecycleOperation) return false;
+    if (notificationSetupState === 'unsupported') return false;
+    if (notificationSetupState === 'complete' && NotificationSync) return typeof NotificationSync.handleForeground === 'function';
+    return 'serviceWorker' in navigator && !notificationSetupOwner;
   }
 
   function scheduleNotificationRecovery(generation) {
@@ -2674,31 +2754,13 @@
       clearNotificationRecoveryTimer();
       return;
     }
-    if (notificationRecoveryTimer !== null || notificationRecoveryPromise) return;
+    if (notificationRecoveryTimer !== null) return;
     notificationRecoveryTimer = setTimeout(function() {
       notificationRecoveryTimer = null;
       if (!canScheduleNotificationRecovery(recoveryGeneration)) return;
-      var recoveryPromise;
-      if (NotificationSync && typeof NotificationSync.handleForeground === 'function') {
-        recoveryPromise = Promise.resolve().then(function() {
-          if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-          return NotificationSync.handleForeground();
-        });
-      } else {
-        recoveryPromise = registerServiceWorker(recoveryGeneration);
-      }
-      notificationRecoveryPromise = recoveryPromise;
-      recoveryPromise.then(function(status) {
-        if (notificationRecoveryPromise !== recoveryPromise) return notificationBackendStatus;
-        notificationRecoveryPromise = null;
-        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-        return setNotificationBackendStatus(status && status.status ? status : notificationBackendStatus, recoveryGeneration);
-      }, function(error) {
-        if (notificationRecoveryPromise !== recoveryPromise) return notificationBackendStatus;
-        notificationRecoveryPromise = null;
-        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
+      drainNotificationForeground(recoveryGeneration).catch(function(error) {
+        if (!isNotificationLifecycleCurrent(recoveryGeneration)) return;
         handleNotificationBackendFailure(error, recoveryGeneration);
-        return notificationBackendStatus;
       });
     }, 250);
   }
@@ -2707,73 +2769,104 @@
     notificationLifecycleGeneration += 1;
     notificationLifecycleActive = false;
     clearNotificationRecoveryTimer();
-    notificationRecoveryPromise = null;
-    notificationSetupPromise = null;
-    notificationSetupGeneration = null;
+    notificationLifecycleOperation = null;
     pendingNotificationSnapshot = null;
-    cancelNotificationSetupDeadline();
+    cancelNotificationSetup();
     if (NotificationSync && NotificationSync.cancelActiveRequests) {
       NotificationSync.cancelActiveRequests();
     }
   }
 
   function releaseNotificationSetup(owner) {
-    if (notificationSetupPromise !== owner) return;
-    notificationSetupPromise = null;
-    notificationSetupGeneration = null;
+    if (notificationSetupOwner === owner) notificationSetupOwner = null;
+  }
+
+  function cacheNotificationRegistration(registration) {
+    notificationRegistrationPromise = Promise.resolve(registration);
+    return registration;
+  }
+
+  function getNotificationRegistration() {
+    if (notificationRegistrationPromise) return notificationRegistrationPromise;
+    var registrationResult;
+    try {
+      registrationResult = navigator.serviceWorker.register('/tools/time/sw.js');
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    var registrationPromise = Promise.resolve(registrationResult);
+    var cacheOwner = registrationPromise.then(function(registration) {
+      return cacheNotificationRegistration(registration);
+    }, function(error) {
+      if (notificationRegistrationPromise === cacheOwner) notificationRegistrationPromise = null;
+      throw error;
+    });
+    notificationRegistrationPromise = cacheOwner;
+    return cacheOwner;
   }
 
   function registerServiceWorker(generation) {
     var setupGeneration = generation == null ? notificationLifecycleGeneration : generation;
     if (!isNotificationLifecycleCurrent(setupGeneration)) return Promise.resolve(notificationBackendStatus);
-    if (notificationSetupPromise && notificationSetupGeneration === setupGeneration) return notificationSetupPromise;
+    if (notificationSetupState === 'complete' && NotificationSync) return Promise.resolve(notificationBackendStatus);
+    if (notificationSetupState === 'unsupported') {
+      return Promise.resolve(setNotificationBackendStatus({ status: 'unsupported' }, setupGeneration));
+    }
+    if (notificationSetupOwner) return notificationSetupOwner.promise;
     if (!('serviceWorker' in navigator)) {
-      setNotificationBackendStatus({ status: 'unsupported' }, setupGeneration);
-      notificationSetupPromise = Promise.resolve(notificationBackendStatus);
-      notificationSetupGeneration = setupGeneration;
-      return notificationSetupPromise;
+      notificationSetupState = 'unsupported';
+      return Promise.resolve(setNotificationBackendStatus({ status: 'unsupported' }, setupGeneration));
     }
     setNotificationBackendStatus({ status: 'subscribing' }, setupGeneration);
-    var setupPromise;
-    try {
-      setupPromise = navigator.serviceWorker.register('/tools/time/sw.js').then(function() {
-        if (!isNotificationLifecycleCurrent(setupGeneration)) return null;
-        return withNotificationDeadline(navigator.serviceWorker.ready, 10000);
-      }).then(function(reg) {
-        if (!isNotificationLifecycleCurrent(setupGeneration) || !reg) return notificationBackendStatus;
+    var owner = {
+      generation: setupGeneration,
+      cancelled: false,
+      cancelDeadline: null,
+      promise: null
+    };
+    notificationSetupOwner = owner;
+    var setupWork = getNotificationRegistration().then(function() {
+      if (owner.cancelled) throw createNotificationCancellationError();
+      return withNotificationDeadline(navigator.serviceWorker.ready, 10000, owner);
+    }).then(function(reg) {
+        if (owner.cancelled) throw createNotificationCancellationError();
+        cacheNotificationRegistration(reg);
         if (NotificationService) {
           NotificationService.setServiceWorkerRegistration(reg);
         }
+        if (notificationSetupState === 'complete' && NotificationSync) return notificationBackendStatus;
+        if (notificationSetupState === 'unsupported') return { status: 'unsupported' };
         if (!NotificationSync && NotificationSyncFactory && NotificationSyncFactory.create) {
           NotificationSync = NotificationSyncFactory.create();
         }
-        if (!NotificationSync) return setNotificationBackendStatus({ status: 'unsupported' }, setupGeneration);
-        if (!isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
+        if (!NotificationSync) {
+          notificationSetupState = 'unsupported';
+          return { status: 'unsupported' };
+        }
         return NotificationSync.setup(reg).then(function(status) {
-          if (!isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
-          setNotificationBackendStatus(status, setupGeneration);
-          if (status.status === 'ready' || status.status === 'pending') {
-            syncNotificationsWithoutBlocking(appState.data, setupGeneration);
-          }
+          if (!status || !status.status) throw new Error('Notification setup returned an invalid status');
+          notificationSetupState = status.status === 'unsupported' ? 'unsupported' : 'complete';
           return status;
         });
-      }).catch(function(error) {
-        if (!isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
+      });
+    owner.promise = setupWork.then(function(status) {
+        releaseNotificationSetup(owner);
+        if (owner.cancelled || !isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
+        var publishedStatus = setNotificationBackendStatus(status, setupGeneration);
+        if (notificationSetupState === 'complete' && (status.status === 'ready' || status.status === 'pending')) {
+          syncNotificationsWithoutBlocking(appState.data, setupGeneration);
+        }
+        return publishedStatus;
+      }, function(error) {
+        releaseNotificationSetup(owner);
+        if (owner.cancelled || (error && error.notificationCancelled) || !isNotificationLifecycleCurrent(setupGeneration)) return notificationBackendStatus;
         if (error && error.notificationDeadline) {
-          releaseNotificationSetup(setupPromise);
           return setNotificationBackendStatus({ status: 'pending' }, setupGeneration);
         }
         console.warn('[TodayYouxu] Service worker registration failed:', error);
         return setNotificationBackendStatus({ status: 'error' }, setupGeneration);
       });
-    } catch (error) {
-      console.warn('[TodayYouxu] Service worker registration failed:', error);
-      setNotificationBackendStatus({ status: 'error' }, setupGeneration);
-      setupPromise = Promise.resolve(notificationBackendStatus);
-    }
-    notificationSetupPromise = setupPromise;
-    notificationSetupGeneration = setupGeneration;
-    return notificationSetupPromise;
+    return owner.promise;
   }
 
   function init() {
