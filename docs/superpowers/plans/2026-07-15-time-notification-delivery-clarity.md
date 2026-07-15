@@ -321,7 +321,7 @@ Call `sendTest()` and decrypt the submitted envelope with the v2 key. Require ex
 
 ```js
 assert.deepEqual(Object.keys(plain).sort(), ['body', 'data', 'scheduledAt', 'tag', 'title', 'v']);
-assert.equal(plain.v, 2);
+assert.equal(plain.v, 1);
 assert.equal(plain.title, '测试提醒');
 assert.equal(plain.body, '后台提醒已连接');
 assert.deepEqual(Object.keys(plain.data).sort(), ['date', 'id', 'type', 'url']);
@@ -385,9 +385,11 @@ var testPayload = {
     url: '/tools/time/#today'
   },
   scheduledAt: scheduledAt,
-  v: encryptionVersion
+  v: 1
 };
 ```
+
+The outer encrypted envelope and API body use encryption version 2. The decrypted notification content keeps its independent schema marker `v: 1`, matching `notification-model.js` and Service Worker payload validation.
 
 Keep the public `sendTest()` API argument-free so app code cannot supply plaintext fields directly.
 
