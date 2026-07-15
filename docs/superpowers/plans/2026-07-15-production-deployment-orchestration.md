@@ -53,11 +53,15 @@ const workflow = readFileSync(new URL('../.github/workflows/deploy-production.ym
 const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 
 test('production deploy serializes Worker before Vercel', () => {
+  const workerDeployIndex = workflow.indexOf('pnpm exec wrangler deploy');
+  const vercelDeployIndex = workflow.indexOf('vercel deploy --prebuilt --prod');
+
   assert.match(workflow, /push:\s*[\s\S]*branches:\s*\[main\]/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /concurrency:\s*[\s\S]*cancel-in-progress:\s*false/);
   assert.match(workflow, /deploy-vercel:\s*[\s\S]*needs:\s*deploy-notifications/);
-  assert.ok(workflow.indexOf('pnpm exec wrangler deploy') < workflow.indexOf('vercel deploy --prebuilt --prod'));
+  assert.ok(workerDeployIndex >= 0);
+  assert.ok(vercelDeployIndex > workerDeployIndex);
 });
 
 test('production deploy references only named GitHub secrets', () => {
@@ -69,8 +73,7 @@ test('production deploy references only named GitHub secrets', () => {
 });
 
 test('Vercel keeps previews but does not race main production', () => {
-  assert.equal(vercel.git.deploymentEnabled.main, false);
-  assert.equal(vercel.git.deploymentEnabled['*'], true);
+  assert.deepEqual(vercel.git.deploymentEnabled, { main: false });
 });
 ```
 
@@ -91,11 +94,14 @@ Add this top-level property without changing existing headers, redirects, or rew
 ```json
 "git": {
   "deploymentEnabled": {
-    "main": false,
-    "*": true
+    "main": false
   }
 }
 ```
+
+Unspecified branches remain enabled by Vercel's default behavior. Do not add a
+`"*": true` rule: `main` would match both rules, and any matching `true` rule
+causes an automatic deployment.
 
 - [ ] **Step 4: Run the test and confirm it still fails only on the missing workflow**
 

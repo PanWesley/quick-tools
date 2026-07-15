@@ -11,6 +11,9 @@ const vercel = JSON.parse(
 );
 
 test('production deploy serializes Worker before Vercel', () => {
+  const workerDeployIndex = workflow.indexOf('pnpm exec wrangler deploy');
+  const vercelDeployIndex = workflow.indexOf('vercel deploy --prebuilt --prod');
+
   assert.match(workflow, /push:\s*[\s\S]*branches:\s*\[main\]/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /concurrency:\s*[\s\S]*cancel-in-progress:\s*false/);
@@ -18,10 +21,8 @@ test('production deploy serializes Worker before Vercel', () => {
     workflow,
     /deploy-vercel:\s*[\s\S]*needs:\s*deploy-notifications/,
   );
-  assert.ok(
-    workflow.indexOf('pnpm exec wrangler deploy')
-      < workflow.indexOf('vercel deploy --prebuilt --prod'),
-  );
+  assert.ok(workerDeployIndex >= 0);
+  assert.ok(vercelDeployIndex > workerDeployIndex);
 });
 
 test('production deploy references only named GitHub secrets', () => {
@@ -38,6 +39,5 @@ test('production deploy references only named GitHub secrets', () => {
 });
 
 test('Vercel keeps previews but does not race main production', () => {
-  assert.equal(vercel.git.deploymentEnabled.main, false);
-  assert.equal(vercel.git.deploymentEnabled['*'], true);
+  assert.deepEqual(vercel.git.deploymentEnabled, { main: false });
 });
