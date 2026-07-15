@@ -11,6 +11,18 @@ function loadService() {
   return require('./notification');
 }
 
+function loadServiceWithReceipt(receipt) {
+  const receiptPath = require.resolve('./notification-receipt');
+  const receiptModule = require(receiptPath);
+  const original = require.cache[receiptPath].exports;
+  require.cache[receiptPath].exports = { create: () => receipt };
+  try {
+    return loadService();
+  } finally {
+    require.cache[receiptPath].exports = original || receiptModule;
+  }
+}
+
 function installBrowserGlobals() {
   const state = new Map([['today-youxu-notification-state', JSON.stringify({ enabled: true })]]);
   global.localStorage = {
@@ -89,6 +101,132 @@ test('scheduleAll keeps foreground timers within 24 hours', (t) => {
   assert.ok(delays[0] <= 24 * 60 * 60 * 1000);
 });
 
+test('scheduleAll never converts an already missed reminder into a two-second catch-up', (t) => {
+  installBrowserGlobals();
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const originalDate = global.Date;
+  const delays = [];
+  const fixedNow = new originalDate(2026, 6, 11, 10, 0);
+  global.Date = class extends originalDate {
+    constructor(...args) { super(...(args.length ? args : [fixedNow.getTime()])); }
+    static now() { return fixedNow.getTime(); }
+  };
+  global.setTimeout = (_callback, delay) => { delays.push(delay); return delays.length; };
+  global.clearTimeout = () => {};
+  t.after(() => {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+    global.Date = originalDate;
+  });
+
+  const service = loadService();
+  service.scheduleAll({ tasks: [
+    { id: 'missed', date: '2026-07-11', status: 'active', startTime: '10:15', reminder: '30' }
+  ], habits: [] }, '2026-07-11', () => false);
+
+  assert.deepEqual(delays, []);
+});
+
+test('a foreground timer waking more than 60 seconds late does not show a stale reminder', async (t) => {
+  installBrowserGlobals();
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const originalDate = global.Date;
+  const originalNotification = global.Notification;
+  const callbacks = [];
+  const shown = [];
+  let clock = new originalDate(2026, 6, 11, 10, 0).getTime();
+  global.Date = class extends originalDate {
+    constructor(...args) { super(...(args.length ? args : [clock])); }
+    static now() { return clock; }
+  };
+  global.setTimeout = callback => { callbacks.push(callback); return callbacks.length; };
+  global.clearTimeout = () => {};
+  global.Notification = function Notification(title, options) { shown.push({ title, options }); };
+  global.Notification.permission = 'granted';
+  global.window.Notification = global.Notification;
+  t.after(() => {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+    global.Date = originalDate;
+    global.Notification = originalNotification;
+    global.window.Notification = originalNotification;
+  });
+
+  const service = loadService();
+  service.scheduleAll({ tasks: [
+    { id: 'late', title: '迟到计时器', date: '2026-07-11', status: 'active', startTime: '10:01', reminder: 'at-time' }
+  ], habits: [] }, '2026-07-11', () => false);
+  assert.equal(callbacks.length, 1);
+  clock = new originalDate(2026, 6, 11, 10, 2, 1).getTime();
+  await callbacks[0]();
+  assert.equal(shown.length, 0);
+});
+
+test('foreground delivery skips background receipts and visible system notifications', async (t) => {
+  installBrowserGlobals();
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const callbacks = [];
+  let shown = 0;
+  global.setTimeout = callback => { callbacks.push(callback); return callbacks.length; };
+  global.clearTimeout = () => {};
+  global.Notification = function Notification() { shown += 1; };
+  global.Notification.permission = 'granted';
+  global.window.Notification = global.Notification;
+  t.after(() => {
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  });
+
+  const receipt = { has: async () => true, record: async () => true };
+  const service = loadServiceWithReceipt(receipt);
+  service.scheduleAll({ tasks: [
+    { id: 'delivered', title: '已后台送达', date: '2099-01-01', status: 'active', startTime: '10:00', reminder: 'at-time' }
+  ], habits: [] }, '2099-01-01', () => false);
+  // Use the direct hook to avoid coupling this assertion to the 24-hour scheduling window.
+  await service.fireNotification('task', { id: 'delivered', title: '已后台送达', date: '2099-01-01' }, new Date(), new Date());
+  assert.equal(shown, 0);
+
+  const visibleService = loadServiceWithReceipt({ has: async () => false, record: async () => true });
+  visibleService.setServiceWorkerRegistration({
+    async getNotifications() { return [{ tag: 'visible' }]; },
+    async showNotification() { shown += 1; }
+  });
+  await visibleService.fireNotification('task', { id: 'visible', title: '系统中可见', date: '2099-01-01' }, new Date(), new Date());
+  assert.equal(shown, 0);
+});
+
+test('successful foreground delivery records the shared notification receipt', async (t) => {
+  installBrowserGlobals();
+  const originalNotification = global.Notification;
+  const recorded = [];
+  global.Notification = function Notification() {};
+  global.Notification.permission = 'granted';
+  global.window.Notification = global.Notification;
+  t.after(() => {
+    global.Notification = originalNotification;
+    global.window.Notification = originalNotification;
+  });
+
+  const service = loadServiceWithReceipt({
+    has: async () => false,
+    async record(tag, scheduledAt) { recorded.push([tag, scheduledAt]); return true; }
+  });
+  const notifyTime = new Date(2026, 6, 11, 9, 55);
+  const dueTime = new Date(2026, 6, 11, 10, 0);
+  await service.fireNotification('task', {
+    id: 'foreground', title: '前台提醒', date: '2026-07-11', startTime: '10:00'
+  }, notifyTime, dueTime);
+
+  const model = require('./notification-model');
+  assert.deepEqual(recorded, [[
+    model.buildNotificationTag('task', 'foreground', dueTime),
+    notifyTime.getTime()
+  ]]);
+});
+
 test('foreground timer and encrypted push payload use the same notification tag without renotify', async (t) => {
   installBrowserGlobals();
   const originalSetTimeout = global.setTimeout;
@@ -131,8 +269,7 @@ test('foreground timer and encrypted push payload use the same notification tag 
   service.scheduleAll({ tasks: [item], habits: [] }, '2026-07-11', () => false);
   assert.equal(typeof model.buildNotificationTag, 'function');
   assert.equal(callbacks.length, 1);
-  callbacks[0]();
-  await Promise.resolve();
+  await callbacks[0]();
 
   assert.equal(shown.length, 1);
   assert.equal(shown[0].options.tag, records[0].encryptedValue.tag);

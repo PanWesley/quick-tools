@@ -1,21 +1,25 @@
 (function(root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./notification-model'));
+    module.exports = factory(require('./notification-model'), require('./notification-receipt'));
   } else {
-    root.TodayYouxuNotification = factory(root.TodayYouxuNotificationModel);
+    root.TodayYouxuNotification = factory(root.TodayYouxuNotificationModel, root.TodayYouxuNotificationReceipt);
   }
-})(typeof self !== 'undefined' ? self : this, function(NotificationModel) {
+})(typeof self !== 'undefined' ? self : this, function(NotificationModel, NotificationReceipt) {
   var NOTIFICATION_STORAGE_KEY = 'today-youxu-notification-state';
   var NOTIFIED_LOG_KEY = 'today-youxu-notified-log';
   var MAX_SCHEDULE_AHEAD_HOURS = 24;
   var CHECK_INTERVAL_MS = 30 * 1000;
   var NOTIFIED_LOG_EXPIRY_HOURS = 48;
   var UPCOMING_WINDOW_MS = 60 * 60 * 1000;
+  var DELIVERY_GRACE_MS = 60 * 1000;
 
   var scheduledTimers = {};
   var checkIntervalId = null;
   var onPermissionChangeCallback = null;
   var swRegistration = null;
+  var deliveryReceipts = NotificationReceipt && typeof NotificationReceipt.create === 'function'
+    ? NotificationReceipt.create()
+    : null;
 
   function getStoredState() {
     try {
@@ -175,25 +179,47 @@
     }
   }
 
-  function fireNotification(type, item, notifyTime, dueTime) {
+  async function wasDeliveredInBackground(tag) {
+    try {
+      if (deliveryReceipts && await deliveryReceipts.has(tag)) return true;
+    } catch (e) {}
+    try {
+      if (swRegistration && typeof swRegistration.getNotifications === 'function') {
+        var visible = await swRegistration.getNotifications({ tag: tag });
+        return visible.length > 0;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  async function fireNotification(type, item, notifyTime, dueTime) {
     var logKey = buildNotificationId(type, item.id, dueTime.getTime());
     if (wasNotified(logKey)) return;
     var copy = buildNotificationCopy(type, item, dueTime, notifyTime);
     var tagKey = NotificationModel.buildNotificationTag(type, item.id, dueTime);
-    showNotification(copy.title, {
-      body: copy.body,
-      tag: tagKey,
-      data: {
-        type: type,
-        id: item.id,
-        date: item.date || '',
-        url: '/tools/time/#'
-      }
-    }).then(function() {
+    if (await wasDeliveredInBackground(tagKey)) {
       markNotified(logKey);
-    }).catch(function(err) {
+      return;
+    }
+    try {
+      await showNotification(copy.title, {
+        body: copy.body,
+        tag: tagKey,
+        data: {
+          type: type,
+          id: item.id,
+          date: item.date || '',
+          url: '/tools/time/#'
+        }
+      });
+      markNotified(logKey);
+    } catch (err) {
       console.warn('[Notification] Failed to show:', err);
-    });
+      return;
+    }
+    try {
+      if (deliveryReceipts) await deliveryReceipts.record(tagKey, notifyTime.getTime());
+    } catch (e) {}
   }
 
   function scheduleOne(type, item, baseTime, reminderValue, customReminder) {
@@ -204,15 +230,7 @@
     var now = new Date();
     var delay = notifyTime.getTime() - now.getTime();
 
-    if (delay < 0) {
-      var timeUntilDue = baseTime.getTime() - now.getTime();
-      if (timeUntilDue > -60 * 1000 && timeUntilDue < UPCOMING_WINDOW_MS) {
-        delay = 2000;
-        notifyTime = new Date(now.getTime() + delay);
-      } else {
-        return;
-      }
-    }
+    if (delay < 0) return;
     if (delay > MAX_SCHEDULE_AHEAD_HOURS * 60 * 60 * 1000) return;
 
     var timerKey = buildNotificationId(type, item.id, notifyTime.getTime());
@@ -223,8 +241,9 @@
     if (wasNotified(logKey)) return;
 
     scheduledTimers[timerKey] = setTimeout(function() {
-      fireNotification(type, item, notifyTime, baseTime);
       delete scheduledTimers[timerKey];
+      if (Date.now() - notifyTime.getTime() > DELIVERY_GRACE_MS) return;
+      return fireNotification(type, item, notifyTime, baseTime);
     }, delay);
   }
 
@@ -416,6 +435,7 @@
     getHabitDateTime: getHabitDateTime,
     calculateNotifyTime: calculateNotifyTime,
     buildNotificationCopy: buildNotificationCopy,
+    fireNotification: fireNotification,
     handleNotificationClick: handleNotificationClick,
     initSW: initSW
   };
