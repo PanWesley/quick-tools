@@ -58,9 +58,8 @@
       </div>
       <form class="search-card" id="parse-form">
         <p class="search-kicker">✨ 价格小帮手</p>
-        <label for="product-input">商品链接或分享文本</label>
-        <div class="input-wrapper">
-          <textarea id="product-input" rows="4" placeholder="试试粘贴淘宝、京东、拼多多的商品链接呀～" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+        <div class="field-label-row">
+          <label for="product-input">商品链接或分享文本</label>
           <button class="paste-btn" type="button" id="paste-button" title="粘贴">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -69,6 +68,7 @@
             粘贴
           </button>
         </div>
+        <textarea id="product-input" rows="4" placeholder="试试粘贴淘宝、京东、拼多多的商品链接呀～" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
         <div class="form-actions">
           <button class="btn primary" type="submit">帮我看看</button>
           <button class="btn ghost" type="button" id="use-sample-button">✨ 看看示例</button>

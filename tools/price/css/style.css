@@ -487,18 +487,19 @@ textarea {
   min-height: 120px;
 }
 
-.input-wrapper {
-  position: relative;
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 8px;
 }
 
-.input-wrapper textarea {
-  padding-right: 80px;
+.field-label-row label {
+  margin-bottom: 0;
 }
 
 .paste-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -514,6 +515,7 @@ textarea {
   transition: all 0.2s ease;
   -webkit-user-select: none;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .paste-btn svg {
