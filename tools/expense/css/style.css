@@ -588,10 +588,7 @@ header {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid transparent;
-  padding: 10px 16px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  padding: 10px 16px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   transition: padding 0.3s, background 0.3s, border-color 0.3s;
   position: sticky;
@@ -603,67 +600,66 @@ header {
   background: rgba(36, 40, 38, 0.92);
 }
 
-.header-top {
+.header-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
+}
+
+.header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 header[data-active-view="add"] {
   border-bottom-color: var(--primary-light);
 }
 
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--primary);
-  text-decoration: none;
-  cursor: pointer;
-  user-select: none;
-}
-
 .logo-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #2DBAA3 0%, #1a7f6b 100%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 20px;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(61, 123, 110, 0.25);
 }
 
 [data-accent-color="blush"] .logo-icon {
   background: linear-gradient(135deg, #D4837C 0%, #884A45 100%);
+  box-shadow: 0 2px 8px rgba(212, 131, 124, 0.25);
 }
 
 [data-accent-color="apricot"] .logo-icon {
   background: linear-gradient(135deg, #D49050 0%, #805022 100%);
+  box-shadow: 0 2px 8px rgba(212, 144, 80, 0.25);
 }
 
 [data-accent-color="sage"] .logo-icon {
   background: linear-gradient(135deg, #7BA08A 0%, #476352 100%);
+  box-shadow: 0 2px 8px rgba(123, 160, 138, 0.25);
 }
 
-.logo h1 {
+.header-text h1 {
   margin: 0;
-  font-size: inherit;
-  font-weight: inherit;
-  color: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
   line-height: 1.2;
-  font-family: var(--font-body);
+  font-family: var(--font-display);
 }
 
 .header-subtitle {
   font-size: 13px;
   color: var(--text-secondary);
-  padding: 0 4px;
-  animation: headerFadeIn 0.35s ease;
   line-height: 1.4;
+  animation: headerFadeIn 0.35s ease;
+  margin: 0;
 }
 
 @keyframes headerFadeIn {
@@ -675,12 +671,6 @@ header[data-active-view="add"] {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .back-btn {
@@ -701,41 +691,6 @@ header[data-active-view="add"] {
 .back-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
-}
-
-.theme-toggle {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  transition: transform 0.2s, background-color 0.2s, color 0.2s;
-}
-
-.theme-toggle:hover {
-  background: var(--surface-hover);
-  color: var(--primary);
-}
-
-.theme-toggle:active {
-  transform: scale(0.94);
-  background: var(--surface-active);
-}
-
-.theme-toggle:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.theme-toggle svg {
-  width: 20px;
-  height: 20px;
 }
 
 /* Main Content */
@@ -1276,37 +1231,6 @@ h1, h2 {
   font-weight: 500;
   margin-bottom: 8px;
   color: var(--text);
-}
-
-.quick-entry-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 560px;
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 13px;
-  animation: fadeUp 0.35s ease;
-}
-
-.quick-entry-hint .btn-text-link {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  padding: 2px 0;
-}
-
-.quick-entry-hint .btn-text-link:hover {
-  opacity: 0.8;
 }
 
 .btn-text-link {
@@ -4398,34 +4322,31 @@ body.list-category-open {
 
 @media (max-width: 768px) {
   header {
-    padding: 8px 12px 6px;
+    padding: 8px 12px;
   }
 
-  .logo {
-    font-size: 15px;
-    gap: 6px;
+  .header-content {
+    gap: 10px;
   }
 
   .logo-icon {
-    width: 26px;
-    height: 26px;
-    font-size: 14px;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    font-size: 18px;
+  }
+
+  .header-text h1 {
+    font-size: 18px;
   }
 
   .header-subtitle {
     font-size: 12px;
-    padding: 0 2px;
   }
 
   .back-btn {
     padding: 5px 10px;
     font-size: 12px;
-  }
-
-  .theme-toggle {
-    width: 36px;
-    height: 36px;
-    font-size: 16px;
   }
 
   main {

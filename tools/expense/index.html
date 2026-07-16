@@ -26,23 +26,18 @@
 <!-- PWA Styles -->
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
 <title>BillNest - 隐私记账本</title>
-<link rel="stylesheet" href="/tools/expense/css/style.css?v=172">
+<link rel="stylesheet" href="/tools/expense/css/style.css?v=173">
 </head>
 <body>
 
 <header id="app-header" data-active-view="add">
-  <div class="header-top">
-    <a class="logo" href="." onclick="switchView('add'); return false;">
-      <span class="logo-icon" aria-hidden="true">💰</span>
+  <div class="header-content">
+    <span class="logo-icon" aria-hidden="true">💰</span>
+    <div class="header-text">
       <h1 id="header-title">记一笔</h1>
-    </a>
-    <div class="header-actions">
-      <button class="theme-toggle" onclick="switchView('settings')" title="设置" aria-label="打开设置">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-      </button>
+      <p class="header-subtitle" id="header-subtitle">几秒钟，把今天的小花费记好 🌿</p>
     </div>
   </div>
-  <p class="header-subtitle" id="header-subtitle">几秒钟，把今天的小花费记好 🌿</p>
 </header>
 
 <main id="app">
@@ -282,11 +277,6 @@
 
   <!-- Add Expense View (Default) -->
   <section class="view-section active" id="view-add">
-    <div class="quick-entry-hint" id="quick-entry-hint" hidden>
-      <span>💡</span>
-      <span>快捷模板已隐藏</span>
-      <button type="button" onclick="setQuickTemplateEnabled(true)" class="btn-text-link">开启</button>
-    </div>
     <section class="quick-start-card" id="quick-start-card" aria-label="今日记账快捷入口">
       <div class="quick-start-copy">
         <span class="quick-start-kicker">今日小账本</span>
@@ -586,6 +576,13 @@
       <h3>记账偏好</h3>
       <div class="setting-item">
         <div class="setting-info">
+          <span class="setting-title">标签管理</span>
+          <span class="setting-desc">管理支出分类和自定义标签</span>
+        </div>
+        <button class="btn-secondary" onclick="switchView('tags')">🏷️ 管理标签</button>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
           <span class="setting-title">显示快捷记账模板</span>
           <span class="setting-desc">在首页显示"今日小账本"快速按钮，一键记录常见开销</span>
         </div>
@@ -870,9 +867,9 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
       <span>明细</span>
     </button>
-    <button class="nav-item" data-view="tags" onclick="switchView('tags')" aria-label="标签管理">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
-      <span>标签</span>
+    <button class="nav-item" data-view="settings" onclick="switchView('settings')" aria-label="设置">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <span>设置</span>
     </button>
   </nav>
 
@@ -1040,9 +1037,7 @@ function setQuickTemplateEnabled(enabled) {
 function updateQuickTemplateVisibility() {
   const enabled = getQuickTemplateEnabled();
   const quickCard = document.getElementById('quick-start-card');
-  const hint = document.getElementById('quick-entry-hint');
   if (quickCard) quickCard.hidden = !enabled;
-  if (hint) hint.hidden = enabled;
 }
 
 function updateHeaderContent(viewName) {
@@ -1073,7 +1068,8 @@ function switchView(viewName, skipHistory) {
   });
   const target = document.getElementById('view-' + viewName);
   if (target) target.classList.add('active');
-  const navBtn = document.querySelector('.nav-item[data-view="' + viewName + '"]');
+  var navViewName = viewName === 'tags' ? 'settings' : viewName;
+  var navBtn = document.querySelector('.nav-item[data-view="' + navViewName + '"]');
   if (navBtn) navBtn.classList.add('active');
   const header = document.getElementById('app-header');
   if (header) header.setAttribute('data-active-view', viewName);

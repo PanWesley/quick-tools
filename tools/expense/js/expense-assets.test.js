@@ -91,11 +91,11 @@ assert.ok(
 
 assert.match(
   serviceWorker,
-  /const CACHE_NAME = 'expense-tracker-v1\.6\.12';/
+  /const CACHE_NAME = 'expense-tracker-v1\.6\.13';/
 );
 assert.match(
   html,
-  /\/tools\/expense\/css\/style\.css\?v=172/,
+  /\/tools\/expense\/css\/style\.css\?v=173/,
   'main expense stylesheet must use the current asset version'
 );
 assert.match(
