@@ -1349,7 +1349,7 @@ test('auth reset uses a new device-scoped reminder ID without changing the model
   };
   await harness.sync.enable();
   await harness.sync.sync({ reminders: [reminder] });
-  assert.equal((await harness.sync.sendTest()).status, 'error');
+  assert.equal((await harness.sync.sendTest()).status, 'reauthorization-required');
 
   rejectTest = false;
   await harness.sync.enable();
@@ -2060,7 +2060,7 @@ test('sendTest is blocked while cleanup is pending and cannot reset cleanup auth
   assert.equal(harness.calls.some(call => call.url === '/api/notifications/test'), false);
 });
 
-test('authentication failures reset the installation and a later enable renews the subscription without reusing stale credentials', async () => {
+test('authentication failures require reauthorization and explicit recovery reuses the existing subscription', async () => {
   let rejectTest = true;
   const standard = responsePlan();
   const harness = createHarness({
@@ -2072,29 +2072,42 @@ test('authentication failures reset the installation and a later enable renews t
   await harness.sync.setup(harness.registration);
   await harness.sync.enable();
   const staleSubscription = harness.getSubscription();
-  staleSubscription.unsubscribe = async () => {
-    harness.calls.push({ unsubscribe: staleSubscription.endpoint });
-    staleSubscription.unsubscribed = true;
-    return true;
-  };
+  staleSubscription.unsubscribe = async () => { throw new Error('must not unsubscribe during rebind'); };
 
-  assert.deepEqual(await harness.sync.sendTest({ title: '测试', body: '通知' }), { status: 'error' });
+  assert.deepEqual(await harness.sync.sendTest({ title: '测试', body: '通知' }), {
+    status: 'reauthorization-required'
+  });
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'installation').get('current').deviceToken, undefined);
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'reauthorization-required' });
 
   rejectTest = false;
   assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-2' });
-  assert.equal(staleSubscription.unsubscribed, true);
-  assert.notEqual(harness.getSubscription(), staleSubscription);
-  assert.equal(harness.calls.filter(call => call.subscribe).length, 1);
-  const unsubscribeIndex = harness.calls.findIndex(call => call.unsubscribe === staleSubscription.endpoint);
-  const registrationIndex = harness.calls.findIndex((call, index) => index > unsubscribeIndex
-    && call.url === '/api/notifications/devices');
-  assert.ok(unsubscribeIndex >= 0 && registrationIndex > unsubscribeIndex);
+  assert.equal(staleSubscription.unsubscribed, false);
+  assert.equal(harness.getSubscription(), staleSubscription);
+  assert.equal(harness.calls.filter(call => call.subscribe).length, 0);
   assert.ok(harness.calls.some(call => call.url === '/api/notifications/devices/device-2/subscription'
-    && call.init.body.includes('https://push.example/created')));
+    && call.init.body.includes('https://push.example/original')));
 });
 
-test('auth reset does not register a new device until stale local unsubscribe succeeds', async () => {
+test('permission denial takes precedence over rejected backend credentials', async () => {
+  const notification = { permission: 'granted' };
+  const standard = responsePlan();
+  const harness = createHarness({
+    notification,
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/test') return jsonResponse(401, {});
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  await harness.sync.sendTest();
+  notification.permission = 'denied';
+
+  assert.deepEqual(await harness.sync.getStatus(), { status: 'permission-denied' });
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'permission-denied' });
+});
+
+test('foreground recovery rebinds the existing subscription without calling unsubscribe', async () => {
   let rejectTest = true;
   const standard = responsePlan();
   const harness = createHarness({
@@ -2106,26 +2119,40 @@ test('auth reset does not register a new device until stale local unsubscribe su
   await harness.sync.enable();
   const staleSubscription = harness.getSubscription();
   let unsubscribeCalls = 0;
-  staleSubscription.unsubscribe = async () => {
-    unsubscribeCalls += 1;
-    if (unsubscribeCalls === 1) return false;
-    if (unsubscribeCalls === 2) throw new Error('local unsubscribe failed');
-    staleSubscription.unsubscribed = true;
-    return true;
-  };
+  staleSubscription.unsubscribe = async () => { unsubscribeCalls += 1; return false; };
   await harness.sync.sendTest();
   rejectTest = false;
   const initialRegistrations = harness.calls.filter(call => call.url === '/api/notifications/devices').length;
 
-  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
-  assert.deepEqual(await harness.sync.enable(), { status: 'error' });
-  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length, initialRegistrations);
-  assert.equal(harness.calls.filter(call => call.subscribe).length, 0);
-
-  assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-2' });
-  assert.equal(unsubscribeCalls, 3);
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'ready', deviceId: 'device-2' });
+  assert.equal(unsubscribeCalls, 0);
   assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length,
     initialRegistrations + 1);
+  assert.equal(harness.calls.filter(call => call.subscribe).length, 0);
+  assert.equal(harness.getSubscription(), staleSubscription);
+});
+
+test('foreground recovery waits for explicit reauthorization before creating a missing subscription', async () => {
+  let rejectTest = true;
+  const standard = responsePlan();
+  const harness = createHarness({
+    fetch: async (url, init, calls) => {
+      if (url === '/api/notifications/test' && rejectTest) return jsonResponse(403, {});
+      return standard(url, init, calls);
+    }
+  });
+  await harness.sync.enable();
+  await harness.sync.sendTest();
+  rejectTest = false;
+  harness.setSubscription(null);
+  const initialRegistrations = harness.calls.filter(call => call.url === '/api/notifications/devices').length;
+
+  assert.deepEqual(await harness.sync.handleForeground(), { status: 'reauthorization-required' });
+  assert.equal(harness.calls.filter(call => call.subscribe).length, 0);
+  assert.equal(harness.calls.filter(call => call.url === '/api/notifications/devices').length,
+    initialRegistrations + 1);
+
+  assert.deepEqual(await harness.sync.enable(), { status: 'ready', deviceId: 'device-2' });
   assert.equal(harness.calls.filter(call => call.subscribe).length, 1);
 });
 
@@ -2143,6 +2170,6 @@ test('authentication reset removes queued requests addressed to the invalid inst
   assert.deepEqual(await harness.sync.sync({ reminders: [{
     id: 'task-1', revision: 1, sourceIdHash: 'a'.repeat(64),
     notifyAt: '2026-07-11T10:30:00.000Z', encryptedPayload: { v: 1, iv: 'iv', ciphertext: 'ciphertext' }
-  }] }), { status: 'error' });
+  }] }), { status: 'reauthorization-required' });
   assert.equal(harness.indexedDB.dump('todayYouxuNotificationDB', 'queue').size, 0);
 });
