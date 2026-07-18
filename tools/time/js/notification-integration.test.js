@@ -187,12 +187,13 @@ test('loads cache-busted notification dependencies in strict order', () => {
     assert.ok(scriptPosition(names[index]) < scriptPosition(name), names[index] + ' must load before ' + name);
   });
   [
+    '/tools/time/css/style.css?v=138',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
-    '/tools/time/js/notification-sync.js?v=4',
+    '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=138'
+    '/tools/time/js/app.js?v=139'
   ].forEach(asset => assert.ok(index.includes(asset), asset + ' must use the release version'));
 });
 
