@@ -187,12 +187,13 @@ test('loads cache-busted notification dependencies in strict order', () => {
     assert.ok(scriptPosition(names[index]) < scriptPosition(name), names[index] + ' must load before ' + name);
   });
   [
+    '/tools/time/css/style.css?v=138',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
-    '/tools/time/js/notification-sync.js?v=4',
+    '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=138'
+    '/tools/time/js/app.js?v=139'
   ].forEach(asset => assert.ok(index.includes(asset), asset + ' must use the release version'));
 });
 
@@ -224,19 +225,90 @@ test('declares short typed status copy and restrained CSS states', () => {
   const copy = {
     subscribing: '正在连接',
     syncing: '正在连接',
-    pending: '等待同步',
+    pending: '等待网络恢复',
     ready: '后台提醒已开启',
-    error: '需要重新授权',
+    error: '提醒连接失败',
     unsupported: '当前设备不支持',
-    'permission-required': '未开启',
+    'permission-required': '未开启通知',
+    'permission-denied': '请在系统设置中开启通知',
+    'reauthorization-required': '提醒连接已失效',
     disabled: '未开启'
   };
   Object.entries(copy).forEach(([status, label]) => {
     assert.match(appSource, new RegExp("['\"]" + status + "['\"]\\s*:\\s*['\"]" + label + "['\"]"));
   });
-  ['syncing', 'pending', 'error'].forEach(status => {
+  ['syncing', 'pending', 'error', 'permission-denied', 'reauthorization-required'].forEach(status => {
     assert.match(css, new RegExp('\\.notification-status-' + status + '\\b'));
   });
+});
+
+test('notification states expose concise matching actions', () => {
+  const notification = { permission: 'granted', requestPermission: async () => 'granted' };
+  const harness = createHarness({ Notification: notification, sync: {} });
+  const button = harness.elements.get('notification-setup-button');
+  const status = harness.elements.get('notification-status');
+  const cases = [
+    ['reauthorization-required', '提醒连接已失效', '重新连接'],
+    ['pending', '等待网络恢复', '重试'],
+    ['error', '提醒连接失败', '重试'],
+    ['ready', '后台提醒已开启', '测试提醒']
+  ];
+
+  cases.forEach(([state, label, action]) => {
+    harness.hooks.setNotificationBackendStatus({ status: state });
+    assert.equal(status.textContent, label);
+    assert.equal(button.textContent, action);
+  });
+
+  notification.permission = 'default';
+  harness.hooks.setNotificationBackendStatus({ status: 'permission-required' });
+  assert.equal(status.textContent, '未开启通知');
+  assert.equal(button.textContent, '开启通知');
+});
+
+test('denied permission shows settings guidance without requesting permission again', async () => {
+  let permissionRequests = 0;
+  const notification = {
+    permission: 'denied',
+    requestPermission: async () => { permissionRequests += 1; return 'denied'; }
+  };
+  const harness = createHarness({ Notification: notification, sync: {} });
+  harness.hooks.setNotificationSync({});
+  harness.hooks.setNotificationBackendStatus({ status: 'permission-denied' });
+
+  assert.equal(harness.elements.get('notification-status').textContent, '请在系统设置中开启通知');
+  assert.equal(harness.elements.get('notification-setup-button').textContent, '查看说明');
+  await harness.hooks.handleNotificationAction();
+
+  assert.equal(permissionRequests, 0);
+  assert.equal(harness.elements.get('toast').textContent, 'iPhone 设置 > App > 今日有序 > 通知');
+});
+
+test('explicit credential reconnect publishes repairing progress and enables once', async () => {
+  let resolveEnable;
+  let enableCalls = 0;
+  const enabling = new Promise(resolve => { resolveEnable = resolve; });
+  const sync = {
+    enable() { enableCalls += 1; return enabling; },
+    sync: async () => ({ status: 'ready' }),
+    sendTest: async () => ({ status: 'ready' })
+  };
+  const harness = createHarness({
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    sync
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'reauthorization-required' });
+
+  const action = harness.hooks.handleNotificationAction();
+  await settle();
+  assert.equal(enableCalls, 1);
+  assert.equal(harness.elements.get('notification-status').textContent, '正在重新连接');
+  assert.equal(harness.elements.get('notification-setup-button').disabled, true);
+
+  resolveEnable({ status: 'ready' });
+  await action;
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
 });
 
 test('notification backend failure cannot reject the core refresh', async () => {
@@ -326,7 +398,7 @@ test('ready notification row keeps test reminder and offers inline disable with 
   assert.equal(disables, 1);
   assert.deepEqual(localEnabled, [false]);
   assert.equal(harness.hooks.getNotificationBackendStatus().status, 'pending');
-  assert.equal(harness.elements.get('notification-status').textContent, '等待同步');
+  assert.equal(harness.elements.get('notification-status').textContent, '等待网络恢复');
   assert.equal(harness.elements.get('notification-disable-button').hidden, true);
 });
 
@@ -394,6 +466,36 @@ test('online and foreground recovery drain then refetch and sync', async () => {
   calls.length = 0;
   await harness.hooks.recoverNotificationForeground();
   assert.deepEqual(calls, ['foreground', 'getAllData', 'sync']);
+});
+
+test('foreground credential recovery publishes ready only after reminder sync completes', async () => {
+  let resolveData;
+  let resolveSync;
+  const loadingData = new Promise(resolve => { resolveData = resolve; });
+  const syncing = new Promise(resolve => { resolveSync = resolve; });
+  const sync = {
+    handleForeground: async () => ({ status: 'ready' }),
+    sync: () => syncing
+  };
+  const harness = createHarness({
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    sync,
+    db: { getAllData: () => loadingData }
+  });
+  harness.hooks.setNotificationSync(sync);
+  harness.hooks.setNotificationBackendStatus({ status: 'reauthorization-required' });
+
+  const recovery = harness.hooks.recoverNotificationForeground();
+  await settle();
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'syncing');
+  assert.equal(harness.elements.get('notification-status').textContent, '正在重新连接');
+
+  resolveData({ tasks: [], habits: [], habitLogs: [] });
+  await settle();
+  resolveSync({ status: 'ready' });
+  await recovery;
+  assert.equal(harness.hooks.getNotificationBackendStatus().status, 'ready');
+  assert.equal(harness.elements.get('notification-status').textContent, '后台提醒已开启');
 });
 
 test('local recovery reads do not replace a ready backend status with authorization copy', async () => {

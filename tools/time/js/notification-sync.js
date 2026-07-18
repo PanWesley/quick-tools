@@ -111,7 +111,8 @@
   }
 
   function toPublicStatus(status, installation) {
-    if (status === 'disabled' || status === 'unsupported' || status === 'permission-required' || status === 'error') {
+    if (status === 'disabled' || status === 'unsupported' || status === 'permission-required'
+      || status === 'permission-denied' || status === 'reauthorization-required' || status === 'error') {
       return { status: status };
     }
     return installation && installation.deviceId
@@ -198,6 +199,7 @@
 
     function installationStatus(installation) {
       if (!installation) return 'disabled';
+      if (installation.authenticationReset) return 'reauthorization-required';
       if (installation.enabled && installation.subscriptionReady) return 'ready';
       if (installation.enableFailed) return 'error';
       if (installation.enablePending && !installation.subscriptionReady) return 'pending';
@@ -413,7 +415,7 @@
           applyAuthenticationReset(installationStore, queueStore, values[0], values[1]);
         });
       }, 'IndexedDB authentication reset failed');
-      state = 'error';
+      state = 'reauthorization-required';
     }
 
     function createQueueEntry(sequence, kind, method, path, logicalKey) {
@@ -572,18 +574,6 @@
       var current = await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
       if (!current || typeof current.unsubscribe !== 'function') return true;
       return await withDeadline(current.unsubscribe(), subscriptionTimeoutMs) !== false;
-    }
-
-    async function retireAuthenticationSubscription(installation) {
-      if (!installation || !installation.authenticationReset || installation.forceNewSubscription) return true;
-      try {
-        if (!await unsubscribeBrowser()) return false;
-      } catch (error) {
-        return false;
-      }
-      installation.forceNewSubscription = true;
-      await saveInstallation(installation);
-      return true;
     }
 
     async function completeDisable() {
@@ -777,8 +767,8 @@
           committed = await sendQueueEntry(selection.entry, installation);
         }
         if (committed.authenticationError) {
-          state = 'error';
-          return toPublicStatus('error');
+          state = 'reauthorization-required';
+          return toPublicStatus('reauthorization-required');
         }
         if (committed.disableAuthenticationError) {
           if (await completeDisable()) return toPublicStatus('disabled');
@@ -829,15 +819,19 @@
         }
         return toPublicStatus('pending', installation);
       }
+      if (installation && installation.authenticationReset && permissionStatus() === 'denied') {
+        return toPublicStatus('permission-denied');
+      }
+      if (installation && installation.authenticationReset) return toPublicStatus('reauthorization-required');
       if (installation && installation.enableFailed) return toPublicStatus('error');
       if (installation && installation.enablePending) return toPublicStatus('pending', installation);
-      if (installation && installation.authenticationReset) return toPublicStatus('error');
       if (entries.some(function(entry) { return !entry.terminal; })) return toPublicStatus('pending', installation);
       if (!installation || (!installation.enabled && !installation.deviceToken)) return toPublicStatus('disabled');
       if (entries.some(function(entry) { return entry.terminal; }) || await hasCompactedQueueError()) {
         return toPublicStatus('error');
       }
       if (!registration || !registration.pushManager) return toPublicStatus('unsupported');
+      if (permissionStatus() === 'denied') return toPublicStatus('permission-denied');
       if (permissionStatus() !== 'granted') return toPublicStatus('permission-required');
       var persistedState = installationStatus(installation);
       return toPublicStatus(state === 'syncing' || state === 'subscribing' ? state : persistedState, installation);
@@ -870,7 +864,9 @@
       }, 'IndexedDB subscription commit failed');
     }
 
-    async function enableImpl() {
+    async function enableImpl(options) {
+      options = options || {};
+      var allowSubscribe = options.allowSubscribe !== false;
       var installation = await getInstallation();
       if (installation && installation.cleanupPending) {
         return toPublicStatus(installation.cleanupAuthRejected ? 'error' : 'pending', installation);
@@ -881,15 +877,9 @@
         return toPublicStatus('unsupported');
       }
       if (permissionStatus() !== 'granted') {
-        state = 'permission-required';
-        return toPublicStatus('permission-required');
+        state = permissionStatus() === 'denied' ? 'permission-denied' : 'permission-required';
+        return toPublicStatus(state);
       }
-      if (installation && installation.authenticationReset
-        && !await retireAuthenticationSubscription(installation)) {
-        state = 'error';
-        return toPublicStatus('error');
-      }
-      installation = await getInstallation();
       state = 'subscribing';
       installation = installation || {
         enabled: false,
@@ -916,7 +906,7 @@
         return toPublicStatus('pending', installation);
       }
 
-      if (!installation || !installation.deviceId || !installation.deviceToken || installation.authenticationReset) {
+      if (!installation.deviceId || !installation.deviceToken) {
         try {
           var registrationResponse = await request('POST', '/api/notifications/devices', {
             platform: 'web',
@@ -924,15 +914,15 @@
           }, null, false);
           if (!registrationResponse.ok) throw new Error('Device registration failed');
           var credentials = await registrationResponse.json();
-          var forceNewSubscription = !!(installation && installation.forceNewSubscription);
+          var authenticationReset = !!installation.authenticationReset;
           installation = {
             deviceId: credentials.deviceId,
             deviceToken: credentials.deviceToken,
-            enabled: false,
+            enabled: authenticationReset,
             subscriptionReady: false,
             enablePending: true,
-            authenticationReset: false,
-            forceNewSubscription: forceNewSubscription
+            authenticationReset: authenticationReset,
+            forceNewSubscription: false
           };
           await saveInstallation(installation);
         } catch (error) {
@@ -944,14 +934,21 @@
       var subscription;
       var subscriptionValue;
       try {
-        subscription = installation.forceNewSubscription
-          ? null
-          : await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
+        subscription = await withDeadline(registration.pushManager.getSubscription(), subscriptionTimeoutMs);
         if (subscription && Number.isFinite(subscription.expirationTime) && subscription.expirationTime <= now()) {
-          if (await withDeadline(subscription.unsubscribe(), subscriptionTimeoutMs) === false) throw new Error('Expired subscription cleanup failed');
+          if (!allowSubscribe) subscription = null;
+          else if (await withDeadline(subscription.unsubscribe(), subscriptionTimeoutMs) === false) {
+            throw new Error('Expired subscription cleanup failed');
+          }
           subscription = null;
         }
         if (!subscription) {
+          if (!allowSubscribe && installation.authenticationReset) {
+            installation.enablePending = false;
+            await saveInstallation(installation);
+            state = 'reauthorization-required';
+            return toPublicStatus('reauthorization-required');
+          }
           subscription = await withDeadline(registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: notificationCrypto.base64UrlDecode(config.vapidPublicKey)
@@ -980,7 +977,7 @@
         );
         if (subscriptionResponse.status === 401 || subscriptionResponse.status === 403) {
           await resetAuthentication();
-          return toPublicStatus('error');
+          return toPublicStatus('reauthorization-required');
         }
         if (!subscriptionResponse.ok) throw new Error('Subscription update failed');
         if (!await commitSubscriptionSuccess(installation, queued, subscriptionValue.endpoint || '')) {
@@ -1112,7 +1109,7 @@
         }, installation, true);
         if (response.status === 401 || response.status === 403) {
           await resetAuthentication();
-          return toPublicStatus('error');
+          return toPublicStatus('reauthorization-required');
         }
         if (!response.ok) {
           state = 'error';
@@ -1169,8 +1166,10 @@
 
     async function handleOnlineImpl() {
       var installation = await getInstallation();
+      if (installation && installation.authenticationReset && !installation.cleanupPending) {
+        return enableImpl({ allowSubscribe: false });
+      }
       if (installation && installation.enablePending && !installation.cleanupPending) return enableImpl();
-      if (installation && installation.authenticationReset && !installation.cleanupPending) return getStatusImpl();
       if (installation && installation.cleanupPending) {
         if (installation.cleanupServerDone) {
           if (await completeDisable()) return toPublicStatus('disabled');
