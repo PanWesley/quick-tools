@@ -1439,16 +1439,58 @@ textarea {
 .calendar-strip.sand { background: rgba(240, 220, 190, 0.5); color: #806030; }
 .calendar-strip.primary { background: rgba(255, 138, 42, 0.2); color: var(--primary-strong); }
 
-.task-row.task-tone-peach .task-content { background: rgba(255, 212, 185, 0.38); }
-.task-row.task-tone-coral .task-content { background: rgba(255, 182, 192, 0.32); }
-.task-row.task-tone-apricot .task-content { background: rgba(255, 200, 145, 0.35); }
-.task-row.task-tone-butter .task-content { background: rgba(255, 235, 165, 0.4); }
-.task-row.task-tone-mint .task-content { background: rgba(175, 235, 210, 0.32); }
-.task-row.task-tone-sky .task-content { background: rgba(180, 220, 245, 0.32); }
-.task-row.task-tone-lilac .task-content { background: rgba(215, 195, 245, 0.32); }
-.task-row.task-tone-rose .task-content { background: rgba(255, 190, 210, 0.34); }
-.task-row.task-tone-blush .task-content { background: rgba(255, 210, 220, 0.38); }
-.task-row.task-tone-sand .task-content { background: rgba(245, 225, 195, 0.42); }
+.task-row.task-tone-peach .task-content { background-color: rgba(255, 212, 185, 0.38) !important; background-image: none !important; }
+.task-row.task-tone-coral .task-content { background-color: rgba(255, 182, 192, 0.32) !important; background-image: none !important; }
+.task-row.task-tone-apricot .task-content { background-color: rgba(255, 200, 145, 0.35) !important; background-image: none !important; }
+.task-row.task-tone-butter .task-content { background-color: rgba(255, 235, 165, 0.4) !important; background-image: none !important; }
+.task-row.task-tone-mint .task-content { background-color: rgba(175, 235, 210, 0.32) !important; background-image: none !important; }
+.task-row.task-tone-sky .task-content { background-color: rgba(180, 220, 245, 0.32) !important; background-image: none !important; }
+.task-row.task-tone-lilac .task-content { background-color: rgba(215, 195, 245, 0.32) !important; background-image: none !important; }
+.task-row.task-tone-rose .task-content { background-color: rgba(255, 190, 210, 0.34) !important; background-image: none !important; }
+.task-row.task-tone-blush .task-content { background-color: rgba(255, 210, 220, 0.38) !important; background-image: none !important; }
+.task-row.task-tone-sand .task-content { background-color: rgba(245, 225, 195, 0.42) !important; background-image: none !important; }
+
+.task-row.is-completed.task-tone-peach .task-content,
+.task-row.is-completed.task-tone-coral .task-content,
+.task-row.is-completed.task-tone-apricot .task-content,
+.task-row.is-completed.task-tone-butter .task-content,
+.task-row.is-completed.task-tone-mint .task-content,
+.task-row.is-completed.task-tone-sky .task-content,
+.task-row.is-completed.task-tone-lilac .task-content,
+.task-row.is-completed.task-tone-rose .task-content,
+.task-row.is-completed.task-tone-blush .task-content,
+.task-row.is-completed.task-tone-sand .task-content {
+  background-color: var(--surface) !important;
+  background-image: none !important;
+}
+
+.task-row.is-overdue-row.task-tone-peach .task-content,
+.task-row.is-overdue-row.task-tone-coral .task-content,
+.task-row.is-overdue-row.task-tone-apricot .task-content,
+.task-row.is-overdue-row.task-tone-butter .task-content,
+.task-row.is-overdue-row.task-tone-mint .task-content,
+.task-row.is-overdue-row.task-tone-sky .task-content,
+.task-row.is-overdue-row.task-tone-lilac .task-content,
+.task-row.is-overdue-row.task-tone-rose .task-content,
+.task-row.is-overdue-row.task-tone-blush .task-content,
+.task-row.is-overdue-row.task-tone-sand .task-content {
+  background-color: #FCEEF0 !important;
+  background-image: none !important;
+}
+@supports (background-color: color-mix(in srgb, red 10%, white)) {
+  .task-row.is-overdue-row.task-tone-peach .task-content,
+  .task-row.is-overdue-row.task-tone-coral .task-content,
+  .task-row.is-overdue-row.task-tone-apricot .task-content,
+  .task-row.is-overdue-row.task-tone-butter .task-content,
+  .task-row.is-overdue-row.task-tone-mint .task-content,
+  .task-row.is-overdue-row.task-tone-sky .task-content,
+  .task-row.is-overdue-row.task-tone-lilac .task-content,
+  .task-row.is-overdue-row.task-tone-rose .task-content,
+  .task-row.is-overdue-row.task-tone-blush .task-content,
+  .task-row.is-overdue-row.task-tone-sand .task-content {
+    background-color: color-mix(in srgb, var(--danger) 10%, var(--surface)) !important;
+  }
+}
 
 .calendar-more {
   color: var(--text-muted);
@@ -1776,7 +1818,7 @@ textarea {
 .list-panel {
   overflow: visible;
   position: relative;
-  margin: 12px 16px 0;
+  margin: 8px 0 0;
   padding: 0;
 }
 
@@ -3007,6 +3049,31 @@ textarea {
     align-items: center;
     gap: 6px;
     margin-left: auto;
+  }
+
+  #view-today .panel,
+  #view-list .panel,
+  #view-profile .panel {
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: 10px 8px;
+  }
+
+  #view-list .list-panel {
+    padding: 0;
+    margin-top: 8px;
+  }
+
+  #view-today .today-hero {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .list-date-group-header {
+    padding: 10px 8px 6px;
   }
 }
 

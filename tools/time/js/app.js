@@ -629,7 +629,14 @@
 
   function renderToday() {
     var todayDate = DateUtils.fromDateKey(appState.todayKey);
-    var todayTasks = State.getTodayTasks(appState.data.tasks, appState.todayKey);
+    var allTodayTasks = appState.data.tasks.filter(function(task) {
+      return task.status !== 'deleted' && task.date && task.date <= appState.todayKey;
+    }).sort(function(a, b) {
+      if (a.status === 'completed' && b.status !== 'completed') return 1;
+      if (a.status !== 'completed' && b.status === 'completed') return -1;
+      return String(a.date).localeCompare(String(b.date)) || String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    });
+    var activeTodayTasks = allTodayTasks.filter(function(t) { return t.status !== 'completed'; });
     var dueHabits = appState.data.habits.filter(function(habit) {
       return State.habitDueOn(habit, appState.todayKey);
     });
@@ -643,10 +650,11 @@
 
     els.todayTitle.textContent = (todayDate.getMonth() + 1) + '月' + todayDate.getDate() + '日';
     els.todayWeekday.textContent = DateUtils.formatWeekday(appState.todayKey);
-    els.todaySummary.textContent = '今天还有 ' + todayTasks.length + ' 件事、' + uncheckedHabits.length + ' 个习惯待打卡';
-    els.todayTaskCount.textContent = todayTasks.length;
+    var completedCount = allTodayTasks.length - activeTodayTasks.length;
+    els.todaySummary.textContent = '今天还有 ' + activeTodayTasks.length + ' 件事、' + uncheckedHabits.length + ' 个习惯待打卡' + (completedCount > 0 ? '，已完成 ' + completedCount + ' 件' : '');
+    els.todayTaskCount.textContent = activeTodayTasks.length;
     els.todayHabitCount.textContent = uncheckedHabits.length;
-    els.todayTaskList.innerHTML = todayTasks.length ? todayTasks.map(renderTask).join('') : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
+    els.todayTaskList.innerHTML = allTodayTasks.length ? allTodayTasks.map(renderTask).join('') : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
     els.todayHabitList.innerHTML = dueHabits.length ? dueHabits.map(renderHabit).join('') : renderEmpty('还没有需要今天打卡的习惯。');
     if (isJournalEnabled()) {
       els.journalContent.value = journal ? journal.content : randomJournalQuote();
