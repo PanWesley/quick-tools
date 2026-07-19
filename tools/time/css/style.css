@@ -630,6 +630,21 @@ button {
   height: 22px;
 }
 
+.task-check.task-check-done {
+  background: var(--mint-soft);
+  border-color: var(--mint);
+  color: #247d67;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  padding: 0;
+}
+
+.task-check.task-check-done span {
+  line-height: 1;
+}
+
 .task-title {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1424,16 +1439,16 @@ textarea {
 .calendar-strip.sand { background: rgba(240, 220, 190, 0.5); color: #806030; }
 .calendar-strip.primary { background: rgba(255, 138, 42, 0.2); color: var(--primary-strong); }
 
-.date-detail-modal .task-row.task-tone-peach .task-content { background: rgba(255, 210, 180, 0.3); }
-.date-detail-modal .task-row.task-tone-coral .task-content { background: rgba(255, 175, 185, 0.28); }
-.date-detail-modal .task-row.task-tone-apricot .task-content { background: rgba(255, 195, 140, 0.3); }
-.date-detail-modal .task-row.task-tone-butter .task-content { background: rgba(255, 230, 150, 0.35); }
-.date-detail-modal .task-row.task-tone-mint .task-content { background: rgba(160, 225, 200, 0.28); }
-.date-detail-modal .task-row.task-tone-sky .task-content { background: rgba(170, 215, 240, 0.28); }
-.date-detail-modal .task-row.task-tone-lilac .task-content { background: rgba(205, 185, 235, 0.28); }
-.date-detail-modal .task-row.task-tone-rose .task-content { background: rgba(255, 180, 195, 0.28); }
-.date-detail-modal .task-row.task-tone-blush .task-content { background: rgba(255, 200, 210, 0.3); }
-.date-detail-modal .task-row.task-tone-sand .task-content { background: rgba(240, 220, 190, 0.35); }
+.task-row.task-tone-peach .task-content { background: rgba(255, 212, 185, 0.38); }
+.task-row.task-tone-coral .task-content { background: rgba(255, 182, 192, 0.32); }
+.task-row.task-tone-apricot .task-content { background: rgba(255, 200, 145, 0.35); }
+.task-row.task-tone-butter .task-content { background: rgba(255, 235, 165, 0.4); }
+.task-row.task-tone-mint .task-content { background: rgba(175, 235, 210, 0.32); }
+.task-row.task-tone-sky .task-content { background: rgba(180, 220, 245, 0.32); }
+.task-row.task-tone-lilac .task-content { background: rgba(215, 195, 245, 0.32); }
+.task-row.task-tone-rose .task-content { background: rgba(255, 190, 210, 0.34); }
+.task-row.task-tone-blush .task-content { background: rgba(255, 210, 220, 0.38); }
+.task-row.task-tone-sand .task-content { background: rgba(245, 225, 195, 0.42); }
 
 .calendar-more {
   color: var(--text-muted);
@@ -2876,13 +2891,13 @@ textarea {
   display: none !important;
 }
 
-@media (min-width: 760px) {
+@media (max-width: 640px) {
   body {
     padding-bottom: 128px;
   }
 
   .app-shell {
-    padding: 28px 28px 132px;
+    padding: 10px 8px 132px;
   }
 
   .bottom-nav {
@@ -3043,7 +3058,7 @@ textarea {
   }
 
   .app-shell {
-    padding: 12px 10px 94px;
+    padding: 8px 6px 94px;
   }
 
   .calendar-card {
@@ -3230,8 +3245,11 @@ textarea {
   }
 
   .notification-setting-row .setting-actions {
-    flex-direction: column;
-    align-items: flex-end;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
   }
 }
 
@@ -3243,17 +3261,17 @@ textarea {
 }
 
 .notification-setting-row .mode-pill {
-  min-width: 86px;
+  min-width: 72px;
   text-align: center;
 }
 
 .notification-setting-row .btn {
-  min-width: 88px;
+  min-width: 72px;
 }
 
 .notification-setting-row .notification-disable-button {
   min-width: auto;
-  padding-inline: 6px;
+  padding-inline: 10px;
   color: var(--text-muted);
 }
 

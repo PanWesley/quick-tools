@@ -435,7 +435,9 @@
     var title = State.getTaskDisplayTitle(task);
     var completeButton = opts.complete === false
       ? '<span></span>'
-      : '<button class="task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
+      : task.status === 'completed'
+        ? '<button class="task-check task-check-done" type="button" data-action="uncomplete-task" data-id="' + escapeHtml(task.id) + '" aria-label="恢复为待办"><span>✓</span></button>'
+        : '<button class="task-check" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var actions = [];
     if (opts.edit !== false && task.status !== 'completed' && task.status !== 'deleted') {
       actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button>');
@@ -448,7 +450,7 @@
 
     var isOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '" data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + ' task-tone-' + (task.tone || hashIdToColor(task.id)) + '" data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -469,7 +471,7 @@
       actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
     }
     var completeButton = task.status === 'completed'
-      ? '<span class="date-icon done-icon">✓</span>'
+      ? '<button class="task-check small task-check-done" type="button" data-action="uncomplete-task" data-id="' + escapeHtml(task.id) + '" aria-label="恢复为待办"><span>✓</span></button>'
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
@@ -931,6 +933,7 @@
     var checkButton = '';
     var typeTag = '';
     var rowClass = '';
+    var toneClass = '';
     var prio = normalizePriority(priority);
 
     if (isDeleted) {
@@ -939,17 +942,20 @@
       checkButton = '<span></span>';
       typeTag = '<span class="type-tag task-tag">任务</span>';
       rowClass = 'priority-none';
+      toneClass = ' task-tone-' + (item.data.tone || hashIdToColor(item.data.id));
     } else if (isCompleted) {
       if (isHabit) {
         checkButton = '<span class="date-icon habit-done-icon habit-check-done-' + prio + '">✓</span>';
         actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(item.data.id) + '">编辑</button>');
         actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(item.data.id) + '" data-date="' + escapeHtml(appState.todayKey) + '">重置</button>');
         typeTag = '<span class="type-tag habit-tag">习惯</span>';
+        toneClass = '';
       } else {
-        checkButton = '<span class="date-icon done-icon">✓</span>';
+        checkButton = '<button class="task-check small task-check-done" type="button" data-action="uncomplete-task" data-id="' + escapeHtml(item.data.id) + '" aria-label="恢复为待办"><span>✓</span></button>';
         actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">编辑</button>');
         actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(item.data.id) + '">删除</button>');
         typeTag = '<span class="type-tag task-tag">任务</span>';
+        toneClass = ' task-tone-' + (item.data.tone || hashIdToColor(item.data.id));
       }
       rowClass = (isHabit ? '' : '') + priorityRowClass(priority) + (isHabit && isCompleted ? '' : ' is-completed');
     } else if (isHabit) {
@@ -971,12 +977,14 @@
       }
       typeTag = '<span class="type-tag habit-tag">习惯</span>';
       rowClass = priorityRowClass(priority) + (hDone ? ' is-done' : hSkipped ? ' is-skipped' : '');
+      toneClass = '';
     } else {
       checkButton = '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(item.data.id) + '" aria-label="完成任务"></button>';
       actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">编辑</button>');
       actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(item.data.id) + '">删除</button>');
       typeTag = '<span class="type-tag task-tag">任务</span>';
       rowClass = priorityRowClass(priority);
+      toneClass = ' task-tone-' + (item.data.tone || hashIdToColor(item.data.id));
     }
 
     if (isOverdueItem) {
@@ -984,7 +992,7 @@
     }
 
     return [
-      '<article class="task-row list-task-row' + rowClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
+      '<article class="task-row list-task-row' + rowClass + toneClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
