@@ -668,6 +668,7 @@
     els.calendarCard.classList.toggle('is-collapsed', appState.calendarCollapsed);
     els.calendarToggle.textContent = appState.calendarCollapsed ? '展开' : '收起';
     els.calendarToggle.setAttribute('aria-expanded', String(!appState.calendarCollapsed));
+    updateHeaderTitle();
     els.calendarGrid.innerHTML = grid.map(function(cell) {
       if (!cell.isCurrentMonth) {
         return [
@@ -1199,19 +1200,31 @@
     if (els.dateDetailModal && !els.dateDetailModal.hidden) closeDateDetail();
     closeSelectMenus();
     appState.view = view;
+    document.body.setAttribute('data-view', view);
     document.querySelectorAll('.view').forEach(function(section) {
       section.classList.toggle('active', section.id === 'view-' + view);
     });
     document.querySelectorAll('.nav-item').forEach(function(button) {
       button.classList.toggle('active', button.dataset.view === view);
     });
-    var vt = viewTitles[view] || viewTitles.today;
-    var titleEl = document.getElementById('app-header-title');
-    var descEl = document.getElementById('app-header-desc');
-    if (titleEl) titleEl.textContent = vt.title;
-    if (descEl) descEl.textContent = vt.desc;
+    updateHeaderTitle();
     if (window.location.hash !== '#' + view) {
       window.location.hash = view;
+    }
+  }
+
+  function updateHeaderTitle() {
+    var view = appState.view;
+    var titleEl = document.getElementById('app-header-title');
+    var descEl = document.getElementById('app-header-desc');
+    if (view === 'calendar') {
+      var label = els.calendarLabel ? els.calendarLabel.textContent : '日历';
+      if (titleEl) titleEl.textContent = label;
+      if (descEl) descEl.textContent = viewTitles.calendar.desc;
+    } else {
+      var vt = viewTitles[view] || viewTitles.today;
+      if (titleEl) titleEl.textContent = vt.title;
+      if (descEl) descEl.textContent = vt.desc;
     }
   }
 
@@ -2558,9 +2571,15 @@
         switchView(link.dataset.viewLink);
       });
     });
-    $('prev-month').addEventListener('click', function() { changeMonth(-1); });
-    $('today-month').addEventListener('click', jumpToTodayMonth);
-    $('next-month').addEventListener('click', function() { changeMonth(1); });
+    document.querySelectorAll('[data-action="prev-month"]').forEach(function(btn) {
+      btn.addEventListener('click', function() { changeMonth(-1); });
+    });
+    document.querySelectorAll('[data-action="today-month"]').forEach(function(btn) {
+      btn.addEventListener('click', jumpToTodayMonth);
+    });
+    document.querySelectorAll('[data-action="next-month"]').forEach(function(btn) {
+      btn.addEventListener('click', function() { changeMonth(1); });
+    });
     els.calendarToggle.addEventListener('click', function() {
       appState.calendarCollapsed = !appState.calendarCollapsed;
       renderCalendar();
