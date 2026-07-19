@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=146">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=147">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -43,43 +43,18 @@
 
 <main class="app-shell">
   <section class="view active" id="view-today" aria-labelledby="today-title">
-    <div class="today-hero">
-      <div>
-        <p class="eyebrow" id="today-weekday">今天</p>
-        <h1 id="today-title">今天</h1>
-        <p id="today-summary">正在读取本地数据...</p>
-      </div>
-    </div>
-
-    <section class="panel priority-panel" aria-labelledby="tasks-title">
-      <div class="panel-head">
-        <div>
-          <h2 id="tasks-title">现在要做</h2>
-          <p>包含今天和逾期未完成事项</p>
-        </div>
-        <span class="count-badge" id="today-task-count">0</span>
-      </div>
+    <section class="panel today-section" aria-labelledby="tasks-title">
+      <div class="section-label" id="tasks-title">待办事项</div>
       <div class="stack-list" id="today-task-list"></div>
     </section>
 
-    <section class="panel" aria-labelledby="habits-title">
-      <div class="panel-head">
-        <div>
-          <h2 id="habits-title">待打卡</h2>
-          <p>轻轻完成，也允许跳过</p>
-        </div>
-        <span class="count-badge" id="today-habit-count">0</span>
-      </div>
+    <section class="panel today-section" aria-labelledby="habits-title">
+      <div class="section-label" id="habits-title">习惯打卡</div>
       <div class="habit-grid" id="today-habit-list"></div>
     </section>
 
-    <section class="panel" id="journal-section" aria-labelledby="journal-title">
-      <div class="panel-head">
-        <div>
-          <h2 id="journal-title">今日一句</h2>
-          <p>给今天留一句简短记录</p>
-        </div>
-      </div>
+    <section class="panel today-section" id="journal-section" aria-labelledby="journal-title">
+      <div class="section-label" id="journal-title">今日一句</div>
       <form class="journal-form" id="journal-form">
         <textarea id="journal-content" rows="3" placeholder="写一句今天的状态、收获或想法..."></textarea>
         <button class="btn primary" id="journal-save" type="button" data-action="save-journal" onclick="window.TodayYouxuApp.saveJournal()">保存今日一句</button>
@@ -528,7 +503,7 @@
 <script src="/tools/time/js/notification-model.js?v=2"></script>
 <script src="/tools/time/js/notification-sync.js?v=5"></script>
 <script src="/tools/time/js/notification.js?v=7"></script>
-<script src="/tools/time/js/app.js?v=147"></script>
+<script src="/tools/time/js/app.js?v=148"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>

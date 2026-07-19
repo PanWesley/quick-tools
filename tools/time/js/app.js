@@ -1,5 +1,5 @@
 (function() {
-  var APP_VERSION = 'v0.7.0';
+  var APP_VERSION = 'v0.8.0';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -629,7 +629,6 @@
   }
 
   function renderToday() {
-    var todayDate = DateUtils.fromDateKey(appState.todayKey);
     var allTodayTasks = appState.data.tasks.filter(function(task) {
       return task.status !== 'deleted' && task.date && task.date <= appState.todayKey;
     }).sort(function(a, b) {
@@ -637,24 +636,14 @@
       if (a.status !== 'completed' && b.status === 'completed') return -1;
       return String(a.date).localeCompare(String(b.date)) || String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
     });
-    var activeTodayTasks = allTodayTasks.filter(function(t) { return t.status !== 'completed'; });
     var dueHabits = appState.data.habits.filter(function(habit) {
       return State.habitDueOn(habit, appState.todayKey);
-    });
-    var uncheckedHabits = dueHabits.filter(function(habit) {
-      var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, appState.todayKey);
-      return !log || (log.state !== 'done' && log.state !== 'skipped');
     });
     var journal = appState.data.journals.find(function(entry) {
       return entry.date === appState.todayKey && String(entry.content || '').trim();
     });
 
-    els.todayTitle.textContent = (todayDate.getMonth() + 1) + '月' + todayDate.getDate() + '日';
-    els.todayWeekday.textContent = DateUtils.formatWeekday(appState.todayKey);
-    var completedCount = allTodayTasks.length - activeTodayTasks.length;
-    els.todaySummary.textContent = '今天还有 ' + activeTodayTasks.length + ' 件事、' + uncheckedHabits.length + ' 个习惯待打卡' + (completedCount > 0 ? '，已完成 ' + completedCount + ' 件' : '');
-    els.todayTaskCount.textContent = activeTodayTasks.length;
-    els.todayHabitCount.textContent = uncheckedHabits.length;
+    updateHeaderTitle();
     els.todayTaskList.innerHTML = allTodayTasks.length ? allTodayTasks.map(renderTask).join('') : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
     els.todayHabitList.innerHTML = dueHabits.length ? dueHabits.map(renderHabit).join('') : renderEmpty('还没有需要今天打卡的习惯。');
     if (isJournalEnabled()) {
@@ -1238,11 +1227,41 @@
       var label = els.calendarLabel ? els.calendarLabel.textContent : '日历';
       if (titleEl) titleEl.textContent = label;
       if (descEl) descEl.textContent = viewTitles.calendar.desc;
+    } else if (view === 'today') {
+      if (titleEl) titleEl.textContent = todayHeaderTitle();
+      if (descEl) descEl.textContent = todayHeaderDesc();
     } else {
       var vt = viewTitles[view] || viewTitles.today;
       if (titleEl) titleEl.textContent = vt.title;
       if (descEl) descEl.textContent = vt.desc;
     }
+  }
+
+  function todayHeaderTitle() {
+    var d = DateUtils.fromDateKey(appState.todayKey);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + DateUtils.formatWeekday(appState.todayKey);
+  }
+
+  function todayHeaderDesc() {
+    var tasks = appState.data.tasks.filter(function(t) {
+      return t.status !== 'deleted' && t.date && t.date <= appState.todayKey;
+    });
+    var active = tasks.filter(function(t) { return t.status !== 'completed'; }).length;
+    var completed = tasks.length - active;
+    var habits = appState.data.habits.filter(function(h) {
+      return State.habitDueOn(h, appState.todayKey);
+    });
+    var unchecked = habits.filter(function(h) {
+      var log = State.getHabitLogForDate(appState.data.habitLogs, h.id, appState.todayKey);
+      return !log || (log.state !== 'done' && log.state !== 'skipped');
+    }).length;
+    if (active === 0 && unchecked === 0) return '今天都完成啦 ✨';
+    var parts = [];
+    if (active > 0) parts.push(active + '件事待完成');
+    if (unchecked > 0) parts.push(unchecked + '个习惯待打卡');
+    var summary = parts.join(' · ');
+    if (completed > 0) summary += ' · 已完成' + completed + '件';
+    return summary;
   }
 
   function isValidNotificationDate(value) {
@@ -2478,11 +2497,6 @@
   }
 
   function cacheElements() {
-    els.todayTitle = $('today-title');
-    els.todayWeekday = $('today-weekday');
-    els.todaySummary = $('today-summary');
-    els.todayTaskCount = $('today-task-count');
-    els.todayHabitCount = $('today-habit-count');
     els.todayTaskList = $('today-task-list');
     els.todayHabitList = $('today-habit-list');
     els.journalForm = $('journal-form');

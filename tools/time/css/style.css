@@ -194,6 +194,20 @@ button {
   transition: color 200ms ease;
 }
 
+body[data-view="today"] .brand strong {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+body[data-view="today"] .brand-mark {
+  display: none;
+}
+
+body[data-view="today"] .brand {
+  gap: 0;
+}
+
 .brand small {
   max-width: 58vw;
   overflow: hidden;
@@ -227,62 +241,130 @@ button {
   display: block;
 }
 
-.today-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 6px 0 16px;
-  padding: 18px 20px;
-  background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--primary) 12%, var(--border));
-  border-radius: 16px;
-  position: relative;
+.today-section {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.today-section .section-label {
+  margin: 0 0 10px 2px;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.today-section .stack-list {
+  margin-top: 0;
+  gap: 10px;
+}
+
+.today-section .habit-grid {
+  margin-top: 0;
+}
+
+.today-section .journal-form {
+  margin-top: 0;
+}
+
+.today-section .journal-form textarea {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  transition: border-color 200ms ease;
+}
+
+.today-section .journal-form textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.today-section .task-row {
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(90, 58, 36, 0.06);
   overflow: hidden;
 }
 
-.today-hero::before {
-  content: '';
-  position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 12%, transparent) 0%, transparent 70%);
-  pointer-events: none;
+.today-section .task-row::before {
+  width: 3px;
+  border-radius: 0 3px 3px 0;
 }
 
-.today-hero h1 {
-  margin: 0;
-  font-size: 32px;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: var(--text-strong);
-  font-weight: var(--weight-bold);
+.today-section .task-content {
+  min-height: 58px;
+  padding: 11px 12px 11px 14px;
+  background-color: var(--surface);
+  border-radius: 14px;
 }
 
-.today-hero .eyebrow {
-  margin: 0 0 4px;
-  color: var(--primary-strong);
-  font-size: 13px;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.02em;
+.today-section .task-row.priority-none .task-content {
+  background-color: color-mix(in srgb, var(--primary) 3%, var(--surface));
 }
 
-.today-hero #today-summary {
-  margin: 10px 0 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: var(--primary-gradient);
-  color: #fff;
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-  border-radius: 20px;
-  box-shadow: 0 4px 12px var(--primary-shadow);
-  position: relative;
-  z-index: 1;
+@supports (background-color: color-mix(in srgb, red 10%, white)) {
+  .today-section .task-row.priority-high .task-content { background-color: color-mix(in srgb, var(--coral, #FF6F52) 8%, var(--surface)); }
+  .today-section .task-row.priority-medium .task-content { background-color: color-mix(in srgb, var(--sun, #FFB23F) 10%, var(--surface)); }
+  .today-section .task-row.priority-low .task-content { background-color: color-mix(in srgb, var(--sky, #64B5F6) 8%, var(--surface)); }
+}
+
+.today-section .task-row.is-completed .task-content {
+  background-color: var(--surface-soft) !important;
+  opacity: 0.7;
+}
+
+.today-section .task-row.is-completed::before {
+  opacity: 0.4;
+}
+
+.today-section .task-check {
+  width: 22px;
+  height: 22px;
+}
+
+.today-section .task-title {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.today-section .task-meta {
+  font-size: 12px;
+}
+
+.today-section .habit-card {
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(90, 58, 36, 0.06);
+  background: color-mix(in srgb, var(--lilac, #B9A7FF) 6%, var(--surface));
+  padding: 11px 12px 11px 14px;
+}
+
+.today-section .habit-card::before {
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+}
+
+.today-section .habit-check {
+  width: 22px;
+  height: 22px;
+}
+
+.today-section .habit-name {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.task-section .stack-list {
+  gap: 10px;
 }
 
 .section-head {
@@ -356,10 +438,6 @@ button {
   box-shadow: var(--shadow);
   margin-bottom: 12px;
   padding: 14px;
-}
-
-.priority-panel {
-  background: linear-gradient(180deg, var(--primary-soft), var(--surface));
 }
 
 .panel h2 {
@@ -3098,14 +3176,25 @@ textarea {
     padding: 10px 8px;
   }
 
+  #view-today .today-section {
+    padding: 0;
+    border: none;
+    margin-bottom: 16px;
+  }
+
+  #view-today .today-section .task-row,
+  #view-today .today-section .habit-card {
+    border-radius: 12px;
+  }
+
   #view-list .list-panel {
     padding: 0;
     margin-top: 8px;
   }
 
-  #view-today .today-hero {
-    padding-left: 8px;
-    padding-right: 8px;
+  #view-today .today-section .section-label {
+    margin-left: 2px;
+    margin-bottom: 8px;
   }
 
   .list-date-group-header {
@@ -3152,16 +3241,20 @@ textarea {
     max-width: 48vw;
   }
 
-  .today-hero h1 {
-    font-size: 26px;
-  }
-
   .section-head h1 {
     font-size: 22px;
   }
 
   .app-shell {
     padding: 8px 6px 94px;
+  }
+
+  body[data-view="today"] .brand strong {
+    font-size: 18px;
+  }
+
+  body[data-view="today"] .brand small {
+    max-width: 60vw;
   }
 
   .calendar-card {
