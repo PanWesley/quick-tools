@@ -506,10 +506,42 @@
     ].join('');
   }
 
+  function hashIdToColor(id) {
+    var str = String(id || '');
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    var palettes = [
+      'peach',
+      'coral',
+      'apricot',
+      'butter',
+      'mint',
+      'sky',
+      'lilac',
+      'rose',
+      'blush',
+      'sand'
+    ];
+    return palettes[Math.abs(hash) % palettes.length];
+  }
+
   function calendarEntryTone(entry) {
-    if (entry.type === 'task') return priorityTone(entry.priority);
+    if (entry.type === 'task') return hashIdToColor(entry.id);
     if (entry.type === 'habit') return entry.state === 'done' ? 'mint' : 'lilac';
     return 'rose';
+  }
+
+  function calendarPriorityBorder(priority) {
+    var borders = {
+      high: ' border-high',
+      medium: ' border-medium',
+      low: ' border-low',
+      none: ''
+    };
+    return borders[priority] || borders.none;
   }
 
   function calendarEntryStateClass(entry) {
@@ -624,10 +656,12 @@
         ].join('');
       }
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
-      var strips = entries.slice(0, 2).map(function(entry) {
-        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(entry.label) + '</span>';
+      var maxStrips = 5;
+      var strips = entries.slice(0, maxStrips).map(function(entry) {
+        var borderClass = entry.type === 'task' ? calendarPriorityBorder(entry.priority) : '';
+        return '<span class="calendar-strip ' + calendarEntryTone(entry) + borderClass + calendarEntryStateClass(entry) + '">' + escapeHtml(entry.label) + '</span>';
       }).join('');
-      var overflow = entries.length > 2 ? '<span class="calendar-more">+' + (entries.length - 2) + '</span>' : '';
+      var overflow = entries.length > maxStrips ? '<span class="calendar-more">+' + (entries.length - maxStrips) + '</span>' : '';
       return [
         '<button class="day-cell',
         cell.isCurrentMonth ? '' : ' outside',
@@ -665,9 +699,30 @@
       rows.push('<article class="task-row date-note-row"><div class="task-content"><span class="date-icon journal-icon">记</span><div class="task-main"><div class="task-title">每日一句</div><div class="task-meta">' + escapeHtml(journal.content) + '</div></div></div></article>');
     }
 
+    var html = rows.length ? rows.join('') : renderEmpty('这一天还没有安排或记录。');
     els.selectedDateTitle.textContent = dateKey;
     els.selectedDateSubtitle.textContent = DateUtils.formatWeekday(dateKey);
-    els.selectedDateList.innerHTML = rows.length ? rows.join('') : renderEmpty('这一天还没有安排或记录。');
+    els.selectedDateList.innerHTML = html;
+    if (els.dateDetailTitle) {
+      els.dateDetailTitle.textContent = dateKey;
+      els.dateDetailSubtitle.textContent = DateUtils.formatWeekday(dateKey);
+      els.dateDetailList.innerHTML = html;
+    }
+  }
+
+  function openDateDetail() {
+    if (!els.dateDetailModal) return;
+    renderSelectedDate();
+    els.dateDetailBackdrop.hidden = false;
+    els.dateDetailModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDateDetail() {
+    if (!els.dateDetailModal) return;
+    els.dateDetailBackdrop.hidden = true;
+    els.dateDetailModal.hidden = true;
+    document.body.style.overflow = '';
   }
 
   function matchesSearch(task) {
@@ -1120,6 +1175,7 @@
 
   function switchView(view) {
     if (els.quickSheet && !els.quickSheet.hidden) closeSheet();
+    if (els.dateDetailModal && !els.dateDetailModal.hidden) closeDateDetail();
     closeSelectMenus();
     appState.view = view;
     document.querySelectorAll('.view').forEach(function(section) {
@@ -1342,7 +1398,13 @@
       els.quickRepeatCustomHint.hidden = true;
       els.quickRepeatCustomHint.textContent = '';
     }
-    setQuickDate(appState.todayKey, 'today');
+    var defaultDate = appState.todayKey;
+    var defaultLabel = 'today';
+    if (appState.view === 'calendar' && appState.selectedDateKey) {
+      defaultDate = appState.selectedDateKey;
+      defaultLabel = defaultDate === appState.todayKey ? 'today' : 'custom';
+    }
+    setQuickDate(defaultDate, defaultLabel);
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
@@ -1558,6 +1620,14 @@
     } else if (action === 'select-date') {
       appState.selectedDateKey = target.dataset.date;
       renderCalendar();
+      if (appState.view === 'calendar') {
+        openDateDetail();
+      }
+    } else if (action === 'close-date-detail') {
+      closeDateDetail();
+    } else if (action === 'date-detail-add') {
+      closeDateDetail();
+      openSheet();
     } else if (action === 'notification-setup') {
       handleNotificationAction();
     } else if (action === 'notification-disable') {
@@ -2366,6 +2436,11 @@
     els.selectedDateTitle = $('selected-date-title');
     els.selectedDateSubtitle = $('selected-date-subtitle');
     els.selectedDateList = $('selected-date-list');
+    els.dateDetailBackdrop = $('date-detail-backdrop');
+    els.dateDetailModal = $('date-detail-modal');
+    els.dateDetailTitle = $('date-detail-title');
+    els.dateDetailSubtitle = $('date-detail-subtitle');
+    els.dateDetailList = $('date-detail-list');
     els.taskSearch = $('task-search');
     els.listContainer = $('list-container');
     els.listLoadMore = $('list-load-more');
@@ -2462,6 +2537,7 @@
     els.closeAdd.addEventListener('click', closeSheet);
     els.cancelAdd.addEventListener('click', closeSheet);
     els.sheetBackdrop.addEventListener('click', closeSheet);
+    if (els.dateDetailBackdrop) els.dateDetailBackdrop.addEventListener('click', closeDateDetail);
     els.quickForm.addEventListener('submit', handleQuickSubmit);
     document.querySelectorAll('[data-select-target]').forEach(function(trigger) {
       trigger.addEventListener('click', function(event) {

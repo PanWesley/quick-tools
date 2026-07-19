@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=137">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=141">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -311,6 +311,21 @@
   </button>
 </nav>
 
+<div class="date-detail-backdrop" id="date-detail-backdrop" hidden></div>
+<section class="date-detail-modal" id="date-detail-modal" aria-labelledby="date-detail-title" aria-modal="true" role="dialog" hidden>
+  <div class="date-detail-head">
+    <button class="date-detail-close" type="button" data-action="close-date-detail" aria-label="关闭">×</button>
+    <div>
+      <h2 id="date-detail-title">日期详情</h2>
+      <p id="date-detail-subtitle">选择一个日期查看安排</p>
+    </div>
+    <button class="date-detail-add" type="button" data-action="date-detail-add" aria-label="新增事项">+</button>
+  </div>
+  <div class="date-detail-body">
+    <div class="stack-list" id="date-detail-list"></div>
+  </div>
+</section>
+
 <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
 <section class="quick-sheet" id="quick-sheet" aria-labelledby="quick-sheet-title" aria-modal="true" role="dialog" hidden>
   <div class="sheet-head">
@@ -477,7 +492,7 @@
 <script src="/tools/time/js/notification-model.js?v=2"></script>
 <script src="/tools/time/js/notification-sync.js?v=4"></script>
 <script src="/tools/time/js/notification.js?v=7"></script>
-<script src="/tools/time/js/app.js?v=138"></script>
+<script src="/tools/time/js/app.js?v=142"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
