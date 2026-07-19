@@ -473,7 +473,7 @@
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + '"' + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + ' task-tone-' + (task.tone || hashIdToColor(task.id)) + '"' + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -544,8 +544,14 @@
     return palettes[Math.abs(hash) % palettes.length];
   }
 
+  function truncateLabel(text, maxLen) {
+    var str = String(text || '').trim();
+    if (str.length <= maxLen) return str;
+    return str.slice(0, maxLen - 1) + '…';
+  }
+
   function calendarEntryTone(entry) {
-    if (entry.type === 'task') return hashIdToColor(entry.id);
+    if (entry.type === 'task') return entry.tone || hashIdToColor(entry.id);
     if (entry.type === 'habit') return entry.state === 'done' ? 'mint' : 'lilac';
     return 'rose';
   }
@@ -672,10 +678,9 @@
         ].join('');
       }
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
-      var maxStrips = 5;
+      var maxStrips = 4;
       var strips = entries.slice(0, maxStrips).map(function(entry) {
-        var borderClass = entry.type === 'task' ? calendarPriorityBorder(entry.priority) : '';
-        return '<span class="calendar-strip ' + calendarEntryTone(entry) + borderClass + calendarEntryStateClass(entry) + '">' + escapeHtml(entry.label) + '</span>';
+        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(truncateLabel(entry.label, 4)) + '</span>';
       }).join('');
       var overflow = entries.length > maxStrips ? '<span class="calendar-more">+' + (entries.length - maxStrips) + '</span>' : '';
       return [
@@ -1407,6 +1412,7 @@
     setChoiceValue('quick-repeat', 'none');
     setChoiceValue('quick-time-mode', 'all-day');
     setChoiceValue('quick-reminder', 'none');
+    setChoiceValue('quick-tone', '');
     els.quickStartTime.value = '';
     els.quickEndTime.value = '';
     updateTimeDisplay();
@@ -1439,6 +1445,7 @@
     setChoiceValue('quick-repeat', 'none');
     setChoiceValue('quick-time-mode', 'all-day');
     setChoiceValue('quick-reminder', 'none');
+    setChoiceValue('quick-tone', '');
     els.quickStartTime.value = '';
     els.quickEndTime.value = '';
     updateTimeDisplay();
@@ -1497,6 +1504,7 @@
       date: els.quickDate.value,
       priority: els.quickPriority.value,
       area: els.quickArea.value || 'life',
+      tone: els.quickTone.value || '',
       timeMode: els.quickTimeMode.value || 'all-day',
       startTime: els.quickStartTime.value,
       endTime: els.quickTimeMode.value === 'range' ? els.quickEndTime.value : '',
@@ -2508,6 +2516,7 @@
     els.quickRepeatCustomHint = $('quick-repeat-custom-hint');
     els.quickMoreSettings = $('quick-more-settings');
     els.quickNotes = $('quick-notes');
+    els.quickTone = $('quick-tone');
     els.pickerBackdrop = $('picker-backdrop');
     els.pickerSheet = $('picker-sheet');
     els.pickerTitle = $('picker-title');

@@ -1398,23 +1398,14 @@ textarea {
   display: block;
   min-width: 0;
   padding: 3px 7px;
-  padding-left: 10px;
   overflow: hidden;
   border-radius: 6px;
-  color: color-mix(in srgb, var(--text) 85%, transparent);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-left-width: 3px;
-  border-left-style: solid;
-  border-left-color: transparent;
 }
-
-.calendar-strip.border-high { border-left-color: #e74c5a; }
-.calendar-strip.border-medium { border-left-color: #f0a030; }
-.calendar-strip.border-low { border-left-color: #55c7a5; }
 
 .calendar-strip.is-done {
   opacity: 0.45;
@@ -1432,6 +1423,17 @@ textarea {
 .calendar-strip.blush { background: rgba(255, 200, 210, 0.45); color: #a8425c; }
 .calendar-strip.sand { background: rgba(240, 220, 190, 0.5); color: #806030; }
 .calendar-strip.primary { background: rgba(255, 138, 42, 0.2); color: var(--primary-strong); }
+
+.date-detail-modal .task-row.task-tone-peach .task-content { background: rgba(255, 210, 180, 0.3); }
+.date-detail-modal .task-row.task-tone-coral .task-content { background: rgba(255, 175, 185, 0.28); }
+.date-detail-modal .task-row.task-tone-apricot .task-content { background: rgba(255, 195, 140, 0.3); }
+.date-detail-modal .task-row.task-tone-butter .task-content { background: rgba(255, 230, 150, 0.35); }
+.date-detail-modal .task-row.task-tone-mint .task-content { background: rgba(160, 225, 200, 0.28); }
+.date-detail-modal .task-row.task-tone-sky .task-content { background: rgba(170, 215, 240, 0.28); }
+.date-detail-modal .task-row.task-tone-lilac .task-content { background: rgba(205, 185, 235, 0.28); }
+.date-detail-modal .task-row.task-tone-rose .task-content { background: rgba(255, 180, 195, 0.28); }
+.date-detail-modal .task-row.task-tone-blush .task-content { background: rgba(255, 200, 210, 0.3); }
+.date-detail-modal .task-row.task-tone-sand .task-content { background: rgba(240, 220, 190, 0.35); }
 
 .calendar-more {
   color: var(--text-muted);
@@ -2508,7 +2510,7 @@ textarea {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 145;
   background: rgba(6, 12, 20, 0.42);
   backdrop-filter: blur(4px);
 }
@@ -2517,7 +2519,7 @@ textarea {
   position: fixed;
   left: 50%;
   top: 50%;
-  z-index: 45;
+  z-index: 150;
   width: min(540px, calc(100% - 32px));
   max-height: min(90vh, 680px);
   transform: translate(-50%, -50%);
@@ -2649,6 +2651,25 @@ textarea {
   background: var(--primary-soft);
   color: var(--primary-strong);
 }
+
+.tone-menu .select-option::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  margin-right: 8px;
+}
+.tone-menu .select-option.tone-peach::before { background: rgba(255, 210, 180, 0.6); }
+.tone-menu .select-option.tone-coral::before { background: rgba(255, 175, 185, 0.58); }
+.tone-menu .select-option.tone-apricot::before { background: rgba(255, 195, 140, 0.6); }
+.tone-menu .select-option.tone-butter::before { background: rgba(255, 230, 150, 0.65); }
+.tone-menu .select-option.tone-mint::before { background: rgba(160, 225, 200, 0.55); }
+.tone-menu .select-option.tone-sky::before { background: rgba(170, 215, 240, 0.55); }
+.tone-menu .select-option.tone-lilac::before { background: rgba(205, 185, 235, 0.58); }
+.tone-menu .select-option.tone-rose::before { background: rgba(255, 180, 195, 0.58); }
+.tone-menu .select-option.tone-blush::before { background: rgba(255, 200, 210, 0.6); }
+.tone-menu .select-option.tone-sand::before { background: rgba(240, 220, 190, 0.65); }
 
 .date-choice-row {
   display: grid;
@@ -2886,6 +2907,58 @@ textarea {
   .list-columns,
   .settings-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  #view-calendar {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #view-calendar .app-shell {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  #view-calendar .calendar-card {
+    margin: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+    padding: 10px 6px;
+    box-shadow: none;
+  }
+
+  #view-calendar .weekday-row,
+  #view-calendar .calendar-grid {
+    gap: 3px;
+  }
+
+  #view-calendar .weekday-row {
+    padding: 0 2px;
+  }
+
+  #view-calendar .day-cell {
+    min-height: 95px;
+    padding: 4px 3px 5px;
+    gap: 2px;
+    border-radius: 8px;
+  }
+
+  #view-calendar .day-number {
+    font-size: 12px;
+    min-width: 18px;
+    height: 18px;
+  }
+
+  #view-calendar .calendar-strip,
+  #view-calendar .calendar-more {
+    padding: 2px 4px;
+    font-size: 10px;
+    line-height: 1.3;
+    border-radius: 4px;
   }
 }
 

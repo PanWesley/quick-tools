@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=141">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=142">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -343,6 +343,7 @@
     <input id="quick-time-mode" type="hidden" value="all-day">
     <input id="quick-reminder" type="hidden" value="none">
     <input id="quick-area" type="hidden" value="life">
+    <input id="quick-tone" type="hidden" value="">
     <label>
       标题
       <input id="quick-title" type="text" autocomplete="off" placeholder="例如：吃早餐" required>
@@ -434,6 +435,26 @@
             <button class="select-option none" type="button" data-choice-target="quick-priority" data-choice-value="none" data-choice-label="不重要不紧急" data-choice-desc="有空再看">不重要不紧急<span>有空再看</span></button>
           </div>
         </div>
+        <div class="quick-field custom-select" id="quick-tone-field" data-select-field="quick-tone">
+          <span class="field-label">背景色</span>
+          <button class="select-trigger" type="button" data-select-target="quick-tone" aria-expanded="false">
+            <span><strong id="quick-tone-label">随机</strong><small id="quick-tone-desc">按ID自动分配</small></span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+          <div class="select-menu tone-menu" id="quick-tone-menu" hidden>
+            <button class="select-option active" type="button" data-choice-target="quick-tone" data-choice-value="" data-choice-label="随机" data-choice-desc="按ID自动分配">随机<span>按ID自动分配</span></button>
+            <button class="select-option tone-peach" type="button" data-choice-target="quick-tone" data-choice-value="peach" data-choice-label="桃色" data-choice-desc="温暖">桃色<span>温暖</span></button>
+            <button class="select-option tone-coral" type="button" data-choice-target="quick-tone" data-choice-value="coral" data-choice-label="珊瑚" data-choice-desc="活泼">珊瑚<span>活泼</span></button>
+            <button class="select-option tone-apricot" type="button" data-choice-target="quick-tone" data-choice-value="apricot" data-choice-label="杏色" data-choice-desc="明亮">杏色<span>明亮</span></button>
+            <button class="select-option tone-butter" type="button" data-choice-target="quick-tone" data-choice-value="butter" data-choice-label="奶油" data-choice-desc="柔和">奶油<span>柔和</span></button>
+            <button class="select-option tone-mint" type="button" data-choice-target="quick-tone" data-choice-value="mint" data-choice-label="薄荷" data-choice-desc="清新">薄荷<span>清新</span></button>
+            <button class="select-option tone-sky" type="button" data-choice-target="quick-tone" data-choice-value="sky" data-choice-label="天蓝" data-choice-desc="清爽">天蓝<span>清爽</span></button>
+            <button class="select-option tone-lilac" type="button" data-choice-target="quick-tone" data-choice-value="lilac" data-choice-label="淡紫" data-choice-desc="优雅">淡紫<span>优雅</span></button>
+            <button class="select-option tone-rose" type="button" data-choice-target="quick-tone" data-choice-value="rose" data-choice-label="玫瑰" data-choice-desc="浪漫">玫瑰<span>浪漫</span></button>
+            <button class="select-option tone-blush" type="button" data-choice-target="quick-tone" data-choice-value="blush" data-choice-label="浅绯" data-choice-desc="柔和">浅绯<span>柔和</span></button>
+            <button class="select-option tone-sand" type="button" data-choice-target="quick-tone" data-choice-value="sand" data-choice-label="沙色" data-choice-desc="温暖">沙色<span>温暖</span></button>
+          </div>
+        </div>
       </div>
       <label>
         备注
@@ -492,7 +513,7 @@
 <script src="/tools/time/js/notification-model.js?v=2"></script>
 <script src="/tools/time/js/notification-sync.js?v=5"></script>
 <script src="/tools/time/js/notification.js?v=7"></script>
-<script src="/tools/time/js/app.js?v=142"></script>
+<script src="/tools/time/js/app.js?v=143"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
