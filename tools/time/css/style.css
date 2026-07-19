@@ -2036,6 +2036,8 @@ textarea {
 .list-date-group-header.overdue { color: var(--danger, #d95b68); }
 
 .list-task-list {
+  display: grid;
+  gap: 8px;
   padding: 0;
 }
 
@@ -2264,11 +2266,12 @@ textarea {
 }
 
 .theme-preset {
-  display: grid;
-  place-items: center;
-  gap: 6px;
-  min-height: 70px;
-  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-soft);
@@ -2276,6 +2279,10 @@ textarea {
   cursor: pointer;
   font-size: 12px;
   font-weight: var(--weight-medium);
+}
+
+.theme-preset strong {
+  font-size: 12px;
 }
 
 .theme-preset.active {
@@ -2286,11 +2293,12 @@ textarea {
 }
 
 .theme-swatch {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
   border-radius: 999px;
   border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 8px 18px rgba(90, 58, 36, 0.14);
+  box-shadow: 0 4px 10px rgba(90, 58, 36, 0.12);
 }
 
 .theme-swatch.orange { background: linear-gradient(135deg, #ff7a8a, #ff8a2a); }
@@ -2305,6 +2313,34 @@ textarea {
 .data-setting-list {
   display: grid;
   gap: 8px;
+}
+
+.preference-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preference-item {
+  align-items: center;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.preference-item h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+
+.preference-item p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .data-setting-item {
@@ -3205,7 +3241,50 @@ textarea {
   }
 
   .theme-preset-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .theme-preset {
+    min-height: 40px;
+    padding: 5px 6px;
+    gap: 5px;
+  }
+
+  .theme-swatch {
+    width: 18px;
+    height: 18px;
+  }
+
+  .theme-preset strong {
+    font-size: 11px;
+  }
+
+  .preference-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .preference-item {
+    align-items: center;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: var(--radius);
+    background: var(--surface-soft);
+  }
+
+  .preference-item h3 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-strong);
+    font-weight: var(--weight-medium);
+  }
+
+  .preference-item p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
   }
 
   .data-setting-item {

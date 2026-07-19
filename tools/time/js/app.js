@@ -1,4 +1,5 @@
 (function() {
+  var APP_VERSION = 'v0.7.0';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -3038,6 +3039,8 @@
 
   function init() {
     cacheElements();
+    var versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = APP_VERSION;
     initThemePreset();
     applyJournalEnabled(isJournalEnabled());
     bindEvents();

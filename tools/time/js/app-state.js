@@ -231,7 +231,8 @@
           id: task.id,
           label: getTaskDisplayTitle(task),
           state: task.status || 'active',
-          priority: task.priority || 'none'
+          priority: task.priority || 'none',
+          tone: task.tone || ''
         });
       });
 
