@@ -23,6 +23,8 @@
 - 新增匿名送达回执，页面和 Service Worker 可跨上下文识别已显示的提醒；回执不含提醒内容并在 48 小时后过期。
 
 ### 修复
+- 修复 iOS PWA 在设备凭据失效后长期停留在“需要重新授权”的问题：前台恢复或用户点击“重新连接”时会注册新设备并复用现有 PushSubscription，不再依赖旧订阅注销成功。
+- 通知设置现在明确区分系统权限被拒、凭据失效、等待网络和普通连接失败；重连与提醒快照同步全部完成后才显示“后台提醒已开启”。
 - 修复 iOS 主屏 PWA 后台推送只能显示模糊兜底文案的问题：v2 密钥改为可跨页面与 Service Worker 导入的本地 raw key 记录，新提醒自动升级为 v2 加密。
 - 修复打开 App 后补发过时且重复的明确提醒：前台不再补调已经错过的提醒，计时器晚醒超过 60 秒时不显示，并检查后台回执与系统可见通知。
 - 测试提醒现在发送完整、严格校验的加密载荷，通知栏直接显示“测试提醒 / 后台提醒已连接”。
@@ -32,7 +34,7 @@
 - Notifications Worker/D1 与 Analytics Worker/D1 隔离，只允许复用无状态基础模块，不共享业务数据库或密钥。
 - 修正旧版说明：Service Worker 只能由 Push 等事件唤醒，不能仅依靠现有 Service Worker 在本地到点后台定时。
 - 本地 Node、Worker 测试和 Wrangler dry-run 已纳入发布验证；生产 Cloudflare D1、VAPID secrets、route、Cron/deploy 与 iOS/iPadOS、Android、桌面真机投递尚需外部验证，当前不声明生产后台提醒已可用。
-- Notifications Worker 兼容加密版本 1 和 2；本次升级不需要 D1 schema migration。发布顺序必须先部署 Worker，再发布 PWA v32 资源。
+- Notifications Worker 兼容加密版本 1 和 2；本次升级不需要 D1 schema migration。当前客户端修复发布为 PWA v33 资源，不需要再次修改或部署 Worker。
 
 ## v0.6.0 (2026-07-10)
 

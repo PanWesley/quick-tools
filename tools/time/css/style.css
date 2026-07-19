@@ -3152,7 +3152,9 @@ textarea {
   border: 1px solid color-mix(in srgb, var(--sun) 38%, var(--border));
 }
 
-.notification-status-error {
+.notification-status-error,
+.notification-status-permission-denied,
+.notification-status-reauthorization-required {
   background: color-mix(in srgb, var(--danger) 12%, var(--surface));
   color: var(--danger);
   border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));

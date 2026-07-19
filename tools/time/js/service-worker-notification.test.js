@@ -291,7 +291,7 @@ test('push failure diagnostics distinguish missing data, decrypt failure, and in
   const source = await createHarness();
   const encrypted = await cryptoApi.encryptPayload(source.key, VALID_PAYLOAD);
   const decryptFailure = await createHarness();
-  encrypted.ciphertext = encrypted.ciphertext.slice(0, -1) + (encrypted.ciphertext.endsWith('A') ? 'B' : 'A');
+  encrypted.ciphertext = (encrypted.ciphertext.startsWith('A') ? 'B' : 'A') + encrypted.ciphertext.slice(1);
   await push(decryptFailure, JSON.stringify(encrypted));
   assert.deepEqual(decryptFailure.receiptCalls, [['recordFailure', 'decrypt_failed']]);
 
@@ -550,15 +550,15 @@ test('app source renders stable notification attributes and owns message targeti
 });
 
 test('service worker cache matches current index assets and notification API is network-only', async () => {
-  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v32['"]/);
+  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v33['"]/);
   [
-    '/tools/time/css/style.css?v=137',
+    '/tools/time/css/style.css?v=138',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
-    '/tools/time/js/notification-sync.js?v=4',
+    '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=138'
+    '/tools/time/js/app.js?v=139'
   ].forEach(asset => {
     assert.ok(indexSource.includes(asset), asset + ' must be referenced by index');
     assert.ok(swSource.includes("'" + asset + "'"), asset + ' must be precached exactly');
@@ -583,8 +583,8 @@ test('service worker cache matches current index assets and notification API is 
 test('service worker activation keeps delivery receipts while removing old app shells', async () => {
   const harness = await createHarness({
     cacheNames: [
-      'today-youxu-v31',
       'today-youxu-v32',
+      'today-youxu-v33',
       'today-youxu-notification-receipts-v1',
       'unrelated-cache'
     ]
@@ -592,7 +592,7 @@ test('service worker activation keeps delivery receipts while removing old app s
 
   await harness.dispatch('activate', {});
 
-  assert.deepEqual(harness.deletedCaches, ['today-youxu-v31']);
+  assert.deepEqual(harness.deletedCaches, ['today-youxu-v32']);
   assert.equal(harness.receiptCleanupCalls, 1);
 });
 

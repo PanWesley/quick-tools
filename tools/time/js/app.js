@@ -11,12 +11,24 @@
   var NOTIFICATION_STATUS_COPY = {
     'subscribing': '正在连接',
     'syncing': '正在连接',
-    'pending': '等待同步',
+    'pending': '等待网络恢复',
     'ready': '后台提醒已开启',
-    'error': '需要重新授权',
+    'error': '提醒连接失败',
     'unsupported': '当前设备不支持',
-    'permission-required': '未开启',
+    'permission-required': '未开启通知',
+    'permission-denied': '请在系统设置中开启通知',
+    'reauthorization-required': '提醒连接已失效',
     'disabled': '未开启'
+  };
+
+  var NOTIFICATION_ACTION_COPY = {
+    'permission-required': '开启通知',
+    'permission-denied': '查看说明',
+    'reauthorization-required': '重新连接',
+    'pending': '重试',
+    'ready': '测试提醒',
+    'error': '重试',
+    'disabled': '开启提醒'
   };
 
   var appState = {
@@ -139,7 +151,7 @@
     if (cancel) cancel();
   }
 
-  function syncNotificationSnapshot(data, generation) {
+  function syncNotificationSnapshot(data, generation, repairing) {
     if (!isNotificationLifecycleCurrent(generation)) return Promise.resolve(notificationBackendStatus);
     return NotificationModel.buildReminderRecords(data, appState.todayKey, State.habitDueOn, new Date())
       .then(function(records) {
@@ -154,7 +166,7 @@
           };
         });
         if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
-        setNotificationBackendStatus({ status: 'syncing' }, generation);
+        setNotificationBackendStatus({ status: 'syncing', repairing: repairing === true }, generation);
         if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
         return NotificationSync.sync(data, appState.todayKey, State.habitDueOn);
       }).then(function(status) {
@@ -166,12 +178,12 @@
       });
   }
 
-  function queueNotificationSync(data, generation) {
+  function queueNotificationSync(data, generation, repairing) {
     var syncGeneration = generation == null ? notificationLifecycleGeneration : generation;
     if (!isNotificationLifecycleCurrent(syncGeneration) || !NotificationSync || !NotificationModel || !data) {
       return Promise.resolve(notificationBackendStatus);
     }
-    pendingNotificationSnapshot = { data: data, generation: syncGeneration };
+    pendingNotificationSnapshot = { data: data, generation: syncGeneration, repairing: repairing === true };
     if (notificationSyncOwner && notificationSyncOwner.generation === syncGeneration) {
       return notificationSyncOwner.promise;
     }
@@ -189,7 +201,7 @@
     function drainLatestSnapshot() {
       var snapshot = takeLatestSnapshot();
       if (!snapshot) return Promise.resolve(notificationBackendStatus);
-      return syncNotificationSnapshot(snapshot.data, snapshot.generation).then(function(result) {
+      return syncNotificationSnapshot(snapshot.data, snapshot.generation, snapshot.repairing).then(function(result) {
         return pendingNotificationSnapshot && pendingNotificationSnapshot.generation === syncGeneration
           ? drainLatestSnapshot()
           : result;
@@ -199,14 +211,18 @@
     owner.promise = drainLatestSnapshot().then(function(result) {
       if (notificationSyncOwner === owner) notificationSyncOwner = null;
       if (pendingNotificationSnapshot && pendingNotificationSnapshot.generation === syncGeneration) {
-        return queueNotificationSync(pendingNotificationSnapshot.data, syncGeneration);
+        return queueNotificationSync(
+          pendingNotificationSnapshot.data,
+          syncGeneration,
+          pendingNotificationSnapshot.repairing
+        );
       }
       return result;
     }, function(error) {
       if (notificationSyncOwner === owner) notificationSyncOwner = null;
       if (pendingNotificationSnapshot && pendingNotificationSnapshot.generation === syncGeneration) {
         var snapshot = pendingNotificationSnapshot;
-        queueNotificationSync(snapshot.data, snapshot.generation).catch(function(nextError) {
+        queueNotificationSync(snapshot.data, snapshot.generation, snapshot.repairing).catch(function(nextError) {
           handleNotificationBackendFailure(nextError, snapshot.generation);
         });
       }
@@ -1795,13 +1811,17 @@
     var status = notificationBackendStatus.status;
     var permission = NotificationService ? NotificationService.getPermissionStatus() : 'unsupported';
     if (!NotificationService || !NotificationSyncFactory || permission === 'unsupported') status = 'unsupported';
-    else if (permission === 'denied') status = 'error';
-    else if (permission === 'default' && status !== 'subscribing' && status !== 'error') status = 'permission-required';
+    else if (permission === 'denied') status = 'permission-denied';
+    else if (permission === 'default' && status !== 'subscribing' && status !== 'syncing') status = 'permission-required';
     else if (!NOTIFICATION_STATUS_COPY[status]) status = 'error';
+    var label = notificationBackendStatus.repairing && (status === 'subscribing' || status === 'syncing')
+      ? '正在重新连接'
+      : NOTIFICATION_STATUS_COPY[status];
     return {
       status: status,
-      label: NOTIFICATION_STATUS_COPY[status],
-      desc: NOTIFICATION_STATUS_COPY[status]
+      label: label,
+      desc: label,
+      action: NOTIFICATION_ACTION_COPY[status] || '开启提醒'
     };
   }
 
@@ -1818,9 +1838,7 @@
       } else {
         els.notificationButton.hidden = false;
         els.notificationButton.disabled = info.status === 'subscribing' || info.status === 'syncing';
-        if (info.status === 'ready') els.notificationButton.textContent = '测试提醒';
-        else if (info.status === 'permission-required' || info.status === 'error') els.notificationButton.textContent = '授权通知';
-        else els.notificationButton.textContent = '开启提醒';
+        els.notificationButton.textContent = info.action;
       }
     }
     if (els.notificationDisableButton) {
@@ -1855,13 +1873,18 @@
           return NotificationSync.sendTest();
         }, true);
       }
+      if (info.status === 'permission-denied') {
+        showToast('iPhone 设置 > App > 今日有序 > 通知');
+        return notificationBackendStatus;
+      }
+      var repairing = info.status === 'reauthorization-required';
       var permission = window.Notification && window.Notification.permission;
       if (permission !== 'granted') {
         permission = await Notification.requestPermission();
         if (!isNotificationLifecycleCurrent(generation)) return;
         if (permission !== 'granted') {
-          setNotificationBackendStatus({ status: permission === 'denied' ? 'error' : 'permission-required' }, generation);
-          showToast(permission === 'denied' ? '通知权限被拒绝' : '未开启通知权限');
+          setNotificationBackendStatus({ status: permission === 'denied' ? 'permission-denied' : 'permission-required' }, generation);
+          showToast(permission === 'denied' ? 'iPhone 设置 > App > 今日有序 > 通知' : '未开启通知权限');
           return;
         }
       }
@@ -1869,13 +1892,13 @@
       return await runNotificationLifecycleOperation(generation, function() {
         NotificationService.setEnabled(true);
         NotificationService.scheduleAll(appState.data, appState.todayKey, State.habitDueOn);
-        setNotificationBackendStatus({ status: 'subscribing' }, generation);
+        setNotificationBackendStatus({ status: 'subscribing', repairing: repairing }, generation);
         if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
         return NotificationSync.enable().then(function(enabledStatus) {
           if (!isNotificationLifecycleCurrent(generation)) return notificationBackendStatus;
           setNotificationBackendStatus(enabledStatus, generation);
           if (enabledStatus.status !== 'ready') return enabledStatus;
-          return queueNotificationSync(appState.data, generation).then(function(syncedStatus) {
+          return queueNotificationSync(appState.data, generation, repairing).then(function(syncedStatus) {
             if (!isNotificationLifecycleCurrent(generation) || syncedStatus.status !== 'ready') return syncedStatus;
             return NotificationSync.sendTest();
           });
@@ -2785,18 +2808,30 @@
         if (notificationSetupState !== 'complete' || !NotificationSync || typeof NotificationSync[method] !== 'function') {
           return setupStatus && setupStatus.status ? setupStatus : notificationBackendStatus;
         }
+        var repairing = notificationBackendStatus.status === 'reauthorization-required'
+          && NotificationService && NotificationService.getPermissionStatus() === 'granted';
+        if (repairing) {
+          setNotificationBackendStatus({ status: 'subscribing', repairing: true }, recoveryGeneration);
+        }
+        var repairedSubscription = false;
         return NotificationSync[method]().then(function(status) {
           if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-          setNotificationBackendStatus(status, recoveryGeneration);
+          repairedSubscription = repairing && status.status === 'ready';
+          setNotificationBackendStatus(repairedSubscription
+            ? { status: 'syncing', repairing: true }
+            : status, recoveryGeneration);
           return DB.getAllData().then(function(data) {
             if (!isNotificationLifecycleCurrent(recoveryGeneration) || !data) return notificationBackendStatus;
             appState.data = data;
             if (NotificationService) NotificationService.scheduleAll(data, appState.todayKey, State.habitDueOn);
             if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
-            return queueNotificationSync(data, recoveryGeneration);
+            return queueNotificationSync(data, recoveryGeneration, repairing);
           }, function(error) {
             if (!isNotificationLifecycleCurrent(recoveryGeneration)) return notificationBackendStatus;
             showToast('本地数据库读取失败：' + error.message);
+            if (repairedSubscription) {
+              return setNotificationBackendStatus({ status: 'error' }, recoveryGeneration);
+            }
             return notificationBackendStatus;
           });
         });
