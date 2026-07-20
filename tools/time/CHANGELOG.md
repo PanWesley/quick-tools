@@ -3,14 +3,16 @@
 ## Unreleased (2026-07-20)
 
 ### 修复
+- **右下角FAB新增按钮在移动端不显示**：之前`.fab { right: calc(50% - 470px); bottom: 100px; }`错误放置在`@media (max-width: 640px)`媒体查询内，导致移动端FAB被定位到屏幕左侧之外。将该桌面端定位规则移到`@media (min-width: 920px)`内，移动端恢复使用默认`right: 18px; bottom: calc(88px + safe-area-inset-bottom)`。
+- **今日tab任务/习惯条目恢复边框**：今日页重构时`.today-section .task-row`和`.today-section .habit-card`设置了`border: none`，与日历页/清单页的卡片边框不一致。移除`border: none`覆盖，恢复基础1px柔和边框，保留14px圆角与极淡投影。
 - **今日页状态栏品牌图标恢复显示**：调整今日页header布局，品牌logo(36px)重新显示在日期标题左侧，与其他tab视觉一致。
 - **底部导航栏镂空修复**：bottom-nav背景改为完全不透明(var(--bg))，移除backdrop-filter，防止内容透过导航栏显示。
 - **编辑事项背景色记忆修复**：openEditTask()中补充setChoiceValue('quick-tone', task.tone || '')回填逻辑，修复编辑任务时之前选择的背景色未被还原、保存后被重置为随机色的问题。
 - **清单tab顶部间距对齐**：移除.list-panel多余的margin-top:8px，与日历卡片顶部位置保持一致，切换tab时无跳动。
 
 ### 技术
-- Service Worker 缓存版本升级至 v41。
-- CSS style.css v149、JS app.js v149。
+- Service Worker 缓存版本升级至 v42。
+- CSS style.css v150。
 
 ## Unreleased (2026-07-20)
 
