@@ -1741,6 +1741,7 @@
       els.quickRepeatCustomHint.textContent = '';
     }
     setQuickDate(task.date || '');
+    setChoiceValue('quick-tone', task.tone || '');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;

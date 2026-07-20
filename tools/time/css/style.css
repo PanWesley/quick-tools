@@ -201,11 +201,12 @@ body[data-view="today"] .brand strong {
 }
 
 body[data-view="today"] .brand-mark {
-  display: none;
+  width: 36px;
+  height: 36px;
 }
 
 body[data-view="today"] .brand {
-  gap: 0;
+  gap: 10px;
 }
 
 .brand small {
@@ -1905,7 +1906,7 @@ textarea {
 .list-panel {
   overflow: visible;
   position: relative;
-  margin: 8px 0 0;
+  margin: 0 0 12px;
   padding: 0;
 }
 
@@ -2619,9 +2620,7 @@ textarea {
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--bg);
   border-top: 1px solid color-mix(in srgb, var(--primary) 6%, var(--border));
 }
 
@@ -3198,7 +3197,7 @@ textarea {
 
   #view-list .list-panel {
     padding: 0;
-    margin-top: 8px;
+    margin-top: 0;
   }
 
   #view-today .today-section .section-label {
