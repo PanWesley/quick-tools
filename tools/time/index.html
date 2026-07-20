@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=150">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=152">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -317,15 +317,8 @@
 </section>
 
 <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
-<section class="quick-sheet" id="quick-sheet" aria-labelledby="quick-sheet-title" aria-modal="true" role="dialog" hidden>
-  <div class="sheet-head">
-    <div>
-      <p class="eyebrow">记录一件事</p>
-      <h2 id="quick-sheet-title">新增事项</h2>
-    </div>
-    <button class="icon-button" id="close-add" type="button" aria-label="关闭">×</button>
-  </div>
-  <form id="quick-form">
+<section class="quick-sheet quick-sheet-v2" id="quick-sheet" aria-modal="true" role="dialog" hidden>
+  <form id="quick-form" class="quick-form-v2" autocomplete="off">
     <input id="quick-edit-id" type="hidden">
     <input id="quick-priority" type="hidden" value="medium">
     <input id="quick-date" type="hidden">
@@ -334,127 +327,49 @@
     <input id="quick-reminder" type="hidden" value="none">
     <input id="quick-area" type="hidden" value="life">
     <input id="quick-tone" type="hidden" value="">
-    <label>
-      标题
-      <input id="quick-title" type="text" autocomplete="off" placeholder="例如：吃早餐" required>
-    </label>
-    <div class="quick-field" id="quick-date-field">
-      <span class="field-label">日期</span>
-      <div class="date-choice-row">
-        <button class="date-choice active" type="button" data-date-preset="today">今天</button>
-        <button class="date-choice" type="button" data-date-preset="tomorrow">明天</button>
-        <button class="date-choice" type="button" data-date-preset="weekend">周末</button>
-        <button class="date-choice" type="button" data-date-preset="custom" id="quick-custom-date-btn">自定义</button>
-        <button class="date-choice" type="button" data-date-preset="pending">待定</button>
+    <input id="quick-start-time" type="hidden">
+    <input id="quick-end-time" type="hidden">
+    <input id="quick-date-picker" type="hidden">
+
+    <div class="quick-inputs">
+      <div class="quick-title-row">
+        <button class="quick-close-x" type="button" id="close-add" aria-label="关闭">×</button>
+        <input id="quick-title" class="quick-title-input" type="text" autocomplete="off" placeholder="记些重要的事情吧" required>
       </div>
-      <input id="quick-date-picker" type="hidden">
+      <textarea id="quick-notes" class="quick-notes-input" rows="1" placeholder="备注（可选）"></textarea>
+
+      <div class="quick-chips-row" id="quick-chips-row" hidden></div>
+
+      <div class="quick-date-time-preview" id="quick-date-time-preview" hidden></div>
     </div>
-    <div class="quick-field" id="quick-time-field">
-      <span class="field-label">时间</span>
-      <div class="date-choice-row three">
-        <button class="date-choice active" type="button" data-choice-target="quick-time-mode" data-choice-value="all-day" data-choice-label="全天">全天</button>
-        <button class="date-choice" type="button" data-choice-target="quick-time-mode" data-choice-value="point" data-choice-label="时间点">时间点</button>
-        <button class="date-choice" type="button" data-choice-target="quick-time-mode" data-choice-value="range" data-choice-label="时间段">时间段</button>
-      </div>
-      <div class="time-input-row" id="quick-time-inputs" hidden>
-        <button class="time-display-btn" type="button" id="quick-start-time-btn" data-action="open-time-picker" data-time-target="start">
-          <span class="time-display-text" id="quick-start-time-text">--:--</span>
-          <span class="time-display-icon">◷</span>
+
+    <div class="quick-toolbar">
+      <div class="quick-tools" id="quick-tools">
+        <button type="button" class="quick-tool-btn" data-tool="date" aria-label="日期时间">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         </button>
-        <button class="time-display-btn" type="button" id="quick-end-time-btn" data-action="open-time-picker" data-time-target="end" hidden>
-          <span class="time-display-text" id="quick-end-time-text">--:--</span>
-          <span class="time-display-icon">◷</span>
+        <button type="button" class="quick-tool-btn" data-tool="priority" aria-label="优先级">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4h10l-2 4h8l-6 8 2 5H4z"/></svg>
         </button>
-        <input id="quick-start-time" type="hidden">
-        <input id="quick-end-time" type="hidden">
+        <button type="button" class="quick-tool-btn" data-tool="area" aria-label="归属">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/></svg>
+        </button>
+        <button type="button" class="quick-tool-btn" data-tool="repeat" aria-label="重复">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <button type="button" class="quick-tool-btn" data-tool="reminder" aria-label="提醒">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        <button type="button" class="quick-tool-btn quick-tool-more" data-tool="more" aria-label="更多设置">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
       </div>
-      <p class="field-hint" id="quick-time-hint">全天事项只显示在当天，不设置具体时刻。</p>
+      <button type="submit" class="quick-send-btn" aria-label="保存">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
     </div>
-    <div class="quick-field" id="quick-repeat-field">
-      <span class="field-label">重复</span>
-      <div class="chip-row">
-        <button class="choice-chip active" type="button" data-choice-target="quick-repeat" data-choice-value="none" data-choice-label="不重复">不重复</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="daily" data-choice-label="每天">每天</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="weekly" data-choice-label="每周">每周</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-repeat" data-choice-value="custom" data-choice-label="自定义" data-action="open-custom-repeat">自定义</button>
-      </div>
-      <p class="field-hint" id="quick-repeat-custom-hint" hidden></p>
-    </div>
-    <div class="quick-field" id="quick-reminder-field">
-      <span class="field-label">提醒</span>
-      <div class="chip-row">
-        <button class="choice-chip active" type="button" data-choice-target="quick-reminder" data-choice-value="none" data-choice-label="不提醒">不提醒</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="at-time" data-choice-label="准时">准时</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="5" data-choice-label="5分钟前">5分钟前</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="15" data-choice-label="15分钟前">15分钟前</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="30" data-choice-label="30分钟前">30分钟前</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="60" data-choice-label="1小时前">1小时前</button>
-        <button class="choice-chip" type="button" data-choice-target="quick-reminder" data-choice-value="custom" data-choice-label="自定义" data-action="open-custom-reminder">自定义</button>
-      </div>
-      <p class="field-hint" id="quick-reminder-hint">请在「我的」页面授权通知权限后生效。</p>
-    </div>
-    <details class="more-settings" id="quick-more-settings">
-      <summary>更多设置 <span>归属、优先级、备注</span></summary>
-      <div class="more-settings-grid">
-        <div class="quick-field custom-select" data-select-field="quick-area">
-          <span class="field-label">归属</span>
-          <button class="select-trigger area-trigger" type="button" data-select-target="quick-area" aria-expanded="false">
-            <span><strong id="quick-area-label">生活</strong><small id="quick-area-desc">日常安排</small></span>
-            <span aria-hidden="true">⌄</span>
-          </button>
-          <div class="select-menu" id="quick-area-menu" hidden>
-            <button class="select-option active" type="button" data-choice-target="quick-area" data-choice-value="life" data-choice-label="生活" data-choice-desc="日常安排">生活<span>日常安排</span></button>
-            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="study" data-choice-label="学习" data-choice-desc="课程、阅读、复习">学习<span>课程、阅读、复习</span></button>
-            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="work" data-choice-label="工作" data-choice-desc="工作任务和会议">工作<span>工作任务和会议</span></button>
-            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="health" data-choice-label="健康" data-choice-desc="运动、睡眠、饮食">健康<span>运动、睡眠、饮食</span></button>
-            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="housework" data-choice-label="家务" data-choice-desc="整理、清洁、采购">家务<span>整理、清洁、采购</span></button>
-            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="memory" data-choice-label="纪念" data-choice-desc="生日、纪念日">纪念<span>生日、纪念日</span></button>
-            <button class="select-option" type="button" data-choice-target="quick-area" data-choice-value="other" data-choice-label="其他" data-choice-desc="暂时无法归类">其他<span>暂时无法归类</span></button>
-          </div>
-        </div>
-        <div class="quick-field custom-select" id="quick-priority-field" data-select-field="quick-priority">
-          <span class="field-label">优先级</span>
-          <button class="select-trigger" type="button" data-select-target="quick-priority" aria-expanded="false">
-            <span><strong id="quick-priority-label">重要不紧急</strong><small id="quick-priority-desc">计划推进</small></span>
-            <span aria-hidden="true">⌄</span>
-          </button>
-          <div class="select-menu priority-menu" id="quick-priority-menu" hidden>
-            <button class="select-option high" type="button" data-choice-target="quick-priority" data-choice-value="high" data-choice-label="重要且紧急" data-choice-desc="现在处理">重要且紧急<span>现在处理</span></button>
-            <button class="select-option medium active" type="button" data-choice-target="quick-priority" data-choice-value="medium" data-choice-label="重要不紧急" data-choice-desc="计划推进">重要不紧急<span>计划推进</span></button>
-            <button class="select-option low" type="button" data-choice-target="quick-priority" data-choice-value="low" data-choice-label="不重要但紧急" data-choice-desc="尽快顺手做">不重要但紧急<span>尽快顺手做</span></button>
-            <button class="select-option none" type="button" data-choice-target="quick-priority" data-choice-value="none" data-choice-label="不重要不紧急" data-choice-desc="有空再看">不重要不紧急<span>有空再看</span></button>
-          </div>
-        </div>
-        <div class="quick-field custom-select" id="quick-tone-field" data-select-field="quick-tone">
-          <span class="field-label">背景色</span>
-          <button class="select-trigger" type="button" data-select-target="quick-tone" aria-expanded="false">
-            <span><strong id="quick-tone-label">随机</strong><small id="quick-tone-desc">按ID自动分配</small></span>
-            <span aria-hidden="true">⌄</span>
-          </button>
-          <div class="select-menu tone-menu" id="quick-tone-menu" hidden>
-            <button class="select-option active" type="button" data-choice-target="quick-tone" data-choice-value="" data-choice-label="随机" data-choice-desc="按ID自动分配">随机<span>按ID自动分配</span></button>
-            <button class="select-option tone-peach" type="button" data-choice-target="quick-tone" data-choice-value="peach" data-choice-label="桃色" data-choice-desc="温暖">桃色<span>温暖</span></button>
-            <button class="select-option tone-coral" type="button" data-choice-target="quick-tone" data-choice-value="coral" data-choice-label="珊瑚" data-choice-desc="活泼">珊瑚<span>活泼</span></button>
-            <button class="select-option tone-apricot" type="button" data-choice-target="quick-tone" data-choice-value="apricot" data-choice-label="杏色" data-choice-desc="明亮">杏色<span>明亮</span></button>
-            <button class="select-option tone-butter" type="button" data-choice-target="quick-tone" data-choice-value="butter" data-choice-label="奶油" data-choice-desc="柔和">奶油<span>柔和</span></button>
-            <button class="select-option tone-mint" type="button" data-choice-target="quick-tone" data-choice-value="mint" data-choice-label="薄荷" data-choice-desc="清新">薄荷<span>清新</span></button>
-            <button class="select-option tone-sky" type="button" data-choice-target="quick-tone" data-choice-value="sky" data-choice-label="天蓝" data-choice-desc="清爽">天蓝<span>清爽</span></button>
-            <button class="select-option tone-lilac" type="button" data-choice-target="quick-tone" data-choice-value="lilac" data-choice-label="淡紫" data-choice-desc="优雅">淡紫<span>优雅</span></button>
-            <button class="select-option tone-rose" type="button" data-choice-target="quick-tone" data-choice-value="rose" data-choice-label="玫瑰" data-choice-desc="浪漫">玫瑰<span>浪漫</span></button>
-            <button class="select-option tone-blush" type="button" data-choice-target="quick-tone" data-choice-value="blush" data-choice-label="浅绯" data-choice-desc="柔和">浅绯<span>柔和</span></button>
-            <button class="select-option tone-sand" type="button" data-choice-target="quick-tone" data-choice-value="sand" data-choice-label="沙色" data-choice-desc="温暖">沙色<span>温暖</span></button>
-          </div>
-        </div>
-      </div>
-      <label>
-        备注
-        <textarea id="quick-notes" rows="2" placeholder="可选"></textarea>
-      </label>
-    </details>
-    <div class="button-row">
-      <button class="btn secondary" id="cancel-add" type="button">取消</button>
-      <button class="btn primary" type="submit">保存</button>
-    </div>
+
+    <div class="quick-extra-panel" id="quick-extra-panel" hidden></div>
   </form>
 </section>
 
@@ -503,7 +418,7 @@
 <script src="/tools/time/js/notification-model.js?v=2"></script>
 <script src="/tools/time/js/notification-sync.js?v=5"></script>
 <script src="/tools/time/js/notification.js?v=7"></script>
-<script src="/tools/time/js/app.js?v=149"></script>
+<script src="/tools/time/js/app.js?v=152"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
