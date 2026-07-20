@@ -18,8 +18,8 @@
 - 新增 `todayHeaderTitle()` / `todayHeaderDesc()` 函数动态计算header内容。
 - `updateHeaderTitle()` 扩展支持 today 视图动态标题。
 - `cacheElements()` 移除已删除DOM元素引用(todayTitle/todayWeekday/todaySummary/todayTaskCount/todayHabitCount)。
-- Service Worker 缓存版本升级至 v39。
-- CSS style.css v147、JS app.js v148。
+- Service Worker 缓存版本升级至 v40。
+- CSS style.css v148、JS app.js v148。
 
 ## Unreleased (2026-07-20)
 
