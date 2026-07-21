@@ -1478,16 +1478,18 @@
     }
     setQuickDate(defaultDate, defaultLabel);
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
+    closeQuickFullPanel();
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     els.quickTitle.focus();
     closeQuickExtra();
-    updateQuickChips();
+    updateToolStates();
     autoResizeTextarea(els.quickNotes);
   }
 
   function closeSheet() {
     closeQuickExtra();
+    closeQuickFullPanel();
     els.sheetBackdrop.hidden = true;
     els.quickSheet.hidden = true;
     els.quickForm.reset();
@@ -1532,13 +1534,52 @@
   }
 
   // 设置工具按钮激活状态
-  function setToolActive(tool, active) {
+  function setToolActive(tool, active, dotColor) {
     if (!els.quickTools) return;
     var btn = els.quickTools.querySelector('[data-tool="' + tool + '"]');
     if (!btn) return;
     btn.classList.toggle('is-active', active);
     btn.classList.toggle('is-open', active);
+    var dot = btn.querySelector('.quick-tool-dot');
+    if (dot) {
+      dot.hidden = !active;
+      if (active && dotColor) {
+        dot.style.background = dotColor;
+      } else if (dot) {
+        dot.style.background = '';
+      }
+    }
   }
+
+  // 优先级颜色映射
+  var PRIORITY_COLORS = {
+    high: '#FF6F52',
+    medium: '#FFB23F',
+    low: '#64B5F6',
+    none: '#B0B0B0'
+  };
+  var AREA_COLORS = {
+    life: '#5DCBA8',
+    study: '#64B5F6',
+    work: '#FF8A2A',
+    health: '#FF6F52',
+    housework: '#B9A7FF',
+    memory: '#FF9FB8',
+    other: '#B0B0B0'
+  };
+  var TONE_CSS_COLORS = {
+    '': 'linear-gradient(135deg,#FFD4B9,#B9A7FF)',
+    peach: 'rgb(255,212,185)',
+    coral: 'rgb(255,182,192)',
+    apricot: 'rgb(255,200,145)',
+    butter: 'rgb(255,235,165)',
+    mint: 'rgb(175,235,210)',
+    sky: 'rgb(180,220,245)',
+    lilac: 'rgb(215,195,245)',
+    rose: 'rgb(255,190,210)',
+    blush: 'rgb(255,210,220)',
+    sand: 'rgb(245,225,195)'
+  };
 
   // 返回日期标签
   function formatDateLabel(dateKey) {
@@ -1550,102 +1591,130 @@
     return parseInt(parts[1], 10) + '月' + parseInt(parts[2], 10) + '日';
   }
 
-  // 返回当前设置的chips数组
-  function formatQuickChips() {
-    var chips = [];
+  // 返回当前设置摘要
+  function getQuickSummary() {
     var dateVal = els.quickDate ? els.quickDate.value : '';
-    if (dateVal) {
-      var label = formatDateLabel(dateVal);
-      var timeMode = els.quickTimeMode ? els.quickTimeMode.value : 'all-day';
-      var startTime = els.quickStartTime ? els.quickStartTime.value : '';
-      var endTime = els.quickEndTime ? els.quickEndTime.value : '';
-      if (timeMode === 'point' && startTime) {
-        label += ' ' + startTime;
-      } else if (timeMode === 'range' && startTime) {
-        label += ' ' + startTime + '-' + endTime;
-      }
-      chips.push({ type: 'date', label: label });
-    }
-
     var priorityVal = els.quickPriority ? els.quickPriority.value : 'medium';
-    if (priorityVal !== 'medium') {
-      var priorityLabels = {
-        high: '重要紧急',
-        low: '次要紧急',
-        none: '有空再看'
-      };
-      chips.push({
-        type: 'priority',
-        label: priorityLabels[priorityVal] || '',
-        priorityClass: priorityVal
-      });
-    }
-
     var repeatVal = els.quickRepeat ? els.quickRepeat.value : 'none';
-    if (repeatVal !== 'none') {
-      var repeatLabels = {
-        daily: '每天',
-        weekly: '每周',
-        custom: '自定义'
-      };
-      var repeatLabel = repeatLabels[repeatVal] || '';
-      if (repeatVal === 'custom' && els.quickRepeatCustomHint) {
-        repeatLabel = els.quickRepeatCustomHint.textContent || '自定义';
-      }
-      chips.push({ type: 'repeat', label: repeatLabel });
-    }
-
     var reminderVal = els.quickReminder ? els.quickReminder.value : 'none';
-    if (reminderVal !== 'none') {
-      var reminderLabels = {
-        'at-time': '准时提醒',
-        '5': '5分钟前',
-        '15': '15分钟前',
-        '30': '30分钟前',
-        '60': '1小时前',
-        'custom': '自定义提醒'
-      };
-      chips.push({ type: 'reminder', label: reminderLabels[reminderVal] || '' });
-    }
-
-    return chips;
+    var areaVal = els.quickArea ? els.quickArea.value : 'life';
+    var toneVal = els.quickTone ? els.quickTone.value : '';
+    var notesVal = els.quickNotes ? els.quickNotes.value : '';
+    var timeMode = els.quickTimeMode ? els.quickTimeMode.value : 'all-day';
+    var startTime = els.quickStartTime ? els.quickStartTime.value : '';
+    var endTime = els.quickEndTime ? els.quickEndTime.value : '';
+    return {
+      hasDate: Boolean(dateVal),
+      dateLabel: formatDateLabel(dateVal),
+      timeLabel: timeMode === 'all-day' ? '全天' : (timeMode === 'point' ? (startTime || '时间点') : (startTime ? startTime + '-' + (endTime || '') : '时间段')),
+      priority: priorityVal,
+      priorityLabel: { high: '重要紧急', medium: '重要不紧急', low: '次要紧急', none: '不紧急' }[priorityVal] || '',
+      priorityColor: PRIORITY_COLORS[priorityVal] || PRIORITY_COLORS.medium,
+      repeat: repeatVal,
+      repeatLabel: { none: '不重复', daily: '每天', weekly: '每周', custom: '自定义' }[repeatVal] || '',
+      reminder: reminderVal,
+      reminderLabel: { 'none': '不提醒', 'at-time': '准时', '5': '5分钟前', '15': '15分钟前', '30': '30分钟前', '60': '1小时前' }[reminderVal] || '',
+      area: areaVal,
+      areaLabel: { life: '生活', study: '学习', work: '工作', health: '健康', housework: '家务', memory: '纪念', other: '其他' }[areaVal] || '生活',
+      areaColor: AREA_COLORS[areaVal] || AREA_COLORS.life,
+      tone: toneVal,
+      hasNotes: Boolean(notesVal && notesVal.trim())
+    };
   }
 
-  // 更新chips显示和工具栏激活状态
-  function updateQuickChips() {
-    if (!els.quickChipsRow) return;
-    var chips = formatQuickChips();
+  // 更新工具栏按钮激活状态（小圆点指示）
+  function updateToolStates() {
+    var s = getQuickSummary();
+    setToolActive('date', s.hasDate, '');
+    setToolActive('priority', s.priority !== 'medium', s.priorityColor);
+    setToolActive('area', s.area !== 'life', s.areaColor);
+    setToolActive('repeat', s.repeat !== 'none', '#5DCBA8');
+    setToolActive('reminder', s.reminder !== 'none', '#B9A7FF');
+    setToolActive('tone', Boolean(s.tone), '#FF8A2A');
+  }
 
-    if (chips.length === 0) {
-      els.quickChipsRow.hidden = true;
-      els.quickChipsRow.innerHTML = '';
-    } else {
-      els.quickChipsRow.hidden = false;
-      var html = '';
-      chips.forEach(function(chip) {
-        var classes = 'quick-chip';
-        if (chip.priorityClass) classes += ' priority-' + chip.priorityClass;
-        if (chip.type === 'repeat') classes += ' chip-repeat';
-        if (chip.type === 'reminder') classes += ' chip-reminder';
-        html += '<span class="' + classes + '">' + escapeHtml(chip.label) +
-          '<button type="button" class="chip-remove" data-chip-type="' + chip.type + '">×</button></span>';
+  // 别名（兼容旧调用）
+  function updateQuickChips() { updateToolStates(); }
+
+  function openQuickFullPanel() {
+    if (!els.quickFullPanel || !els.quickSheet) return;
+    closeQuickExtra();
+    renderQuickFullPanel();
+    els.quickSheet.classList.add('is-full');
+    els.quickFullPanel.hidden = false;
+  }
+
+  function closeQuickFullPanel() {
+    if (!els.quickFullPanel || !els.quickSheet) return;
+    els.quickSheet.classList.remove('is-full');
+    els.quickFullPanel.hidden = true;
+  }
+
+  function renderQuickFullPanel() {
+    if (!els.quickFullBody) return;
+    var s = getQuickSummary();
+    var title = (els.quickTitle && els.quickTitle.value.trim()) || '未命名事项';
+    var html = '';
+
+    html += '<div class="quick-full-summary">';
+    html += '<div class="quick-full-summary-title">' + escapeHtml(title) + '</div>';
+    html += '<div class="quick-full-summary-meta">';
+    if (s.hasDate) html += '<span class="quick-full-meta-tag">📅 ' + escapeHtml(s.dateLabel) + ' · ' + escapeHtml(s.timeLabel) + '</span>';
+    html += '<span class="quick-full-meta-tag" style="color:' + s.priorityColor + '">● ' + escapeHtml(s.priorityLabel) + '</span>';
+    html += '<span class="quick-full-meta-tag" style="color:' + s.areaColor + '">🏷 ' + escapeHtml(s.areaLabel) + '</span>';
+    if (s.repeat !== 'none') html += '<span class="quick-full-meta-tag">🔁 ' + escapeHtml(s.repeatLabel) + '</span>';
+    if (s.reminder !== 'none') html += '<span class="quick-full-meta-tag">🔔 ' + escapeHtml(s.reminderLabel) + '</span>';
+    html += '</div></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">标题</div>';
+    html += '<input type="text" class="quick-full-notes" id="qf-title-input" style="min-height:auto;padding:10px 12px;" value="' + escapeHtml(els.quickTitle.value) + '"></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">备注</div>';
+    html += '<textarea class="quick-full-notes" id="qf-notes-input" rows="3" placeholder="添加备注...">' + escapeHtml(els.quickNotes.value || '') + '</textarea></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">日期与时间</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="date"><span>' + escapeHtml(s.dateLabel + ' · ' + s.timeLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">优先级</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="priority"><span style="color:' + s.priorityColor + '">● ' + escapeHtml(s.priorityLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">归属</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="area"><span style="color:' + s.areaColor + '">🏷 ' + escapeHtml(s.areaLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">重复</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="repeat"><span>' + escapeHtml(s.repeatLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">提醒</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="reminder"><span>' + escapeHtml(s.reminderLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+
+    html += '<div class="quick-full-section"><div class="quick-full-label">背景色</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="tone"><span style="background:' + (TONE_CSS_COLORS[s.tone] || 'var(--surface)') + ';display:inline-block;width:24px;height:24px;border-radius:50%;border:1px solid var(--border);vertical-align:middle;margin-right:8px;"></span><span>' + (s.tone ? '已选颜色' : '默认') + '</span><span class="qv-arrow">›</span></button></div>';
+
+    els.quickFullBody.innerHTML = html;
+
+    els.quickFullBody.querySelectorAll('[data-qf-jump]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tool = btn.dataset.qfJump;
+        closeQuickFullPanel();
+        setTimeout(function() {
+          openQuickTool(tool);
+        }, 260);
       });
-      els.quickChipsRow.innerHTML = html;
+    });
+    var qfTitle = els.quickFullBody.querySelector('#qf-title-input');
+    if (qfTitle) {
+      qfTitle.addEventListener('input', function() {
+        els.quickTitle.value = qfTitle.value;
+        var sumTitle = els.quickFullBody.querySelector('.quick-full-summary-title');
+        if (sumTitle) sumTitle.textContent = qfTitle.value.trim() || '未命名事项';
+      });
     }
-
-    // 更新工具栏按钮激活状态
-    ['date', 'priority', 'repeat', 'reminder', 'area', 'more'].forEach(function(tool) {
-      setToolActive(tool, false);
-    });
-    chips.forEach(function(chip) {
-      setToolActive(chip.type, true);
-    });
-
-    // notes和tone激活more工具
-    var notesVal = els.quickNotes ? els.quickNotes.value : '';
-    var toneVal = els.quickTone ? els.quickTone.value : '';
-    if (notesVal || toneVal) {
-      setToolActive('more', true);
+    var qfNotes = els.quickFullBody.querySelector('#qf-notes-input');
+    if (qfNotes) {
+      qfNotes.addEventListener('input', function() {
+        els.quickNotes.value = qfNotes.value;
+        autoResizeTextarea(els.quickNotes);
+      });
     }
   }
 
@@ -1789,7 +1858,7 @@
         html += '</button>';
       });
       html += '</div>';
-    } else if (tool === 'more') {
+    } else if (tool === 'tone') {
       html += '<div class="quick-extra-header"><h4>背景色</h4><button type="button" class="quick-extra-close">×</button></div>';
       html += '<div class="quick-tone-grid">';
       var toneColors = [
@@ -1811,6 +1880,9 @@
         html += '<button type="button" class="quick-tone-swatch' + selected + '" data-tone="' + tone.value + '" style="' + style + '"></button>';
       });
       html += '</div>';
+    } else if (tool === 'more') {
+      openQuickFullPanel();
+      return;
     }
 
     els.quickExtraPanel.innerHTML = html;
@@ -1905,7 +1977,7 @@
   }
 
   window.TodayYouxuReschedule = rescheduleNotifications;
-  window.updateQuickChips = updateQuickChips;
+  window.updateQuickChips = function() { updateToolStates(); };
 
   function loadData() {
     var generation = notificationLifecycleGeneration;
@@ -2130,9 +2202,13 @@
     setQuickDate(task.date || '');
     setChoiceValue('quick-tone', task.tone || '');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
+    closeQuickExtra();
+    closeQuickFullPanel();
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     els.quickTitle.focus();
+    updateToolStates();
+    autoResizeTextarea(els.quickNotes);
   }
 
   function openEditHabit(id) {
@@ -2191,9 +2267,13 @@
     }
     setQuickDate(habit.startDate || appState.todayKey);
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
+    closeQuickExtra();
+    closeQuickFullPanel();
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     els.quickTitle.focus();
+    updateToolStates();
+    autoResizeTextarea(els.quickNotes);
   }
 
   function changeMonth(delta) {
@@ -2952,8 +3032,10 @@
     els.quickTone = $('quick-tone');
     els.quickTools = $('quick-tools');
     els.quickExtraPanel = $('quick-extra-panel');
-    els.quickChipsRow = $('quick-chips-row');
-    els.quickDateTimePreview = $('quick-date-time-preview');
+    els.quickFullPanel = $('quick-full-panel');
+    els.quickFullBody = $('quick-full-body');
+    els.quickFullTitle = $('quick-full-title');
+    els.quickFullBack = $('quick-full-back');
     els.pickerBackdrop = $('picker-backdrop');
     els.pickerSheet = $('picker-sheet');
     els.pickerTitle = $('picker-title');
@@ -3090,6 +3172,9 @@
           closeQuickExtra();
         }
       });
+    }
+    if (els.quickFullBack) {
+      els.quickFullBack.addEventListener('click', closeQuickFullPanel);
     }
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);
