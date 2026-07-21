@@ -9,6 +9,8 @@ import {
   isValidPlatform,
   isValidItemId,
   isValidPrice,
+  normalizeTitle,
+  isSuspiciousPrice,
   extractFirstUrl,
   extractProductTitle,
   detectPlatformFromText,
@@ -36,7 +38,11 @@ const SHORT_LINK_HOSTS = {
 
 const MAX_REDIRECT_DEPTH = 5;
 const FETCH_TIMEOUT_MS = 8000;
+const MAX_SHORT_LINK_HTML_BYTES = 256 * 1024;
 const PRICE_CACHE_TTL_SECONDS = 6 * 3600;
+const SNAPSHOT_DEDUP_WINDOW_MS = 10 * 60 * 1000;
+const MAX_SNAPSHOTS_PER_PRODUCT = 500;
+const CLIENT_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/;
 
 function platformFromHost(hostname) {
   const host = hostname.toLowerCase();
@@ -133,7 +139,44 @@ function parseLongUrl(urlString) {
   }
 }
 
-async function followShortLink(urlString, env) {
+function resolveHttpUrl(target, baseUrl) {
+  try {
+    const resolved = new URL(target, baseUrl);
+    return resolved.protocol === 'http:' || resolved.protocol === 'https:' ? resolved.href : '';
+  } catch {
+    return '';
+  }
+}
+
+async function readBoundedText(response, maxBytes) {
+  const contentLength = Number(response.headers.get('Content-Length'));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    const error = new Error('Response body is too large.');
+    error.code = 'response_too_large';
+    throw error;
+  }
+  if (!response.body) return '';
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => {});
+      const error = new Error('Response body is too large.');
+      error.code = 'response_too_large';
+      throw error;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+async function followShortLink(urlString, fetchImpl, timeoutMs = FETCH_TIMEOUT_MS) {
   let currentUrl = urlString;
   let platform = '';
   const visited = new Set();
@@ -177,57 +220,56 @@ async function followShortLink(urlString, env) {
     if (!isShort && !isPddShort) break;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(currentUrl, {
-        method: 'HEAD',
+      const response = await fetchImpl(currentUrl, {
+        method: 'GET',
         redirect: 'manual',
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
         }
       });
-      clearTimeout(timeoutId);
-
       const location = response.headers.get('Location');
       if (location) {
-        let nextUrl = location;
-        if (nextUrl.startsWith('/')) {
-          nextUrl = urlObj.origin + nextUrl;
-        }
-        if (!/^https?:\/\//i.test(nextUrl)) {
-          break;
-        }
+        const nextUrl = resolveHttpUrl(location, currentUrl);
+        if (!nextUrl) break;
         currentUrl = nextUrl;
         continue;
       }
 
       if (response.ok && response.status < 400) {
-        const text = await response.text().catch(() => '');
+        const text = await readBoundedText(response, MAX_SHORT_LINK_HTML_BYTES);
         const metaMatch = text.match(/<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"']*url=([^"']+)/i);
         if (metaMatch) {
-          let nextUrl = metaMatch[1].trim();
-          if (nextUrl.startsWith('/')) {
-            nextUrl = urlObj.origin + nextUrl;
-          }
-          if (/^https?:\/\//i.test(nextUrl)) {
+          const nextUrl = resolveHttpUrl(metaMatch[1].trim(), currentUrl);
+          if (nextUrl) {
             currentUrl = nextUrl;
             continue;
           }
         }
         const jsMatch = text.match(/window\.location\.href\s*=\s*["']([^"']+)["']/i);
-        if (jsMatch && /^https?:\/\//i.test(jsMatch[1])) {
-          currentUrl = jsMatch[1];
-          continue;
+        if (jsMatch) {
+          const nextUrl = resolveHttpUrl(jsMatch[1], currentUrl);
+          if (nextUrl) {
+            currentUrl = nextUrl;
+            continue;
+          }
         }
       }
       break;
     } catch (error) {
-      clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
         return { ok: false, code: 'timeout', message: 'Short link resolution timed out.', retryable: true };
       }
+      if (error.code === 'response_too_large') {
+        return { ok: false, code: error.code, message: error.message, retryable: true };
+      }
       break;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -264,8 +306,9 @@ function createKvRepository(kv) {
         await kv.put(productKey(platform, itemId), JSON.stringify(data), {
           expirationTtl: 30 * 24 * 3600
         });
+        return true;
       } catch {
-        // best effort
+        return false;
       }
     },
     async getSnapshots(platform, itemId) {
@@ -279,22 +322,63 @@ function createKvRepository(kv) {
     async addSnapshot(platform, itemId, snapshot) {
       try {
         const existing = await this.getSnapshots(platform, itemId);
-        const cutoff = Date.now() - MAX_SNAPSHOT_AGE_MS;
+        const cutoff = new Date(snapshot.capturedAt).getTime() - MAX_SNAPSHOT_AGE_MS;
         const filtered = existing.filter((s) => new Date(s.capturedAt).getTime() >= cutoff);
         filtered.push(snapshot);
         filtered.sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
-        await kv.put(snapshotsKey(platform, itemId), JSON.stringify(filtered), {
+        const limited = filtered.slice(-MAX_SNAPSHOTS_PER_PRODUCT);
+        await kv.put(snapshotsKey(platform, itemId), JSON.stringify(limited), {
           expirationTtl: 365 * 24 * 3600
         });
-        return filtered;
+        return { ok: true, snapshots: limited };
       } catch {
-        return [];
+        return { ok: false, snapshots: [] };
       }
     }
   };
 }
 
-export function createPriceApp({ kv }) {
+function isDuplicateSnapshot(snapshots, price, capturedAt) {
+  const capturedAtMs = new Date(capturedAt).getTime();
+  const priceInCents = Math.round(price * 100);
+  return (snapshots || []).some((snapshot) => {
+    const ageMs = capturedAtMs - new Date(snapshot.capturedAt).getTime();
+    return ageMs >= 0 && ageMs <= SNAPSHOT_DEDUP_WINDOW_MS &&
+      Math.round(Number(snapshot.finalPrice) * 100) === priceInCents;
+  });
+}
+
+async function applySnapshotRateLimits(request, input, env, origin) {
+  const clientLimiter = env?.SNAPSHOT_CLIENT_LIMITER;
+  const itemLimiter = env?.SNAPSHOT_ITEM_LIMITER;
+  if (!clientLimiter?.limit || !itemLimiter?.limit) {
+    return errorResponse('rate_limit_unavailable', 'Snapshot rate limiting is unavailable.', 503, origin, env, true);
+  }
+
+  const clientId = request.headers.get('X-Price-Client-ID') || '';
+  if (!CLIENT_ID_PATTERN.test(clientId)) {
+    return errorResponse('missing_client_id', 'A valid anonymous client ID is required.', 400, origin, env);
+  }
+
+  const clientResult = await clientLimiter.limit({ key: `snapshot:${clientId}` });
+  if (!clientResult?.success) {
+    return errorResponse('rate_limited', 'Too many snapshot requests.', 429, origin, env, true);
+  }
+
+  const itemResult = await itemLimiter.limit({ key: `snapshot:${input.platform}:${input.itemId}` });
+  if (!itemResult?.success) {
+    return errorResponse('rate_limited', 'Too many snapshots for this item.', 429, origin, env, true);
+  }
+
+  return null;
+}
+
+export function createPriceApp({
+  kv,
+  fetchImpl = fetch,
+  now = () => new Date(),
+  shortLinkTimeoutMs = FETCH_TIMEOUT_MS
+}) {
   const repository = createKvRepository(kv);
 
   async function handleResolve(request, origin, env) {
@@ -347,7 +431,7 @@ export function createPriceApp({ kv }) {
       }, 200, origin, env);
     }
 
-    const result = await followShortLink(url, env);
+    const result = await followShortLink(url, fetchImpl, shortLinkTimeoutMs);
     if (!result.ok) {
       if (textPlatform) {
         return json({
@@ -405,7 +489,7 @@ export function createPriceApp({ kv }) {
     if (!body.ok) return errorResponse(body.code, body.message, body.status, origin, env);
 
     const input = body.value;
-    if (!isObject(input) || !hasOnlyKeys(input, ['platform', 'itemId', 'finalPrice', 'listPrice', 'promoPrice', 'couponPrice', 'note', 'stockStatus', 'capturedAt', 'title'])) {
+    if (!isObject(input) || !hasOnlyKeys(input, ['platform', 'itemId', 'finalPrice', 'listPrice', 'promoPrice', 'couponPrice', 'stockStatus', 'title'])) {
       return errorResponse('invalid_body', 'Invalid request body.', 400, origin, env);
     }
 
@@ -419,24 +503,51 @@ export function createPriceApp({ kv }) {
       return errorResponse('invalid_price', 'Invalid final price.', 400, origin, env);
     }
 
-    const capturedAt = input.capturedAt || new Date().toISOString();
+    for (const field of ['listPrice', 'promoPrice', 'couponPrice']) {
+      if (input[field] != null && !isValidPrice(input[field])) {
+        return errorResponse('invalid_price', `Invalid ${field}.`, 400, origin, env);
+      }
+    }
+
+    const rateLimitResponse = await applySnapshotRateLimits(request, input, env, origin);
+    if (rateLimitResponse) return rateLimitResponse;
+
+    const existing = await repository.getSnapshots(input.platform, input.itemId);
+    const capturedAt = now().toISOString();
+    if (isDuplicateSnapshot(existing, input.finalPrice, capturedAt)) {
+      return json({
+        platform: input.platform,
+        itemId: input.itemId,
+        snapshotCount: existing.length,
+        latestPrice: input.finalPrice,
+        capturedAt,
+        deduplicated: true
+      }, 200, origin, env);
+    }
+
+    if (isSuspiciousPrice(input.finalPrice, existing)) {
+      return errorResponse('suspicious_price', 'Price differs too much from recent shared history.', 422, origin, env);
+    }
+
     const snapshot = {
       finalPrice: input.finalPrice,
       listPrice: typeof input.listPrice === 'number' ? input.listPrice : input.finalPrice,
       promoPrice: typeof input.promoPrice === 'number' ? input.promoPrice : null,
       couponPrice: typeof input.couponPrice === 'number' ? input.couponPrice : null,
-      note: typeof input.note === 'string' ? input.note : '',
-      stockStatus: typeof input.stockStatus === 'string' ? input.stockStatus : 'in_stock',
+      stockStatus: typeof input.stockStatus === 'string' ? input.stockStatus : 'unknown',
       capturedAt
     };
 
-    const snapshots = await repository.addSnapshot(input.platform, input.itemId, snapshot);
+    const writeResult = await repository.addSnapshot(input.platform, input.itemId, snapshot);
+    if (!writeResult.ok) {
+      return errorResponse('storage_unavailable', 'Shared history storage is unavailable.', 503, origin, env, true);
+    }
 
     if (input.title) {
       await repository.putProduct(input.platform, input.itemId, {
         platform: input.platform,
         itemId: input.itemId,
-        title: input.title,
+        title: normalizeTitle(input.title),
         currentPrice: input.finalPrice,
         lastUpdatedAt: capturedAt
       });
@@ -445,9 +556,10 @@ export function createPriceApp({ kv }) {
     return json({
       platform: input.platform,
       itemId: input.itemId,
-      snapshotCount: snapshots.length,
+      snapshotCount: writeResult.snapshots.length,
       latestPrice: snapshot.finalPrice,
-      capturedAt
+      capturedAt,
+      deduplicated: false
     }, 200, origin, env);
   }
 
