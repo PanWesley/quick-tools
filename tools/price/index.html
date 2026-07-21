@@ -107,6 +107,7 @@
         <label>当前价格 <input id="snapshot-price" type="number" min="0" step="0.01" required placeholder="例如：199.00"></label>
         <label>备注 <input id="snapshot-note" type="text" placeholder="例如：店铺券后价、直播间价"></label>
         <button class="btn primary" type="submit">记录下来</button>
+        <p class="form-message" id="snapshot-sync-message" role="status"></p>
       </form>
       <form class="panel action-card" id="watch-form">
         <div class="action-card-head">
@@ -297,6 +298,7 @@
 <script src="/tools/price/js/sample-data.js?v=102"></script>
 <script src="/tools/price/js/db.js?v=102"></script>
 <script src="/tools/price/js/chart.js?v=102"></script>
+<script src="/tools/price/js/price-api.js?v=102"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
 <script src="/tools/price/js/app.js?v=102"></script>

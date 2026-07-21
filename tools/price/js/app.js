@@ -5,73 +5,7 @@
   var chart = window.ZhenjiaChart;
   var sampleData = window.ZhenjiaSampleData;
   var exporter = window.ZhenjiaExport;
-
-  var PRICE_API_BASE = '/api/price';
-  var priceApi = {
-    enabled: false,
-
-    init: function() {
-      var self = this;
-      return fetch(PRICE_API_BASE + '/config', { method: 'GET' })
-        .then(function(response) {
-          if (response.ok) {
-            self.enabled = true;
-            return true;
-          }
-          self.enabled = false;
-          return false;
-        })
-        .catch(function() {
-          self.enabled = false;
-          return false;
-        });
-    },
-
-    resolve: function(input) {
-      var self = this;
-      if (!self.enabled) return Promise.resolve(null);
-      return fetch(PRICE_API_BASE + '/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: '', text: input })
-      }).then(function(response) {
-        if (!response.ok) return null;
-        return response.json();
-      }).catch(function() {
-        return null;
-      });
-    },
-
-    getHistory: function(platform, itemId) {
-      var self = this;
-      if (!self.enabled || !platform || !itemId) return Promise.resolve([]);
-      return fetch(PRICE_API_BASE + '/history?platform=' + encodeURIComponent(platform) + '&item_id=' + encodeURIComponent(itemId), {
-        method: 'GET'
-      }).then(function(response) {
-        if (!response.ok) return [];
-        return response.json().then(function(data) {
-          return data.snapshots || [];
-        });
-      }).catch(function() {
-        return [];
-      });
-    },
-
-    recordSnapshot: function(data) {
-      var self = this;
-      if (!self.enabled) return Promise.resolve(null);
-      return fetch(PRICE_API_BASE + '/snapshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).then(function(response) {
-        if (!response.ok) return null;
-        return response.json();
-      }).catch(function() {
-        return null;
-      });
-    }
-  };
+  var priceApi = window.ZhenjiaPriceApi.create({ baseUrl: '/api/price' });
 
   var state = {
     view: 'home',
@@ -101,6 +35,15 @@
     var number = Number(value || 0);
     if (!Number.isFinite(number) || number <= 0) return '暂无';
     return '¥' + (Number.isInteger(number) ? String(number) : number.toFixed(2));
+  }
+
+  function canShareSnapshot(product) {
+    var supportedPlatforms = ['jd', 'taobao', 'tmall', 'pdd'];
+    var localOnlyPrefixes = ['short_', 'tkl_', 'text_', 'unknown_', 'api_', 'pdd_sign_', 'pdd_short_'];
+    if (!product || supportedPlatforms.indexOf(product.platform) === -1 || !product.itemId) return false;
+    return !localOnlyPrefixes.some(function(prefix) {
+      return product.itemId.indexOf(prefix) === 0;
+    });
   }
 
   function mergeSnapshots(local, remote) {
@@ -353,6 +296,7 @@
   }
 
   function renderAnalysis(product, snapshots, watch) {
+    setMessage('snapshot-sync-message', '');
     var latest = latestSnapshot(snapshots);
     var currentPrice = latest ? latest.finalPrice : 0;
     var result = judge.judgePrice({
@@ -720,11 +664,8 @@
         $('#snapshot-price').value = '';
         $('#snapshot-note').value = '';
 
-        if (priceApi.enabled && product.platform && product.itemId &&
-            product.itemId.indexOf('short_') !== 0 &&
-            product.itemId.indexOf('tkl_') !== 0 &&
-            product.itemId.indexOf('text_') !== 0 &&
-            product.itemId.indexOf('unknown_') !== 0) {
+        if (priceApi.enabled && canShareSnapshot(product)) {
+          setMessage('snapshot-sync-message', '已保存到本地，正在匿名同步共享历史…');
           priceApi.recordSnapshot({
             platform: product.platform,
             itemId: product.itemId,
@@ -732,11 +673,23 @@
             listPrice: price,
             promoPrice: null,
             couponPrice: null,
-            note: note,
             stockStatus: 'unknown',
-            capturedAt: capturedAt,
             title: product.title
+          }).then(function(result) {
+            if (result.ok && result.data && result.data.deduplicated) {
+              setMessage('snapshot-sync-message', '已保存到本地；共享历史已有相同价格。');
+            } else if (result.ok) {
+              setMessage('snapshot-sync-message', '已保存到本地，并已匿名贡献到共享历史。');
+            } else if (result.error && result.error.code === 'suspicious_price') {
+              setMessage('snapshot-sync-message', '已保存到本地；该价格与共享历史差异较大，未匿名贡献。');
+            } else if (result.error && result.error.code === 'rate_limited') {
+              setMessage('snapshot-sync-message', '已保存到本地；共享历史写入频繁，请稍后再试。');
+            } else {
+              setMessage('snapshot-sync-message', '已保存到本地，暂未同步共享历史。');
+            }
           });
+        } else {
+          setMessage('snapshot-sync-message', '已保存到本地；此商品暂不支持匿名共享历史。');
         }
       });
     });
