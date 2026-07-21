@@ -1,5 +1,5 @@
 (function() {
-  var APP_VERSION = 'v0.8.0';
+  var APP_VERSION = 'v0.9.0';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -250,16 +250,18 @@
   }
 
   function normalizePriority(priority) {
-    return ['high', 'medium', 'low', 'none'].includes(priority) ? priority : 'none';
+    if (PRIORITY_TO_QUAD[priority]) {
+      return PRIORITY_TO_QUAD[priority];
+    }
+    if (['q1', 'q2', 'q3', 'q4'].includes(priority)) {
+      return priority;
+    }
+    return 'q4';
   }
 
   function priorityLabel(priority) {
-    return {
-      none: '不重要不紧急',
-      low: '不重要但紧急',
-      medium: '重要不紧急',
-      high: '重要且紧急'
-    }[normalizePriority(priority)];
+    var quad = normalizePriority(priority);
+    return PRIORITY_LABELS[quad] || '不重要不紧急';
   }
 
   function areaLabel(area) {
@@ -1567,8 +1569,42 @@
     memory: '#FF9FB8',
     other: '#B0B0B0'
   };
+  var AREA_ICONS = {
+    life: '🌿',
+    study: '📚',
+    work: '💼',
+    health: '🏃',
+    housework: '🏠',
+    memory: '🎂',
+    other: '📌'
+  };
+  var AREA_LABELS = {
+    life: '生活',
+    study: '学习',
+    work: '工作',
+    health: '健康',
+    housework: '家务',
+    memory: '纪念',
+    other: '其他'
+  };
+
+  var QUAD_PRIORITIES = [
+    { value: 'q1', roman: 'I', label: '重要紧急', desc: '立即执行', color: '#ff5252' },
+    { value: 'q2', roman: 'II', label: '重要不紧急', desc: '计划推进', color: '#448aff' },
+    { value: 'q3', roman: 'III', label: '紧急不重要', desc: '委托他人', color: '#ff9800' },
+    { value: 'q4', roman: 'IV', label: '不重要不紧急', desc: '有空再做', color: '#9e9e9e' }
+  ];
+
+  var PRIORITY_TO_QUAD = { high: 'q1', medium: 'q2', low: 'q3', none: 'q4', 'q1': 'q1', 'q2': 'q2', 'q3': 'q3', 'q4': 'q4' };
+  var QUAD_TO_PRIORITY = { q1: 'high', q2: 'medium', q3: 'low', q4: 'none' };
+  var PRIORITY_COLORS = { high: '#ff5252', medium: '#448aff', low: '#ff9800', none: '#9e9e9e', q1: '#ff5252', q2: '#448aff', q3: '#ff9800', q4: '#9e9e9e' };
+  var PRIORITY_LABELS = {
+    high: '重要紧急', medium: '重要不紧急', low: '紧急不重要', none: '不重要不紧急',
+    q1: '重要紧急', q2: '重要不紧急', q3: '紧急不重要', q4: '不重要不紧急'
+  };
+
   var TONE_CSS_COLORS = {
-    '': 'linear-gradient(135deg,#FFD4B9,#B9A7FF)',
+    '': 'var(--surface)',
     peach: 'rgb(255,212,185)',
     coral: 'rgb(255,182,192)',
     apricot: 'rgb(255,200,145)',
@@ -1578,8 +1614,56 @@
     lilac: 'rgb(215,195,245)',
     rose: 'rgb(255,190,210)',
     blush: 'rgb(255,210,220)',
-    sand: 'rgb(245,225,195)'
+    sand: 'rgb(245,225,195)',
+    cream: 'rgb(255,248,225)',
+    sage: 'rgb(200,230,200)',
+    ice: 'rgb(210,240,250)',
+    lavender: 'rgb(230,220,250)',
+    pink: 'rgb(255,205,210)',
+    tan: 'rgb(235,215,185)',
+    lemon: 'rgb(255,245,180)',
+    mint2: 'rgb(195,235,220)',
+    babyblue: 'rgb(195,225,245)',
+    wisteria: 'rgb(220,205,245)',
+    salmon: 'rgb(255,200,180)',
+    nude: 'rgb(250,225,215)',
+    olive: 'rgb(220,235,195)',
+    aqua: 'rgb(190,235,235)',
+    mauve: 'rgb(240,215,235)',
+    fog: 'rgb(225,230,235)',
+    pearl: 'rgb(245,240,235)'
   };
+
+  var TONE_LIST = [
+    { value: '', label: '无' },
+    { value: 'peach', color: 'rgb(255,212,185)' },
+    { value: 'coral', color: 'rgb(255,182,192)' },
+    { value: 'apricot', color: 'rgb(255,200,145)' },
+    { value: 'butter', color: 'rgb(255,235,165)' },
+    { value: 'mint', color: 'rgb(175,235,210)' },
+    { value: 'sky', color: 'rgb(180,220,245)' },
+    { value: 'lilac', color: 'rgb(215,195,245)' },
+    { value: 'rose', color: 'rgb(255,190,210)' },
+    { value: 'blush', color: 'rgb(255,210,220)' },
+    { value: 'sand', color: 'rgb(245,225,195)' },
+    { value: 'cream', color: 'rgb(255,248,225)' },
+    { value: 'sage', color: 'rgb(200,230,200)' },
+    { value: 'ice', color: 'rgb(210,240,250)' },
+    { value: 'lavender', color: 'rgb(230,220,250)' },
+    { value: 'pink', color: 'rgb(255,205,210)' },
+    { value: 'tan', color: 'rgb(235,215,185)' },
+    { value: 'lemon', color: 'rgb(255,245,180)' },
+    { value: 'mint2', color: 'rgb(195,235,220)' },
+    { value: 'babyblue', color: 'rgb(195,225,245)' },
+    { value: 'wisteria', color: 'rgb(220,205,245)' },
+    { value: 'salmon', color: 'rgb(255,200,180)' },
+    { value: 'nude', color: 'rgb(250,225,215)' },
+    { value: 'olive', color: 'rgb(220,235,195)' },
+    { value: 'aqua', color: 'rgb(190,235,235)' },
+    { value: 'mauve', color: 'rgb(240,215,235)' },
+    { value: 'fog', color: 'rgb(225,230,235)' },
+    { value: 'pearl', color: 'rgb(245,240,235)' }
+  ];
 
   // 返回日期标签
   function formatDateLabel(dateKey) {
@@ -1594,10 +1678,11 @@
   // 返回当前设置摘要
   function getQuickSummary() {
     var dateVal = els.quickDate ? els.quickDate.value : '';
-    var priorityVal = els.quickPriority ? els.quickPriority.value : 'medium';
+    var priorityRaw = els.quickPriority ? els.quickPriority.value : '';
+    var priorityVal = PRIORITY_TO_QUAD[priorityRaw] || 'q4';
     var repeatVal = els.quickRepeat ? els.quickRepeat.value : 'none';
     var reminderVal = els.quickReminder ? els.quickReminder.value : 'none';
-    var areaVal = els.quickArea ? els.quickArea.value : 'life';
+    var areaVal = els.quickArea ? els.quickArea.value : '';
     var toneVal = els.quickTone ? els.quickTone.value : '';
     var notesVal = els.quickNotes ? els.quickNotes.value : '';
     var timeMode = els.quickTimeMode ? els.quickTimeMode.value : 'all-day';
@@ -1608,15 +1693,16 @@
       dateLabel: formatDateLabel(dateVal),
       timeLabel: timeMode === 'all-day' ? '全天' : (timeMode === 'point' ? (startTime || '时间点') : (startTime ? startTime + '-' + (endTime || '') : '时间段')),
       priority: priorityVal,
-      priorityLabel: { high: '重要紧急', medium: '重要不紧急', low: '次要紧急', none: '不紧急' }[priorityVal] || '',
-      priorityColor: PRIORITY_COLORS[priorityVal] || PRIORITY_COLORS.medium,
+      priorityLabel: PRIORITY_LABELS[priorityVal] || '不重要不紧急',
+      priorityColor: PRIORITY_COLORS[priorityVal] || '#9e9e9e',
       repeat: repeatVal,
-      repeatLabel: { none: '不重复', daily: '每天', weekly: '每周', custom: '自定义' }[repeatVal] || '',
+      repeatLabel: { none: '不重复', daily: '每天', weekly: '每周', custom: '自定义' }[repeatVal] || '不重复',
       reminder: reminderVal,
-      reminderLabel: { 'none': '不提醒', 'at-time': '准时', '5': '5分钟前', '15': '15分钟前', '30': '30分钟前', '60': '1小时前' }[reminderVal] || '',
+      reminderLabel: { 'none': '不提醒', 'at-time': '准时', '5': '5分钟前', '15': '15分钟前', '30': '30分钟前', '60': '1小时前' }[reminderVal] || '不提醒',
       area: areaVal,
-      areaLabel: { life: '生活', study: '学习', work: '工作', health: '健康', housework: '家务', memory: '纪念', other: '其他' }[areaVal] || '生活',
-      areaColor: AREA_COLORS[areaVal] || AREA_COLORS.life,
+      areaLabel: AREA_LABELS[areaVal] || (areaVal ? areaVal : '未设置'),
+      areaColor: AREA_COLORS[areaVal] || '#b0b0b0',
+      areaIcon: AREA_ICONS[areaVal] || '📌',
       tone: toneVal,
       hasNotes: Boolean(notesVal && notesVal.trim())
     };
@@ -1626,11 +1712,9 @@
   function updateToolStates() {
     var s = getQuickSummary();
     setToolActive('date', s.hasDate, '');
-    setToolActive('priority', s.priority !== 'medium', s.priorityColor);
-    setToolActive('area', s.area !== 'life', s.areaColor);
-    setToolActive('repeat', s.repeat !== 'none', '#5DCBA8');
-    setToolActive('reminder', s.reminder !== 'none', '#B9A7FF');
-    setToolActive('tone', Boolean(s.tone), '#FF8A2A');
+    setToolActive('priority', s.priority !== 'q4', s.priorityColor);
+    setToolActive('area', Boolean(s.area), s.areaColor);
+    setToolActive('tone', Boolean(s.tone), TONE_CSS_COLORS[s.tone] ? '#888' : '#888');
   }
 
   // 别名（兼容旧调用）
@@ -1656,39 +1740,43 @@
     var title = (els.quickTitle && els.quickTitle.value.trim()) || '未命名事项';
     var html = '';
 
-    html += '<div class="quick-full-summary">';
-    html += '<div class="quick-full-summary-title">' + escapeHtml(title) + '</div>';
-    html += '<div class="quick-full-summary-meta">';
-    if (s.hasDate) html += '<span class="quick-full-meta-tag">📅 ' + escapeHtml(s.dateLabel) + ' · ' + escapeHtml(s.timeLabel) + '</span>';
-    html += '<span class="quick-full-meta-tag" style="color:' + s.priorityColor + '">● ' + escapeHtml(s.priorityLabel) + '</span>';
-    html += '<span class="quick-full-meta-tag" style="color:' + s.areaColor + '">🏷 ' + escapeHtml(s.areaLabel) + '</span>';
-    if (s.repeat !== 'none') html += '<span class="quick-full-meta-tag">🔁 ' + escapeHtml(s.repeatLabel) + '</span>';
-    if (s.reminder !== 'none') html += '<span class="quick-full-meta-tag">🔔 ' + escapeHtml(s.reminderLabel) + '</span>';
-    html += '</div></div>';
-
     html += '<div class="quick-full-section"><div class="quick-full-label">标题</div>';
-    html += '<input type="text" class="quick-full-notes" id="qf-title-input" style="min-height:auto;padding:10px 12px;" value="' + escapeHtml(els.quickTitle.value) + '"></div>';
+    html += '<input type="text" class="quick-full-input" id="qf-title-input" value="' + escapeHtml(els.quickTitle.value) + '" placeholder="事项标题"></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">备注</div>';
-    html += '<textarea class="quick-full-notes" id="qf-notes-input" rows="3" placeholder="添加备注...">' + escapeHtml(els.quickNotes.value || '') + '</textarea></div>';
+    html += '<textarea class="quick-full-textarea" id="qf-notes-input" rows="4" placeholder="添加备注...">' + escapeHtml(els.quickNotes.value || '') + '</textarea></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">日期与时间</div>';
-    html += '<button type="button" class="quick-full-value" data-qf-jump="date"><span>' + escapeHtml(s.dateLabel + ' · ' + s.timeLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="date">';
+    html += '<div class="quick-full-value-content">📅 ' + escapeHtml(s.dateLabel + ' · ' + s.timeLabel) + '</div>';
+    html += '<span class="qv-arrow">›</span></button></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">优先级</div>';
-    html += '<button type="button" class="quick-full-value" data-qf-jump="priority"><span style="color:' + s.priorityColor + '">● ' + escapeHtml(s.priorityLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="priority">';
+    html += '<div class="quick-full-value-content"><span style="color:' + s.priorityColor + '">●</span> ' + escapeHtml(s.priorityLabel) + '</div>';
+    html += '<span class="qv-arrow">›</span></button></div>';
 
-    html += '<div class="quick-full-section"><div class="quick-full-label">归属</div>';
-    html += '<button type="button" class="quick-full-value" data-qf-jump="area"><span style="color:' + s.areaColor + '">🏷 ' + escapeHtml(s.areaLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+    html += '<div class="quick-full-section"><div class="quick-full-label">归属项目</div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="area">';
+    html += '<div class="quick-full-value-content">' + (s.area ? s.areaIcon + ' ' + escapeHtml(s.areaLabel) : '未设置') + '</div>';
+    html += '<span class="qv-arrow">›</span></button></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">重复</div>';
-    html += '<button type="button" class="quick-full-value" data-qf-jump="repeat"><span>' + escapeHtml(s.repeatLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="repeat">';
+    html += '<div class="quick-full-value-content">🔁 ' + escapeHtml(s.repeatLabel) + '</div>';
+    html += '<span class="qv-arrow">›</span></button></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">提醒</div>';
-    html += '<button type="button" class="quick-full-value" data-qf-jump="reminder"><span>' + escapeHtml(s.reminderLabel) + '</span><span class="qv-arrow">›</span></button></div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="reminder">';
+    html += '<div class="quick-full-value-content">🔔 ' + escapeHtml(s.reminderLabel) + '</div>';
+    html += '<span class="qv-arrow">›</span></button></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">背景色</div>';
-    html += '<button type="button" class="quick-full-value" data-qf-jump="tone"><span style="background:' + (TONE_CSS_COLORS[s.tone] || 'var(--surface)') + ';display:inline-block;width:24px;height:24px;border-radius:50%;border:1px solid var(--border);vertical-align:middle;margin-right:8px;"></span><span>' + (s.tone ? '已选颜色' : '默认') + '</span><span class="qv-arrow">›</span></button></div>';
+    html += '<button type="button" class="quick-full-value" data-qf-jump="tone">';
+    html += '<div class="quick-full-value-content">';
+    html += '<span class="quick-full-color-dot" style="background:' + (TONE_CSS_COLORS[s.tone] || 'var(--surface)') + '"></span>';
+    html += (s.tone ? '已选颜色' : '默认');
+    html += '</div><span class="qv-arrow">›</span></button></div>';
 
     els.quickFullBody.innerHTML = html;
 
@@ -1698,15 +1786,13 @@
         closeQuickFullPanel();
         setTimeout(function() {
           openQuickTool(tool);
-        }, 260);
+        }, 280);
       });
     });
     var qfTitle = els.quickFullBody.querySelector('#qf-title-input');
     if (qfTitle) {
       qfTitle.addEventListener('input', function() {
         els.quickTitle.value = qfTitle.value;
-        var sumTitle = els.quickFullBody.querySelector('.quick-full-summary-title');
-        if (sumTitle) sumTitle.textContent = qfTitle.value.trim() || '未命名事项';
       });
     }
     var qfNotes = els.quickFullBody.querySelector('#qf-notes-input');
@@ -1718,6 +1804,104 @@
     }
   }
 
+  // 日历渲染状态
+  var dtCalendarState = {
+    viewYear: 0,
+    viewMonth: 0,
+    selectedDate: ''
+  };
+
+  function renderDatetimeCalendar(container, selectedDate) {
+    var now = new Date();
+    var baseDate = selectedDate ? DateUtils.fromDateKey(selectedDate) : now;
+    if (!dtCalendarState.viewYear) {
+      dtCalendarState.viewYear = baseDate.getFullYear();
+      dtCalendarState.viewMonth = baseDate.getMonth();
+      dtCalendarState.selectedDate = selectedDate || '';
+    }
+
+    var year = dtCalendarState.viewYear;
+    var month = dtCalendarState.viewMonth;
+    var firstDay = new Date(year, month, 1);
+    var lastDay = new Date(year, month + 1, 0);
+    var startWeekday = (firstDay.getDay() + 6) % 7;
+    var todayKey = appState.todayKey;
+
+    var monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+    var html = '<div class="quick-datetime-calendar">';
+    html += '<div class="quick-datetime-calendar-header">';
+    html += '<span class="quick-datetime-month">' + year + '年 ' + monthNames[month] + '</span>';
+    html += '<div class="quick-datetime-nav">';
+    html += '<button type="button" data-cal-nav="prev">‹</button>';
+    html += '<button type="button" data-cal-nav="today">今</button>';
+    html += '<button type="button" data-cal-nav="next">›</button>';
+    html += '</div></div>';
+
+    html += '<div class="quick-datetime-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>';
+    html += '<div class="quick-datetime-grid">';
+
+    var prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (var i = startWeekday - 1; i >= 0; i--) {
+      var d = prevMonthLastDay - i;
+      var pmDate = new Date(year, month - 1, d);
+      var pmKey = DateUtils.toDateKey(pmDate);
+      html += '<button type="button" class="quick-datetime-day outside" data-cal-date="' + pmKey + '">' + d + '</button>';
+    }
+
+    for (var day = 1; day <= lastDay.getDate(); day++) {
+      var date = new Date(year, month, day);
+      var dateKey = DateUtils.toDateKey(date);
+      var isToday = dateKey === todayKey;
+      var isSelected = dateKey === dtCalendarState.selectedDate;
+      var classes = 'quick-datetime-day';
+      if (isToday) classes += ' today';
+      if (isSelected) classes += ' selected';
+      html += '<button type="button" class="' + classes + '" data-cal-date="' + dateKey + '">' + day + '</button>';
+    }
+
+    var totalCells = startWeekday + lastDay.getDate();
+    var remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+    for (var j = 1; j <= remaining; j++) {
+      var nmDate = new Date(year, month + 1, j);
+      var nmKey = DateUtils.toDateKey(nmDate);
+      html += '<button type="button" class="quick-datetime-day outside" data-cal-date="' + nmKey + '">' + j + '</button>';
+    }
+
+    html += '</div></div>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('[data-cal-nav]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var action = btn.dataset.calNav;
+        if (action === 'prev') {
+          dtCalendarState.viewMonth--;
+          if (dtCalendarState.viewMonth < 0) { dtCalendarState.viewMonth = 11; dtCalendarState.viewYear--; }
+        } else if (action === 'next') {
+          dtCalendarState.viewMonth++;
+          if (dtCalendarState.viewMonth > 11) { dtCalendarState.viewMonth = 0; dtCalendarState.viewYear++; }
+        } else if (action === 'today') {
+          var today = new Date();
+          dtCalendarState.viewYear = today.getFullYear();
+          dtCalendarState.viewMonth = today.getMonth();
+          dtCalendarState.selectedDate = todayKey;
+          setQuickDate(todayKey, 'today');
+          updateToolStates();
+        }
+        renderDatetimeCalendar(container, dtCalendarState.selectedDate);
+      });
+    });
+
+    container.querySelectorAll('[data-cal-date]').forEach(function(dayBtn) {
+      dayBtn.addEventListener('click', function() {
+        dtCalendarState.selectedDate = dayBtn.dataset.calDate;
+        setQuickDate(dtCalendarState.selectedDate, 'custom');
+        renderDatetimeCalendar(container, dtCalendarState.selectedDate);
+        updateToolStates();
+      });
+    });
+  }
+
   // 打开工具extra面板
   function openQuickTool(tool) {
     closeQuickExtra();
@@ -1726,13 +1910,13 @@
     var html = '';
     var currentDate = els.quickDate ? els.quickDate.value : '';
     var currentTimeMode = els.quickTimeMode ? els.quickTimeMode.value : 'all-day';
-    var currentPriority = els.quickPriority ? els.quickPriority.value : 'medium';
+    var currentPriorityRaw = els.quickPriority ? els.quickPriority.value : '';
+    var currentPriority = PRIORITY_TO_QUAD[currentPriorityRaw] || 'q4';
     var currentRepeat = els.quickRepeat ? els.quickRepeat.value : 'none';
     var currentReminder = els.quickReminder ? els.quickReminder.value : 'none';
-    var currentArea = els.quickArea ? els.quickArea.value : 'life';
+    var currentArea = els.quickArea ? els.quickArea.value : '';
     var currentTone = els.quickTone ? els.quickTone.value : '';
 
-    // 获取当前日期模式
     function getDatePreset() {
       if (!currentDate) return 'pending';
       if (currentDate === appState.todayKey) return 'today';
@@ -1743,88 +1927,114 @@
     var datePreset = getDatePreset();
 
     if (tool === 'date') {
-      html += '<div class="quick-extra-header"><h4>日期与时间</h4><button type="button" class="quick-extra-close">×</button></div>';
-      html += '<div class="quick-date-row">';
-      var datePills = [
+      dtCalendarState.viewYear = 0;
+      html += '<div class="quick-datetime-panel">';
+      html += '<div id="quick-dt-calendar-container"></div>';
+
+      html += '<div class="quick-datetime-quick">';
+      var quickDates = [
         { preset: 'today', label: '今天' },
         { preset: 'tomorrow', label: '明天' },
         { preset: 'weekend', label: '周末' },
-        { preset: 'custom', label: datePreset === 'custom' && currentDate ? formatDateLabel(currentDate) : '自定义' },
         { preset: 'pending', label: '待定' }
       ];
-      datePills.forEach(function(pill) {
-        var selected = datePreset === pill.preset ? ' is-selected' : '';
-        var hasDate = pill.preset === 'custom' && datePreset === 'custom' && currentDate ? ' has-date' : '';
-        html += '<button type="button" class="quick-date-pill' + selected + hasDate + '" data-date-preset="' + pill.preset + '">' + pill.label + '</button>';
+      quickDates.forEach(function(item) {
+        var selected = datePreset === item.preset ? ' is-selected' : '';
+        html += '<button type="button" class="quick-datetime-quick-btn' + selected + '" data-date-preset="' + item.preset + '">' + item.label + '</button>';
       });
       html += '</div>';
 
-      if (currentDate) {
-        html += '<div class="quick-time-mode-switch">';
-        var timeModes = [
-          { mode: 'all-day', label: '全天' },
-          { mode: 'point', label: '时间点' },
-          { mode: 'range', label: '时间段' }
-        ];
-        timeModes.forEach(function(tm) {
-          var selected = currentTimeMode === tm.mode ? ' is-selected' : '';
-          html += '<button type="button" class="quick-time-mode-btn' + selected + '" data-time-mode="' + tm.mode + '">' + tm.label + '</button>';
-        });
-        html += '</div>';
+      html += '<div class="quick-datetime-options">';
+      html += '<button type="button" class="quick-datetime-opt' + (currentTimeMode === 'all-day' ? ' is-active' : '') + '" data-dt-opt="time-all">';
+      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+      html += '<span class="quick-datetime-opt-label">全天</span></button>';
 
-        if (currentTimeMode === 'point' || currentTimeMode === 'range') {
-          var startTime = els.quickStartTime ? els.quickStartTime.value : '';
-          var endTime = els.quickEndTime ? els.quickEndTime.value : '';
-          html += '<div class="quick-time-row">';
-          html += '<button type="button" class="quick-time-input" data-time-input="start">' + (startTime || '选择时间') + '</button>';
-          if (currentTimeMode === 'range') {
-            html += '<span class="quick-time-sep">-</span>';
-            html += '<button type="button" class="quick-time-input" data-time-input="end">' + (endTime || '选择时间') + '</button>';
-          }
-          html += '</div>';
-        }
-      }
+      html += '<button type="button" class="quick-datetime-opt' + (currentTimeMode !== 'all-day' ? ' is-active' : '') + '" data-dt-opt="time-set">';
+      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+      html += '<span class="quick-datetime-opt-label">时间</span></button>';
+
+      html += '<button type="button" class="quick-datetime-opt' + (currentRepeat !== 'none' ? ' is-active' : '') + '" data-dt-opt="repeat">';
+      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+      html += '<span class="quick-datetime-opt-label">重复</span></button>';
+
+      html += '<button type="button" class="quick-datetime-opt' + (currentReminder !== 'none' ? ' is-active' : '') + '" data-dt-opt="reminder">';
+      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+      html += '<span class="quick-datetime-opt-label">提醒</span></button>';
+
+      html += '</div></div>';
+
     } else if (tool === 'priority') {
-      html += '<div class="quick-extra-header"><h4>优先级</h4><button type="button" class="quick-extra-close">×</button></div>';
-      html += '<div class="quick-option-grid">';
-      var priorityOptions = [
-        { value: 'high', color: '#FF6F52', label: '重要紧急', desc: '现在处理' },
-        { value: 'medium', color: '#FFB23F', label: '重要不紧急', desc: '计划推进' },
-        { value: 'low', color: '#64B5F6', label: '次要紧急', desc: '顺手处理' },
-        { value: 'none', color: '#B0B0B0', label: '不紧急', desc: '有空再看' }
-      ];
-      priorityOptions.forEach(function(opt) {
-        var selected = currentPriority === opt.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-option-item' + selected + '" data-priority="' + opt.value + '">';
-        html += '<div class="quick-option-dot" style="background:' + opt.color + '"></div>';
-        html += '<span>' + escapeHtml(opt.label) + '</span>';
-        html += '<small>' + escapeHtml(opt.desc) + '</small>';
+      html += '<div class="quick-priority-panel">';
+      html += '<div class="quick-priority-grid">';
+      QUAD_PRIORITIES.forEach(function(q) {
+        var selected = currentPriority === q.value ? ' is-selected' : '';
+        html += '<button type="button" class="quick-priority-quad q' + q.value.charAt(1) + selected + '" data-quad="' + q.value + '">';
+        html += '<span class="quick-priority-roman">' + q.roman + '</span>';
+        html += '<span class="quick-priority-label">' + q.label + '</span>';
+        html += '<span class="quick-priority-desc">' + q.desc + '</span>';
         html += '</button>';
       });
+      html += '</div></div>';
+
+    } else if (tool === 'area') {
+      html += '<div class="quick-area-panel">';
+      var areaKeys = Object.keys(AREA_LABELS);
+      areaKeys.forEach(function(key) {
+        var selected = currentArea === key ? ' is-selected' : '';
+        html += '<button type="button" class="quick-area-item' + selected + '" data-area="' + key + '">';
+        html += '<span class="quick-area-icon" style="background:' + AREA_COLORS[key] + '22;color:' + AREA_COLORS[key] + '">' + AREA_ICONS[key] + '</span>';
+        html += '<span class="quick-area-info"><span class="quick-area-name">' + AREA_LABELS[key] + '</span></span>';
+        html += '<span class="quick-area-check">' + (currentArea === key ? '✓' : '') + '</span>';
+        html += '</button>';
+      });
+      if (currentArea) {
+        html += '<button type="button" class="quick-area-item" data-area="">';
+        html += '<span class="quick-area-icon" style="background:var(--surface-soft);color:var(--text-muted)">✕</span>';
+        html += '<span class="quick-area-info"><span class="quick-area-name" style="color:var(--text-muted)">清除归属</span></span>';
+        html += '<span class="quick-area-check"></span>';
+        html += '</button>';
+      }
       html += '</div>';
+
+    } else if (tool === 'tone') {
+      html += '<div class="quick-tone-panel">';
+      html += '<div class="quick-tone-grid">';
+      TONE_LIST.forEach(function(tone) {
+        var selected = currentTone === tone.value ? ' is-selected' : '';
+        var isNone = tone.value === '';
+        var style = isNone ? '' : 'background:' + tone.color;
+        html += '<button type="button" class="quick-tone-swatch' + (isNone ? ' quick-tone-none' : '') + selected + '" data-tone="' + tone.value + '" style="' + style + '">';
+        if (isNone) html += '✕';
+        html += '</button>';
+      });
+      html += '</div></div>';
+
+    } else if (tool === 'more') {
+      openQuickFullPanel();
+      return;
     } else if (tool === 'repeat') {
-      html += '<div class="quick-extra-header"><h4>重复</h4><button type="button" class="quick-extra-close">×</button></div>';
-      html += '<div class="quick-option-grid">';
+      html += '<div style="padding:16px;">';
+      html += '<div style="display:grid;gap:8px;">';
       var repeatOptions = [
-        { value: 'none', icon: '🚫', label: '不重复' },
-        { value: 'daily', icon: '🔄', label: '每天' },
-        { value: 'weekly', icon: '📅', label: '每周' },
-        { value: 'custom', icon: '⚙️', label: '自定义' }
+        { value: 'none', label: '不重复' },
+        { value: 'daily', label: '每天' },
+        { value: 'weekly', label: '每周' }
       ];
       repeatOptions.forEach(function(opt) {
         var selected = currentRepeat === opt.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-option-item' + selected + '" data-repeat="' + opt.value + '">';
-        html += '<div class="quick-option-dot">' + opt.icon + '</div>';
-        html += '<span>' + escapeHtml(opt.label) + '</span>';
+        html += '<button type="button" class="quick-area-item' + selected + '" data-repeat="' + opt.value + '" style="border-radius:12px;">';
+        html += '<span class="quick-area-name" style="font-size:15px;">' + opt.label + '</span>';
+        html += '<span class="quick-area-check">' + (currentRepeat === opt.value ? '✓' : '') + '</span>';
         html += '</button>';
       });
-      html += '</div>';
+      html += '</div></div>';
+
     } else if (tool === 'reminder') {
-      html += '<div class="quick-extra-header"><h4>提醒</h4><button type="button" class="quick-extra-close">×</button></div>';
-      html += '<div class="quick-option-grid">';
+      html += '<div style="padding:16px;">';
+      html += '<div style="display:grid;gap:8px;">';
       var reminderOptions = [
         { value: 'none', label: '不提醒' },
-        { value: 'at-time', label: '准时' },
+        { value: 'at-time', label: '准时提醒' },
         { value: '5', label: '5分钟前' },
         { value: '15', label: '15分钟前' },
         { value: '30', label: '30分钟前' },
@@ -1832,127 +2042,107 @@
       ];
       reminderOptions.forEach(function(opt) {
         var selected = currentReminder === opt.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-option-item' + selected + '" data-reminder="' + opt.value + '">';
-        html += '<div class="quick-option-dot"></div>';
-        html += '<span>' + escapeHtml(opt.label) + '</span>';
+        html += '<button type="button" class="quick-area-item' + selected + '" data-reminder="' + opt.value + '" style="border-radius:12px;">';
+        html += '<span class="quick-area-name" style="font-size:15px;">' + opt.label + '</span>';
+        html += '<span class="quick-area-check">' + (currentReminder === opt.value ? '✓' : '') + '</span>';
         html += '</button>';
       });
-      html += '</div>';
-    } else if (tool === 'area') {
-      html += '<div class="quick-extra-header"><h4>归属</h4><button type="button" class="quick-extra-close">×</button></div>';
-      html += '<div class="quick-option-grid">';
-      var areaOptions = [
-        { value: 'life', icon: '🌿', label: '生活' },
-        { value: 'study', icon: '📚', label: '学习' },
-        { value: 'work', icon: '💼', label: '工作' },
-        { value: 'health', icon: '🏃', label: '健康' },
-        { value: 'housework', icon: '🏠', label: '家务' },
-        { value: 'memory', icon: '🎂', label: '纪念' },
-        { value: 'other', icon: '📌', label: '其他' }
-      ];
-      areaOptions.forEach(function(opt) {
-        var selected = currentArea === opt.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-option-item' + selected + '" data-area="' + opt.value + '">';
-        html += '<div class="quick-option-dot">' + opt.icon + '</div>';
-        html += '<span>' + escapeHtml(opt.label) + '</span>';
-        html += '</button>';
-      });
-      html += '</div>';
-    } else if (tool === 'tone') {
-      html += '<div class="quick-extra-header"><h4>背景色</h4><button type="button" class="quick-extra-close">×</button></div>';
-      html += '<div class="quick-tone-grid">';
-      var toneColors = [
-        { value: '', gradient: 'linear-gradient(135deg,#FFD4B9,#B9A7FF)' },
-        { value: 'peach', color: '255,212,185' },
-        { value: 'coral', color: '255,182,192' },
-        { value: 'apricot', color: '255,200,145' },
-        { value: 'butter', color: '255,235,165' },
-        { value: 'mint', color: '175,235,210' },
-        { value: 'sky', color: '180,220,245' },
-        { value: 'lilac', color: '215,195,245' },
-        { value: 'rose', color: '255,190,210' },
-        { value: 'blush', color: '255,210,220' },
-        { value: 'sand', color: '245,225,195' }
-      ];
-      toneColors.forEach(function(tone) {
-        var selected = currentTone === tone.value ? ' is-selected' : '';
-        var style = tone.gradient ? 'background:' + tone.gradient : 'background:rgb(' + tone.color + ')';
-        html += '<button type="button" class="quick-tone-swatch' + selected + '" data-tone="' + tone.value + '" style="' + style + '"></button>';
-      });
-      html += '</div>';
-    } else if (tool === 'more') {
-      openQuickFullPanel();
-      return;
+      html += '</div></div>';
     }
 
     els.quickExtraPanel.innerHTML = html;
     els.quickExtraPanel.hidden = false;
-    setToolActive(tool, true);
 
-    // 绑定日期预设按钮事件
-    els.quickExtraPanel.querySelectorAll('.quick-date-pill').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var preset = btn.dataset.datePreset;
-        if (preset === 'pending') {
-          setQuickDate('', 'pending');
-        } else if (preset === 'custom') {
-          openCalendarPicker();
-          return;
-        } else {
-          var dateKey = '';
-          if (preset === 'today') dateKey = appState.todayKey;
-          else if (preset === 'tomorrow') dateKey = tomorrowKey();
-          else if (preset === 'weekend') dateKey = weekendKey();
-          setQuickDate(dateKey, preset);
-        }
-        openQuickTool('date');
-        updateQuickChips();
-      });
-    });
+    if (tool === 'date') {
+      var calContainer = document.getElementById('quick-dt-calendar-container');
+      if (calContainer) {
+        renderDatetimeCalendar(calContainer, currentDate);
+      }
 
-    // 绑定时间模式按钮事件
-    els.quickExtraPanel.querySelectorAll('.quick-time-mode-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        setChoiceValue('quick-time-mode', btn.dataset.timeMode);
-        openQuickTool('date');
-      });
-    });
-
-    // 绑定时间输入点击事件
-    els.quickExtraPanel.querySelectorAll('.quick-time-input').forEach(function(input) {
-      input.addEventListener('click', function() {
-        openTimePickerForV2(input);
-      });
-    });
-
-    // 绑定通用选项按钮事件 (priority/repeat/reminder/area)
-    els.quickExtraPanel.querySelectorAll('.quick-option-item').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        if (btn.dataset.priority !== undefined) {
-          setChoiceValue('quick-priority', btn.dataset.priority);
-        } else if (btn.dataset.repeat !== undefined) {
-          var repeatVal = btn.dataset.repeat;
-          if (repeatVal === 'custom') {
-            repeatVal = 'daily';
-            showToast('自定义重复暂不支持，已设为每天');
+      els.quickExtraPanel.querySelectorAll('[data-date-preset]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var preset = btn.dataset.datePreset;
+          dtCalendarState.viewYear = 0;
+          if (preset === 'pending') {
+            setQuickDate('', 'pending');
+            dtCalendarState.selectedDate = '';
+          } else {
+            var dateKey = '';
+            if (preset === 'today') dateKey = appState.todayKey;
+            else if (preset === 'tomorrow') dateKey = tomorrowKey();
+            else if (preset === 'weekend') dateKey = weekendKey();
+            setQuickDate(dateKey, preset);
+            dtCalendarState.selectedDate = dateKey;
           }
-          setChoiceValue('quick-repeat', repeatVal);
-        } else if (btn.dataset.reminder !== undefined) {
-          setChoiceValue('quick-reminder', btn.dataset.reminder);
-        } else if (btn.dataset.area !== undefined) {
-          setChoiceValue('quick-area', btn.dataset.area);
-        }
+          openQuickTool('date');
+          updateToolStates();
+        });
+      });
+
+      els.quickExtraPanel.querySelectorAll('[data-dt-opt]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var opt = btn.dataset.dtOpt;
+          if (opt === 'time-all') {
+            setChoiceValue('quick-time-mode', 'all-day');
+            updateToolStates();
+            openQuickTool('date');
+          } else if (opt === 'time-set') {
+            if (!currentDate) {
+              setQuickDate(appState.todayKey, 'today');
+              dtCalendarState.selectedDate = appState.todayKey;
+            }
+            openTimePickerForV2({ isQuick: true, onSelect: function(t) {
+              setChoiceValue('quick-time-mode', 'point');
+              els.quickStartTime.value = t;
+              updateToolStates();
+            }});
+          } else if (opt === 'repeat') {
+            openQuickTool('repeat');
+          } else if (opt === 'reminder') {
+            openQuickTool('reminder');
+          }
+        });
+      });
+    }
+
+    els.quickExtraPanel.querySelectorAll('[data-quad]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var quad = btn.dataset.quad;
+        setChoiceValue('quick-priority', quad);
         closeQuickExtra();
-        updateQuickChips();
+        updateToolStates();
       });
     });
 
-    // 绑定背景色块点击事件
-    els.quickExtraPanel.querySelectorAll('.quick-tone-swatch').forEach(function(swatch) {
+    els.quickExtraPanel.querySelectorAll('[data-area]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setChoiceValue('quick-area', btn.dataset.area);
+        closeQuickExtra();
+        updateToolStates();
+      });
+    });
+
+    els.quickExtraPanel.querySelectorAll('[data-tone]').forEach(function(swatch) {
       swatch.addEventListener('click', function() {
         setChoiceValue('quick-tone', swatch.dataset.tone);
         closeQuickExtra();
-        updateQuickChips();
+        updateToolStates();
+      });
+    });
+
+    els.quickExtraPanel.querySelectorAll('[data-repeat]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setChoiceValue('quick-repeat', btn.dataset.repeat);
+        closeQuickExtra();
+        updateToolStates();
+      });
+    });
+
+    els.quickExtraPanel.querySelectorAll('[data-reminder]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setChoiceValue('quick-reminder', btn.dataset.reminder);
+        closeQuickExtra();
+        updateToolStates();
       });
     });
   }
@@ -2003,13 +2193,16 @@
       return;
     }
 
+    var priorityRaw = els.quickPriority.value;
+    var priorityForDb = QUAD_TO_PRIORITY[priorityRaw] || 'medium';
+
     var repeat = els.quickRepeat.value || 'none';
     var reminder = els.quickReminder.value || 'none';
     var payload = {
       title: title,
       notes: els.quickNotes.value,
       date: els.quickDate.value,
-      priority: els.quickPriority.value,
+      priority: priorityForDb,
       area: els.quickArea.value || 'life',
       tone: els.quickTone.value || '',
       timeMode: els.quickTimeMode.value || 'all-day',
@@ -2030,7 +2223,7 @@
         title: title,
         notes: els.quickNotes.value,
         area: els.quickArea.value || 'life',
-        priority: els.quickPriority.value,
+        priority: priorityForDb,
         reminder: reminder,
         timeMode: els.quickTimeMode.value || 'all-day',
         startTime: els.quickStartTime.value || '',
@@ -3036,6 +3229,7 @@
     els.quickFullBody = $('quick-full-body');
     els.quickFullTitle = $('quick-full-title');
     els.quickFullBack = $('quick-full-back');
+    els.quickFullSave = $('quick-full-save');
     els.pickerBackdrop = $('picker-backdrop');
     els.pickerSheet = $('picker-sheet');
     els.pickerTitle = $('picker-title');
@@ -3091,7 +3285,7 @@
       renderCalendar();
     });
     els.openAdd.addEventListener('click', openSheet);
-    els.closeAdd.addEventListener('click', closeSheet);
+    if (els.closeAdd) els.closeAdd.addEventListener('click', closeSheet);
     if (els.cancelAdd) els.cancelAdd.addEventListener('click', closeSheet);
     els.sheetBackdrop.addEventListener('click', closeSheet);
     if (els.dateDetailBackdrop) els.dateDetailBackdrop.addEventListener('click', closeDateDetail);
@@ -3175,6 +3369,13 @@
     }
     if (els.quickFullBack) {
       els.quickFullBack.addEventListener('click', closeQuickFullPanel);
+    }
+    if (els.quickFullSave) {
+      els.quickFullSave.addEventListener('click', function() {
+        if (els.quickForm) {
+          els.quickForm.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+      });
     }
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);

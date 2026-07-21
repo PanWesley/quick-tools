@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=153">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=154">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -333,7 +333,6 @@
 
     <div class="quick-inputs">
       <div class="quick-title-row">
-        <button class="quick-close-x" type="button" id="close-add" aria-label="关闭">×</button>
         <input id="quick-title" class="quick-title-input" type="text" autocomplete="off" placeholder="记些重要的事情吧" required>
       </div>
       <textarea id="quick-notes" class="quick-notes-input" rows="1" placeholder="备注（可选）"></textarea>
@@ -342,24 +341,16 @@
     <div class="quick-toolbar">
       <div class="quick-tools" id="quick-tools">
         <button type="button" class="quick-tool-btn" data-tool="date" aria-label="日期时间">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="quick-tool-dot" data-tool-dot="date" hidden></span>
         </button>
         <button type="button" class="quick-tool-btn" data-tool="priority" aria-label="优先级">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4h10l-2 4h8l-6 8 2 5H4z"/></svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           <span class="quick-tool-dot" data-tool-dot="priority" hidden></span>
         </button>
         <button type="button" class="quick-tool-btn" data-tool="area" aria-label="归属">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>
           <span class="quick-tool-dot" data-tool-dot="area" hidden></span>
-        </button>
-        <button type="button" class="quick-tool-btn" data-tool="repeat" aria-label="重复">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          <span class="quick-tool-dot" data-tool-dot="repeat" hidden></span>
-        </button>
-        <button type="button" class="quick-tool-btn" data-tool="reminder" aria-label="提醒">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span class="quick-tool-dot" data-tool-dot="reminder" hidden></span>
         </button>
         <button type="button" class="quick-tool-btn" data-tool="tone" aria-label="背景色">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.4 2-1 .4-.5.5-1.2.1-1.9-.3-.6-.3-1.3.1-1.9.4-.5 1-.8 1.8-.8H17c2.8 0 5-2.2 5-5 0-5-4.5-9.4-10-9.4z"/></svg>
@@ -381,8 +372,8 @@
       <button type="button" class="quick-full-back" id="quick-full-back" aria-label="返回">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
-      <h3 id="quick-full-title">详细信息</h3>
-      <span></span>
+      <h3 id="quick-full-title">详细编辑</h3>
+      <button type="button" class="quick-full-save" id="quick-full-save">完成</button>
     </div>
     <div class="quick-full-body" id="quick-full-body"></div>
   </div>
@@ -433,7 +424,7 @@
 <script src="/tools/time/js/notification-model.js?v=2"></script>
 <script src="/tools/time/js/notification-sync.js?v=5"></script>
 <script src="/tools/time/js/notification.js?v=7"></script>
-<script src="/tools/time/js/app.js?v=153"></script>
+<script src="/tools/time/js/app.js?v=155"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
