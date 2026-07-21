@@ -9,6 +9,9 @@ import {
   isValidPlatform,
   isValidItemId,
   isValidPrice,
+  normalizeTitle,
+  medianPrice,
+  isSuspiciousPrice,
   productKey,
   snapshotsKey,
   isObject,
@@ -21,18 +24,36 @@ const mockEnv = {
 };
 
 test('allowedOrigin accepts origins from the allowlist', () => {
-  const request = { headers: { get: (name) => name.toLowerCase() === 'origin' ? 'https://billnest.top' : null } };
+  const request = new Request('https://billnest.top/api/price/config', {
+    headers: { Origin: 'https://billnest.top' }
+  });
   assert.equal(allowedOrigin(request, mockEnv), 'https://billnest.top');
 });
 
 test('allowedOrigin rejects unknown origins', () => {
-  const request = { headers: { get: (name) => name.toLowerCase() === 'origin' ? 'https://evil.com' : null } };
+  const request = new Request('https://billnest.top/api/price/config', {
+    headers: { Origin: 'https://evil.com' }
+  });
   assert.equal(allowedOrigin(request, mockEnv), null);
 });
 
-test('allowedOrigin returns null when env is missing', () => {
-  const request = { headers: { get: () => 'https://billnest.top' } };
+test('allowedOrigin fails closed when env is missing', () => {
+  const request = new Request('https://billnest.top/api/price/config', {
+    headers: { Origin: 'https://billnest.top' }
+  });
   assert.equal(allowedOrigin(request, {}), null);
+});
+
+test('allowedOrigin supports explicit wildcard configuration', () => {
+  const request = new Request('https://billnest.top/api/price/config', {
+    headers: { Origin: 'https://example.com' }
+  });
+  assert.equal(allowedOrigin(request, { ALLOWED_ORIGINS: '*' }), '*');
+});
+
+test('allowedOrigin uses request URL for same-origin requests without Origin', () => {
+  const request = new Request('https://billnest.top/api/price/config');
+  assert.equal(allowedOrigin(request, mockEnv), 'https://billnest.top');
 });
 
 test('extractFirstUrl finds the first URL in text', () => {
@@ -94,12 +115,33 @@ test('isValidItemId validates item ids', () => {
 
 test('isValidPrice validates price values', () => {
   assert.equal(isValidPrice(99.9), true);
-  assert.equal(isValidPrice(0), true);
+  assert.equal(isValidPrice(0), false);
   assert.equal(isValidPrice(1000000), true);
   assert.equal(isValidPrice(-10), false);
   assert.equal(isValidPrice(NaN), false);
   assert.equal(isValidPrice('abc'), false);
   assert.equal(isValidPrice(1000001), false);
+});
+
+test('normalizeTitle collapses whitespace and enforces the maximum length', () => {
+  assert.equal(normalizeTitle('  商品   标题\n 测试  '), '商品 标题 测试');
+  assert.equal(normalizeTitle('x'.repeat(205)).length, 200);
+  assert.equal(normalizeTitle(null), '');
+});
+
+test('medianPrice calculates the median from valid snapshots', () => {
+  assert.equal(medianPrice([{ finalPrice: 30 }, { finalPrice: 10 }, { finalPrice: 20 }]), 20);
+  assert.equal(medianPrice([{ finalPrice: 10 }, { finalPrice: 20 }]), 15);
+  assert.equal(medianPrice([{ finalPrice: 0 }, { finalPrice: 'invalid' }]), 0);
+});
+
+test('isSuspiciousPrice rejects extreme outliers after five snapshots', () => {
+  const snapshots = [90, 95, 100, 105, 110].map((finalPrice) => ({ finalPrice }));
+  assert.equal(isSuspiciousPrice(24, snapshots), true);
+  assert.equal(isSuspiciousPrice(401, snapshots), true);
+  assert.equal(isSuspiciousPrice(25, snapshots), false);
+  assert.equal(isSuspiciousPrice(400, snapshots), false);
+  assert.equal(isSuspiciousPrice(1000, snapshots.slice(0, 4)), false);
 });
 
 test('productKey and snapshotsKey format correctly', () => {

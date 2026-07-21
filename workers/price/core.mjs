@@ -6,17 +6,27 @@ const PLATFORMS = ['jd', 'taobao', 'tmall', 'pdd'];
 
 export function allowedOrigin(request, env) {
   if (typeof env?.ALLOWED_ORIGINS !== 'string') return null;
+
+  const origins = env.ALLOWED_ORIGINS
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) return null;
+  if (origins.includes('*')) return '*';
+
   const headerOrigin = request.headers.get('Origin');
-  let origin = headerOrigin;
-  if (!origin) {
+  let requestOrigin = headerOrigin;
+
+  if (!requestOrigin) {
     try {
-      origin = new URL(request.url).origin;
+      requestOrigin = new URL(request.url).origin;
     } catch {
       return null;
     }
   }
-  const origins = env.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
-  return origins.includes(origin) ? origin : null;
+
+  return origins.includes(requestOrigin) ? requestOrigin : null;
 }
 
 export function json(data, status, origin, env) {
@@ -32,7 +42,7 @@ export function json(data, status, origin, env) {
   const responseOrigin = allowedOrigin(request, env);
   if (responseOrigin === origin && responseOrigin !== null) {
     headers.set('Access-Control-Allow-Origin', responseOrigin);
-    headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Price-Client-ID');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   }
   return new Response(JSON.stringify(data), { status, headers });
@@ -54,7 +64,7 @@ export function optionsResponse(origin, env) {
   const responseOrigin = allowedOrigin(request, env);
   if (responseOrigin === origin && responseOrigin !== null) {
     headers.set('Access-Control-Allow-Origin', responseOrigin);
-    headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Price-Client-ID');
     headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     headers.set('Access-Control-Max-Age', '86400');
   }
@@ -80,7 +90,32 @@ export function isValidItemId(itemId) {
 }
 
 export function isValidPrice(price) {
-  return typeof price === 'number' && Number.isFinite(price) && price >= 0 && price <= 1000000;
+  return typeof price === 'number' && Number.isFinite(price) && price > 0 && price <= 1000000;
+}
+
+export function normalizeTitle(title) {
+  if (typeof title !== 'string') return '';
+  return title.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_LENGTH);
+}
+
+export function medianPrice(snapshots) {
+  const prices = (snapshots || [])
+    .map((snapshot) => snapshot?.finalPrice)
+    .filter(isValidPrice)
+    .sort((a, b) => a - b);
+
+  if (prices.length === 0) return 0;
+  const middle = Math.floor(prices.length / 2);
+  if (prices.length % 2 === 1) return prices[middle];
+  return (prices[middle - 1] + prices[middle]) / 2;
+}
+
+export function isSuspiciousPrice(price, snapshots) {
+  const recent = (snapshots || []).filter((snapshot) => isValidPrice(snapshot?.finalPrice)).slice(-50);
+  if (recent.length < 5) return false;
+  const median = medianPrice(recent);
+  if (!median) return false;
+  return price < median * 0.25 || price > median * 4;
 }
 
 export async function readJson(request) {
