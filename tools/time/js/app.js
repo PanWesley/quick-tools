@@ -1480,13 +1480,15 @@
     }
     setQuickDate(defaultDate, defaultLabel);
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
+    closeQuickExtra();
     closeQuickFullPanel();
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
-    els.quickTitle.focus();
-    closeQuickExtra();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
+    setTimeout(function() {
+      if (els.quickTitle) els.quickTitle.focus();
+    }, 50);
   }
 
   function closeSheet() {
@@ -1541,7 +1543,6 @@
     var btn = els.quickTools.querySelector('[data-tool="' + tool + '"]');
     if (!btn) return;
     btn.classList.toggle('is-active', active);
-    btn.classList.toggle('is-open', active);
     var dot = btn.querySelector('.quick-tool-dot');
     if (dot) {
       dot.hidden = !active;
@@ -1726,6 +1727,12 @@
     renderQuickFullPanel();
     els.quickSheet.classList.add('is-full');
     els.quickFullPanel.hidden = false;
+    if (els.quickTitle && document.activeElement === els.quickTitle) {
+      els.quickTitle.blur();
+    }
+    if (els.quickNotes && document.activeElement === els.quickNotes) {
+      els.quickNotes.blur();
+    }
   }
 
   function closeQuickFullPanel() {
@@ -1905,6 +1912,7 @@
   // 打开工具extra面板
   function openQuickTool(tool) {
     closeQuickExtra();
+    closeQuickFullPanel();
     if (!els.quickExtraPanel) return;
 
     var html = '';
@@ -2053,6 +2061,17 @@
     els.quickExtraPanel.innerHTML = html;
     els.quickExtraPanel.hidden = false;
 
+    if (els.quickTools) {
+      var curBtn = els.quickTools.querySelector('[data-tool="' + tool + '"]');
+      if (curBtn) curBtn.classList.add('is-open');
+    }
+    if (els.quickTitle && document.activeElement === els.quickTitle) {
+      els.quickTitle.blur();
+    }
+    if (els.quickNotes && document.activeElement === els.quickNotes) {
+      els.quickNotes.blur();
+    }
+
     if (tool === 'date') {
       var calContainer = document.getElementById('quick-dt-calendar-container');
       if (calContainer) {
@@ -2109,40 +2128,40 @@
       btn.addEventListener('click', function() {
         var quad = btn.dataset.quad;
         setChoiceValue('quick-priority', quad);
-        closeQuickExtra();
         updateToolStates();
+        openQuickTool('priority');
       });
     });
 
     els.quickExtraPanel.querySelectorAll('[data-area]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setChoiceValue('quick-area', btn.dataset.area);
-        closeQuickExtra();
         updateToolStates();
+        openQuickTool('area');
       });
     });
 
     els.quickExtraPanel.querySelectorAll('[data-tone]').forEach(function(swatch) {
       swatch.addEventListener('click', function() {
         setChoiceValue('quick-tone', swatch.dataset.tone);
-        closeQuickExtra();
         updateToolStates();
+        openQuickTool('tone');
       });
     });
 
     els.quickExtraPanel.querySelectorAll('[data-repeat]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setChoiceValue('quick-repeat', btn.dataset.repeat);
-        closeQuickExtra();
         updateToolStates();
+        openQuickTool('repeat');
       });
     });
 
     els.quickExtraPanel.querySelectorAll('[data-reminder]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setChoiceValue('quick-reminder', btn.dataset.reminder);
-        closeQuickExtra();
         updateToolStates();
+        openQuickTool('reminder');
       });
     });
   }
@@ -2399,9 +2418,11 @@
     closeQuickFullPanel();
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
-    els.quickTitle.focus();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
+    setTimeout(function() {
+      if (els.quickTitle) els.quickTitle.focus();
+    }, 50);
   }
 
   function openEditHabit(id) {
@@ -2464,9 +2485,11 @@
     closeQuickFullPanel();
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
-    els.quickTitle.focus();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
+    setTimeout(function() {
+      if (els.quickTitle) els.quickTitle.focus();
+    }, 50);
   }
 
   function changeMonth(delta) {
@@ -3329,6 +3352,12 @@
         var btn = event.target.closest('.quick-tool-btn');
         if (!btn) return;
         var tool = btn.dataset.tool;
+        if (btn.classList.contains('is-open')) {
+          closeQuickExtra();
+          closeQuickFullPanel();
+          if (els.quickTitle) els.quickTitle.focus();
+          return;
+        }
         openQuickTool(tool);
       });
     }
@@ -3337,6 +3366,18 @@
         autoResizeTextarea(els.quickNotes);
         updateQuickChips();
       });
+    }
+    function closePanelsOnInputFocus() {
+      var extraOpen = els.quickExtraPanel && !els.quickExtraPanel.hidden;
+      var fullOpen = els.quickFullPanel && !els.quickFullPanel.hidden;
+      if (extraOpen) closeQuickExtra();
+      if (fullOpen) closeQuickFullPanel();
+    }
+    if (els.quickTitle) {
+      els.quickTitle.addEventListener('focus', closePanelsOnInputFocus);
+    }
+    if (els.quickNotes) {
+      els.quickNotes.addEventListener('focus', closePanelsOnInputFocus);
     }
     if (els.quickChipsRow) {
       els.quickChipsRow.addEventListener('click', function(event) {
