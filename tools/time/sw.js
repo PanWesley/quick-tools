@@ -6,7 +6,7 @@
 importScripts('/tools/time/js/notification-crypto.js?v=2');
 importScripts('/tools/time/js/notification-receipt.js?v=1');
 
-const CACHE_NAME = 'today-youxu-v46';
+const CACHE_NAME = 'today-youxu-v47';
 const DEFAULT_TARGET_URL = '/tools/time/#today';
 const GENERIC_NOTIFICATION_TAG = 'today-youxu-generic-reminder';
 const GENERIC_NOTIFICATION = {
@@ -21,7 +21,7 @@ const APP_SHELL = [
   '/tools/time/',
   '/tools/time/index.html',
   '/tools/time/manifest.json',
-  '/tools/time/css/style.css?v=154',
+  '/tools/time/css/style.css?v=155',
   '/tools/time/js/date-utils.js?v=135',
   '/tools/time/js/app-state.js?v=136',
   '/tools/time/js/export.js?v=135',

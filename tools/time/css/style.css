@@ -3628,6 +3628,17 @@ textarea {
   line-height: 1.4;
   padding: 8px 0;
   caret-color: var(--primary);
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.quick-title-input:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+  -webkit-box-shadow: none;
 }
 
 .quick-title-input::placeholder {
@@ -3649,6 +3660,17 @@ textarea {
   max-height: 120px;
   font-family: inherit;
   caret-color: var(--primary);
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.quick-notes-input:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+  -webkit-box-shadow: none;
 }
 
 .quick-notes-input::placeholder {
