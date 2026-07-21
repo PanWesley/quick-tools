@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function memoryStorage() {
   const values = new Map();
@@ -118,4 +120,20 @@ test('init enables the API only after a successful config response', async () =>
   assert.equal(successful.enabled, true);
   assert.equal(await unavailable.init(), false);
   assert.equal(unavailable.enabled, false);
+});
+
+test('price PWA uses one exact asset version without query-insensitive cache matching', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const serviceWorker = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  const versionedAssets = html.match(/\/tools\/price\/(?:css|js)\/[^"']+\?v=\d+/g) || [];
+
+  assert.ok(versionedAssets.length >= 8);
+  assert.ok(versionedAssets.every((asset) => asset.endsWith('?v=103')));
+  assert.match(html, /\/tools\/price\/js\/price-api\.js\?v=103/);
+  assert.match(serviceWorker, /zhenjia-assistant-v3/);
+  assert.match(serviceWorker, /price-api\.js\?v=103/);
+  assert.doesNotMatch(serviceWorker, /ignoreSearch:\s*true/);
+  assert.match(serviceWorker, /url\.pathname\.startsWith\('\/api\/'\)/);
+  assert.match(serviceWorker, /request\.mode === 'navigate'/);
+  assert.match(serviceWorker, /caches\.match\('\/tools\/price\/index\.html'\)/);
 });
