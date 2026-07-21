@@ -97,8 +97,8 @@
 
   var HEADER_TITLES = {
     home: { title: '买前省省', desc: '聪明买买买，不花冤枉钱' },
-    watches: { title: '我的关注', desc: '心愿清单，等降价提醒' },
-    picks: { title: '好物推荐', desc: '精选划算好物' },
+    watches: { title: '我的关注', desc: '心愿清单，回来继续比较' },
+    picks: { title: '好物推荐', desc: '示例商品与分析体验' },
     profile: { title: '我的', desc: '设置与数据管理' },
     analysis: { title: '价格分析', desc: '历史价格与购买建议' }
   };
@@ -221,7 +221,13 @@
     var container = $('#watch-list');
     if (!container) return;
     if (!state.watches.length) {
-      container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🛍️</span><p class="empty-state-text">心愿清单空空的～<br>去看看有没有什么想买的吧</p></div>';
+      container.innerHTML = [
+        '<div class="empty-state">',
+        '<span class="empty-state-icon">🛍️</span>',
+        '<p class="empty-state-text">心愿清单空空的～<br>先查一个商品，再保存你的心愿价吧</p>',
+        '<button class="btn primary empty-state-action" type="button" data-view-link="home">去查价</button>',
+        '</div>'
+      ].join('');
       return;
     }
     container.innerHTML = state.watches.map(function(watch) {
@@ -247,7 +253,7 @@
     var container = $('#picks-grid');
     if (!container) return;
     var samples = sampleData.getSampleProducts();
-    var badges = ['历史低价', '大额券', '限时特惠', '新品推荐'];
+    var badges = ['示例低价', '示例优惠', '示例特惠', '示例推荐'];
     container.innerHTML = samples.map(function(product, index) {
       var snapshots = sampleData.getSampleSnapshots(product.id);
       var prices = snapshots.map(function(s) { return s.finalPrice; }).filter(Boolean);
@@ -255,7 +261,7 @@
       var maxPrice = prices.length ? Math.max.apply(null, prices) : 0;
       var badgeClass = index % 2 === 0 ? 'low-price' : '';
       return [
-        '<article class="pick-card" data-product-id="', escapeHtml(product.id), '" data-open-product="sample">',
+        '<button class="pick-card" type="button" data-product-id="', escapeHtml(product.id), '" data-open-product="sample">',
         '<span class="pick-badge ', badgeClass, '">', escapeHtml(badges[index % badges.length]), '</span>',
         '<p class="pick-platform">', escapeHtml(platformLabel(product.platform)), '</p>',
         '<h3 class="pick-title">', escapeHtml(product.title || '未命名商品'), '</h3>',
@@ -263,7 +269,7 @@
           escapeHtml(money(minPrice)),
           maxPrice > minPrice ? '<span class="pick-original">' + escapeHtml(money(maxPrice)) + '</span>' : '',
         '</div>',
-        '</article>'
+        '</button>'
       ].join('');
     }).join('');
   }
