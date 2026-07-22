@@ -22,7 +22,7 @@
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/today-youxu-icon-152x152.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/today-youxu-icon-192x192.png">
 <link rel="stylesheet" href="/shared/css/pwa.css?v=3">
-<link rel="stylesheet" href="/tools/time/css/style.css?v=156">
+<link rel="stylesheet" href="/tools/time/css/style.css?v=157">
 <title>今日有序 - 今日时间管理</title>
 </head>
 <body>
@@ -317,11 +317,14 @@
 </section>
 
 <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
-<section class="quick-sheet quick-sheet-v2" id="quick-sheet" aria-modal="true" role="dialog" hidden>
+<section class="quick-sheet quick-sheet-v2" id="quick-sheet" aria-modal="true" role="dialog" aria-labelledby="quick-editor-label" hidden>
+  <div class="quick-drag-handle" id="quick-drag-handle" aria-hidden="true"><span></span></div>
+  <span class="sr-only" id="quick-editor-label">事项编辑器</span>
   <form id="quick-form" class="quick-form-v2" autocomplete="off">
     <input id="quick-edit-id" type="hidden">
     <input id="quick-priority" type="hidden" value="medium">
     <input id="quick-date" type="hidden">
+    <input id="quick-end-date" type="hidden">
     <input id="quick-repeat" type="hidden" value="none">
     <input id="quick-time-mode" type="hidden" value="all-day">
     <input id="quick-reminder" type="hidden" value="none">
@@ -365,9 +368,11 @@
       </button>
     </div>
 
+    <div class="quick-summary" id="quick-summary" aria-live="polite"></div>
     <div class="quick-extra-panel" id="quick-extra-panel" hidden></div>
   </form>
-  <div class="quick-full-panel" id="quick-full-panel" hidden>
+</section>
+<div class="quick-full-panel" id="quick-full-panel" role="dialog" aria-modal="true" aria-labelledby="quick-full-title" hidden>
     <div class="quick-full-header">
       <button type="button" class="quick-full-back" id="quick-full-back" aria-label="返回">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -376,8 +381,7 @@
       <button type="button" class="quick-full-save" id="quick-full-save">完成</button>
     </div>
     <div class="quick-full-body" id="quick-full-body"></div>
-  </div>
-</section>
+</div>
 
 <div class="picker-backdrop" id="picker-backdrop" hidden></div>
 <section class="picker-sheet" id="picker-sheet" aria-modal="true" role="dialog" hidden>
@@ -424,7 +428,8 @@
 <script src="/tools/time/js/notification-model.js?v=2"></script>
 <script src="/tools/time/js/notification-sync.js?v=5"></script>
 <script src="/tools/time/js/notification.js?v=7"></script>
-<script src="/tools/time/js/app.js?v=160"></script>
+<script src="/tools/time/js/quick-editor-state.js?v=1"></script>
+<script src="/tools/time/js/app.js?v=161"></script>
 <script src="/shared/js/app-update.js?v=1"></script>
 <script src="/shared/js/site-analytics-utils.js?v=1"></script>
 <script src="/shared/js/site-analytics.js?v=1"></script>
