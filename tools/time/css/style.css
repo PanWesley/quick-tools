@@ -3578,19 +3578,13 @@ textarea {
   width: 100%;
   max-width: none;
   max-height: 92vh;
-  transform: none;
+  transform: translateY(0);
   overflow: hidden;
   padding: 0;
   background: var(--surface);
   border: none;
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -8px 32px rgba(40, 30, 20, 0.15);
-  animation: quickSheetSlideUp 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@keyframes quickSheetSlideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
 }
 
 .quick-form-v2 {

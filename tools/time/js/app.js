@@ -1454,13 +1454,11 @@
   function focusQuickTitle() {
     if (!els.quickTitle) return;
     if (document.activeElement === els.quickTitle) return;
-    els.quickTitle.blur();
-    requestAnimationFrame(function() {
-      els.quickTitle.focus();
-      try {
-        els.quickTitle.setSelectionRange(0, els.quickTitle.value.length);
-      } catch(e) {}
-    });
+    els.quickTitle.focus();
+    try {
+      var len = els.quickTitle.value.length;
+      els.quickTitle.setSelectionRange(len, len);
+    } catch(e) {}
   }
 
   function openSheet() {
@@ -1494,10 +1492,11 @@
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     closeQuickExtra();
     closeQuickFullPanel();
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    void els.quickSheet.offsetHeight;
     focusQuickTitle();
   }
 
@@ -1750,6 +1749,7 @@
     els.quickSheet.classList.remove('is-full');
     els.quickFullPanel.hidden = true;
     if (options && options.focusTitle && els.quickTitle) {
+      void els.quickSheet.offsetHeight;
       focusQuickTitle();
     }
   }
@@ -2429,10 +2429,11 @@
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     closeQuickExtra();
     closeQuickFullPanel();
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    void els.quickSheet.offsetHeight;
     focusQuickTitle();
   }
 
@@ -2494,10 +2495,11 @@
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     closeQuickExtra();
     closeQuickFullPanel();
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    void els.quickSheet.offsetHeight;
     focusQuickTitle();
   }
 
