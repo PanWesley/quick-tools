@@ -1486,9 +1486,7 @@
     els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    setTimeout(function() {
-      if (els.quickTitle) els.quickTitle.focus();
-    }, 350);
+    if (els.quickTitle) els.quickTitle.focus();
   }
 
   function closeSheet() {
@@ -1740,9 +1738,7 @@
     els.quickSheet.classList.remove('is-full');
     els.quickFullPanel.hidden = true;
     if (options && options.focusTitle && els.quickTitle) {
-      setTimeout(function() {
-        els.quickTitle.focus();
-      }, 280);
+      els.quickTitle.focus();
     }
   }
 
@@ -2425,9 +2421,7 @@
     els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    setTimeout(function() {
-      if (els.quickTitle) els.quickTitle.focus();
-    }, 350);
+    if (els.quickTitle) els.quickTitle.focus();
   }
 
   function openEditHabit(id) {
@@ -2492,9 +2486,7 @@
     els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    setTimeout(function() {
-      if (els.quickTitle) els.quickTitle.focus();
-    }, 350);
+    if (els.quickTitle) els.quickTitle.focus();
   }
 
   function changeMonth(delta) {
@@ -3360,9 +3352,7 @@
         if (btn.classList.contains('is-open')) {
           closeQuickExtra();
           closeQuickFullPanel();
-          setTimeout(function() {
-            if (els.quickTitle) els.quickTitle.focus();
-          }, 100);
+          if (els.quickTitle) els.quickTitle.focus();
           return;
         }
         openQuickTool(tool);
