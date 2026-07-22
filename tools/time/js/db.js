@@ -128,6 +128,7 @@
       title: String(input.title || '').trim(),
       notes: String(input.notes || '').trim(),
       date: input.date || '',
+      endDate: input.endDate && input.date && input.endDate >= input.date ? input.endDate : (input.date || ''),
       priority: input.priority || 'none',
       area: input.area || 'life',
       timeMode: input.timeMode || 'all-day',
