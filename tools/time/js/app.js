@@ -8,6 +8,8 @@
   var NotificationModel = window.TodayYouxuNotificationModel;
   var NotificationSyncFactory = window.TodayYouxuNotificationSync;
   var NotificationSync = null;
+  var QuickEditor = window.TodayYouxuQuickEditor;
+  var QUICK_DRAFT_KEY = 'today-youxu-quick-draft-v1';
 
   var NOTIFICATION_STATUS_COPY = {
     'subscribing': '正在连接',
@@ -49,12 +51,15 @@
     editingType: '',
     customRepeat: null,
     customReminder: null,
-    pickerState: null
+    pickerState: null,
+    quickEditor: QuickEditor.createSessionState(),
+    quickScrollY: 0
   };
 
   var els = {};
   var journalSaveTimer = null;
   var swipeState = null;
+  var quickDrag = null;
   var notificationBackendStatus = { status: 'disabled' };
   var notificationRegistration = null;
   var notificationSetupState = 'idle';
@@ -322,6 +327,7 @@
   }
 
   function handleSwipeStart(event) {
+    if (isQuickEditorOpen()) return;
     var row = event.target.closest('.task-row.has-swipe-actions') || event.target.closest('.list-swipe-row');
     if (!row || !event.touches || event.touches.length !== 1) return;
     var touch = event.touches[0];
@@ -336,6 +342,7 @@
   }
 
   function handleSwipeMove(event) {
+    if (isQuickEditorOpen()) return;
     if (!swipeState || !event.touches || event.touches.length !== 1) return;
     var touch = event.touches[0];
     swipeState.currentX = touch.clientX;
@@ -348,6 +355,7 @@
   }
 
   function handleSwipeEnd(event) {
+    if (isQuickEditorOpen()) return;
     if (!swipeState) return;
     var touch = event.changedTouches && event.changedTouches[0];
     var endX = touch ? touch.clientX : swipeState.currentX;
@@ -1461,6 +1469,137 @@
     } catch(e) {}
   }
 
+  function isQuickEditorOpen() {
+    return appState.quickEditor.session === 'open';
+  }
+
+  function readQuickDraft() {
+    return QuickEditor.normalizeDraft({
+      title: els.quickTitle.value,
+      notes: els.quickNotes.value,
+      priority: els.quickPriority.value,
+      area: els.quickArea.value,
+      tone: els.quickTone.value,
+      startDate: els.quickDate.value,
+      endDate: els.quickEndDate.value,
+      timeMode: els.quickTimeMode.value,
+      startTime: els.quickStartTime.value,
+      endTime: els.quickEndTime.value,
+      repeat: els.quickRepeat.value,
+      customRepeat: appState.customRepeat,
+      reminder: els.quickReminder.value,
+      customReminder: appState.customReminder
+    }, { todayKey: appState.todayKey });
+  }
+
+  function persistCreateDraft() {
+    if (appState.editingTaskId) return;
+    try {
+      localStorage.setItem(QUICK_DRAFT_KEY, JSON.stringify(readQuickDraft()));
+    } catch (error) {}
+  }
+
+  function clearCreateDraft() {
+    try {
+      localStorage.removeItem(QUICK_DRAFT_KEY);
+    } catch (error) {}
+  }
+
+  function applyQuickDraft(draft) {
+    els.quickTitle.value = draft.title;
+    els.quickNotes.value = draft.notes;
+    setChoiceValue('quick-priority', draft.priority);
+    setChoiceValue('quick-area', draft.area);
+    setChoiceValue('quick-tone', draft.tone);
+    els.quickDate.value = draft.startDate;
+    els.quickEndDate.value = draft.endDate;
+    setQuickDate(draft.startDate);
+    setChoiceValue('quick-time-mode', draft.timeMode);
+    els.quickStartTime.value = draft.startTime;
+    els.quickEndTime.value = draft.endTime;
+    setChoiceValue('quick-repeat', draft.repeat);
+    setChoiceValue('quick-reminder', draft.reminder);
+    appState.customRepeat = draft.customRepeat;
+    appState.customReminder = draft.customReminder;
+    autoResizeTextarea(els.quickNotes);
+    updateTimeDisplay();
+    updateToolStates();
+    renderQuickSurface();
+  }
+
+  function setQuickSurface(surface) {
+    if (!QuickEditor || !surface) return;
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+      type: surface === 'detail' ? 'OPEN_DETAIL' : 'OPEN_TOOL',
+      tool: surface
+    });
+  }
+
+  function renderQuickSurface() {
+    if (!els.quickSummary) return;
+    var summary = getQuickSummary();
+    els.quickSummary.textContent = summary.dateLabel + ' · ' + summary.timeLabel;
+  }
+
+  function handleQuickDraftChange() {
+    updateTimeDisplay();
+    updateToolStates();
+    if (typeof updateQuickSummary === 'function') updateQuickSummary();
+    renderQuickSurface();
+    if (!appState.editingTaskId) persistCreateDraft();
+  }
+
+  function lockQuickEditorScroll() {
+    appState.quickScrollY = window.scrollY || 0;
+    document.body.style.top = '-' + appState.quickScrollY + 'px';
+    document.body.classList.add('quick-editor-open');
+  }
+
+  function unlockQuickEditorScroll() {
+    document.body.classList.remove('quick-editor-open');
+    document.body.style.top = '';
+    window.scrollTo(0, appState.quickScrollY || 0);
+  }
+
+  function updateQuickViewportHeight() {
+    var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--quick-viewport-height', height + 'px');
+  }
+
+  function openQuickSession(mode, source) {
+    var sessionMode = mode || 'create';
+    appState.quickEditor = QuickEditor.transition(QuickEditor.createSessionState(sessionMode), { type: 'OPEN' });
+    var stored = sessionMode === 'create' ? QuickEditor.parseStoredDraft((function() {
+      try { return localStorage.getItem(QUICK_DRAFT_KEY); } catch (error) { return null; }
+    })()) : null;
+    var initial = stored || source || {};
+    applyQuickDraft(QuickEditor.normalizeDraft(initial, { todayKey: appState.todayKey }));
+    closeQuickExtra();
+    closeQuickFullPanel();
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    lockQuickEditorScroll();
+    updateQuickViewportHeight();
+    void els.quickSheet.offsetHeight;
+    focusQuickTitle();
+  }
+
+  function closeQuickSession(options) {
+    var opts = options || {};
+    if (!appState.editingTaskId && opts.keepDraft !== false) persistCreateDraft();
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE' });
+    closeQuickExtra();
+    closeQuickFullPanel();
+    closePicker();
+    els.sheetBackdrop.hidden = true;
+    els.quickSheet.hidden = true;
+    els.quickFullPanel.hidden = true;
+    unlockQuickEditorScroll();
+    appState.editingTaskId = '';
+    appState.editingType = '';
+    if (opts.restoreFocus && els.openAdd) els.openAdd.focus();
+  }
+
   function openSheet() {
     appState.editingTaskId = '';
     appState.editingType = '';
@@ -1468,63 +1607,50 @@
     appState.customReminder = null;
     var sheetTitle = $('quick-sheet-title');
     if (sheetTitle) sheetTitle.textContent = '新增事项';
-    els.quickEditId.value = '';
-    setChoiceValue('quick-priority', 'medium');
-    setChoiceValue('quick-area', 'life');
-    setChoiceValue('quick-repeat', 'none');
-    setChoiceValue('quick-time-mode', 'all-day');
-    setChoiceValue('quick-reminder', 'none');
-    setChoiceValue('quick-tone', '');
-    els.quickStartTime.value = '';
-    els.quickEndTime.value = '';
-    updateTimeDisplay();
-    if (els.quickRepeatCustomHint) {
-      els.quickRepeatCustomHint.hidden = true;
-      els.quickRepeatCustomHint.textContent = '';
-    }
     var defaultDate = appState.todayKey;
-    var defaultLabel = 'today';
     if (appState.view === 'calendar' && appState.selectedDateKey) {
       defaultDate = appState.selectedDateKey;
-      defaultLabel = defaultDate === appState.todayKey ? 'today' : 'custom';
     }
-    setQuickDate(defaultDate, defaultLabel);
-    if (els.quickMoreSettings) els.quickMoreSettings.open = false;
-    closeQuickExtra();
-    closeQuickFullPanel();
-    updateToolStates();
-    autoResizeTextarea(els.quickNotes);
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
-    void els.quickSheet.offsetHeight;
-    focusQuickTitle();
+    els.quickEditId.value = '';
+    openQuickSession('create', { startDate: defaultDate, endDate: defaultDate });
   }
 
   function closeSheet() {
-    closeQuickExtra();
-    closeQuickFullPanel();
-    els.sheetBackdrop.hidden = true;
-    els.quickSheet.hidden = true;
-    els.quickForm.reset();
-    appState.customRepeat = null;
-    appState.customReminder = null;
-    closePicker();
-    setChoiceValue('quick-priority', 'medium');
-    setChoiceValue('quick-area', 'life');
-    setChoiceValue('quick-repeat', 'none');
-    setChoiceValue('quick-time-mode', 'all-day');
-    setChoiceValue('quick-reminder', 'none');
-    setChoiceValue('quick-tone', '');
-    els.quickStartTime.value = '';
-    els.quickEndTime.value = '';
-    updateTimeDisplay();
-    if (els.quickRepeatCustomHint) {
-      els.quickRepeatCustomHint.hidden = true;
-      els.quickRepeatCustomHint.textContent = '';
+    closeQuickSession({ keepDraft: true, restoreFocus: true });
+  }
+
+  function finishQuickDrag(event, canClose) {
+    if (!quickDrag || quickDrag.id !== event.pointerId) return;
+    var threshold = Math.min(120, els.quickSheet.getBoundingClientRect().height * 0.22);
+    var shouldClose = canClose && quickDrag.deltaY >= threshold;
+    quickDrag = null;
+    els.quickSheet.classList.remove('is-dragging');
+    els.quickSheet.style.removeProperty('--quick-drag-offset');
+    if (els.quickDragHandle.hasPointerCapture && els.quickDragHandle.hasPointerCapture(event.pointerId)) {
+      els.quickDragHandle.releasePointerCapture(event.pointerId);
     }
-    if (els.quickMoreSettings) els.quickMoreSettings.open = false;
-    appState.editingTaskId = '';
-    appState.editingType = '';
+    if (shouldClose) closeQuickSession({ keepDraft: true, restoreFocus: true });
+  }
+
+  function bindQuickDragHandle() {
+    els.quickDragHandle.addEventListener('pointerdown', function(event) {
+      if (!isQuickEditorOpen()) return;
+      quickDrag = { id: event.pointerId, startY: event.clientY, deltaY: 0 };
+      els.quickDragHandle.setPointerCapture(event.pointerId);
+      els.quickSheet.classList.add('is-dragging');
+      els.quickSheet.style.setProperty('--quick-drag-offset', '0px');
+    });
+    els.quickDragHandle.addEventListener('pointermove', function(event) {
+      if (!quickDrag || quickDrag.id !== event.pointerId) return;
+      quickDrag.deltaY = Math.max(0, event.clientY - quickDrag.startY);
+      els.quickSheet.style.setProperty('--quick-drag-offset', quickDrag.deltaY + 'px');
+    });
+    els.quickDragHandle.addEventListener('pointerup', function(event) {
+      finishQuickDrag(event, true);
+    });
+    els.quickDragHandle.addEventListener('pointercancel', function(event) {
+      finishQuickDrag(event, false);
+    });
   }
 
   // 自动调整textarea高度
@@ -1732,6 +1858,7 @@
 
   function openQuickFullPanel() {
     if (!els.quickFullPanel || !els.quickSheet) return;
+    setQuickSurface('detail');
     closeQuickExtra();
     renderQuickFullPanel();
     els.quickSheet.classList.add('is-full');
@@ -1746,6 +1873,9 @@
 
   function closeQuickFullPanel(options) {
     if (!els.quickFullPanel || !els.quickSheet) return;
+    if (isQuickEditorOpen()) {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DETAIL' });
+    }
     els.quickSheet.classList.remove('is-full');
     els.quickFullPanel.hidden = true;
     if (options && options.focusTitle && els.quickTitle) {
@@ -1813,6 +1943,7 @@
     if (qfTitle) {
       qfTitle.addEventListener('input', function() {
         els.quickTitle.value = qfTitle.value;
+        handleQuickDraftChange();
       });
     }
     var qfNotes = els.quickFullBody.querySelector('#qf-notes-input');
@@ -1820,6 +1951,7 @@
       qfNotes.addEventListener('input', function() {
         els.quickNotes.value = qfNotes.value;
         autoResizeTextarea(els.quickNotes);
+        handleQuickDraftChange();
       });
     }
   }
@@ -1906,7 +2038,7 @@
           dtCalendarState.viewMonth = today.getMonth();
           dtCalendarState.selectedDate = todayKey;
           setQuickDate(todayKey, 'today');
-          updateToolStates();
+          handleQuickDraftChange();
         }
         renderDatetimeCalendar(container, dtCalendarState.selectedDate);
       });
@@ -1917,7 +2049,7 @@
         dtCalendarState.selectedDate = dayBtn.dataset.calDate;
         setQuickDate(dtCalendarState.selectedDate, 'custom');
         renderDatetimeCalendar(container, dtCalendarState.selectedDate);
-        updateToolStates();
+        handleQuickDraftChange();
       });
     });
   }
@@ -1926,6 +2058,7 @@
   function openQuickTool(tool) {
     closeQuickExtra();
     closeQuickFullPanel();
+    setQuickSurface(tool);
     if (!els.quickExtraPanel) return;
 
     var html = '';
@@ -2107,7 +2240,7 @@
             dtCalendarState.selectedDate = dateKey;
           }
           openQuickTool('date');
-          updateToolStates();
+          handleQuickDraftChange();
         });
       });
 
@@ -2116,7 +2249,7 @@
           var opt = btn.dataset.dtOpt;
           if (opt === 'time-all') {
             setChoiceValue('quick-time-mode', 'all-day');
-            updateToolStates();
+            handleQuickDraftChange();
             openQuickTool('date');
           } else if (opt === 'time-set') {
             if (!currentDate) {
@@ -2126,7 +2259,7 @@
             openTimePickerForV2({ isQuick: true, onSelect: function(t) {
               setChoiceValue('quick-time-mode', 'point');
               els.quickStartTime.value = t;
-              updateToolStates();
+              handleQuickDraftChange();
             }});
           } else if (opt === 'repeat') {
             openQuickTool('repeat');
@@ -2141,7 +2274,7 @@
       btn.addEventListener('click', function() {
         var quad = btn.dataset.quad;
         setChoiceValue('quick-priority', quad);
-        updateToolStates();
+        handleQuickDraftChange();
         openQuickTool('priority');
       });
     });
@@ -2149,7 +2282,7 @@
     els.quickExtraPanel.querySelectorAll('[data-area]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setChoiceValue('quick-area', btn.dataset.area);
-        updateToolStates();
+        handleQuickDraftChange();
         openQuickTool('area');
       });
     });
@@ -2157,7 +2290,7 @@
     els.quickExtraPanel.querySelectorAll('[data-tone]').forEach(function(swatch) {
       swatch.addEventListener('click', function() {
         setChoiceValue('quick-tone', swatch.dataset.tone);
-        updateToolStates();
+        handleQuickDraftChange();
         openQuickTool('tone');
       });
     });
@@ -2165,7 +2298,7 @@
     els.quickExtraPanel.querySelectorAll('[data-repeat]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setChoiceValue('quick-repeat', btn.dataset.repeat);
-        updateToolStates();
+        handleQuickDraftChange();
         openQuickTool('repeat');
       });
     });
@@ -2173,7 +2306,7 @@
     els.quickExtraPanel.querySelectorAll('[data-reminder]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         setChoiceValue('quick-reminder', btn.dataset.reminder);
-        updateToolStates();
+        handleQuickDraftChange();
         openQuickTool('reminder');
       });
     });
@@ -2296,7 +2429,8 @@
     }
 
     action.then(function() {
-      closeSheet();
+      if (!wasEditing) clearCreateDraft();
+      closeQuickSession({ keepDraft: false });
       showToast(wasEditing ? '事项已更新' : '事项已创建');
       return loadData();
     }).catch(function(error) {
@@ -2431,10 +2565,7 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
-    void els.quickSheet.offsetHeight;
-    focusQuickTitle();
+    openQuickSession('edit', readQuickDraft());
   }
 
   function openEditHabit(id) {
@@ -2497,10 +2628,7 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
-    void els.quickSheet.offsetHeight;
-    focusQuickTitle();
+    openQuickSession('edit', readQuickDraft());
   }
 
   function changeMonth(delta) {
@@ -3075,6 +3203,7 @@
       }
       updateTimeDisplay();
     }
+    handleQuickDraftChange();
     closePicker();
   }
 
@@ -3131,6 +3260,7 @@
     var selectedKey = appState.calPicker.tempKey;
     if (selectedKey) {
       setQuickDate(selectedKey, 'custom');
+      handleQuickDraftChange();
     }
     closeCalPicker();
   }
@@ -3234,6 +3364,9 @@
     els.quickEditId = $('quick-edit-id');
     els.quickTitle = $('quick-title');
     els.quickDate = $('quick-date');
+    els.quickEndDate = $('quick-end-date');
+    els.quickSummary = $('quick-summary');
+    els.quickDragHandle = $('quick-drag-handle');
     els.quickDateField = $('quick-date-field');
     els.quickDatePicker = $('quick-date-picker');
     els.quickPriority = $('quick-priority');
@@ -3319,9 +3452,15 @@
       renderCalendar();
     });
     els.openAdd.addEventListener('click', openSheet);
-    if (els.closeAdd) els.closeAdd.addEventListener('click', closeSheet);
-    if (els.cancelAdd) els.cancelAdd.addEventListener('click', closeSheet);
-    els.sheetBackdrop.addEventListener('click', closeSheet);
+    if (els.closeAdd) els.closeAdd.addEventListener('click', function() {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    });
+    if (els.cancelAdd) els.cancelAdd.addEventListener('click', function() {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    });
+    els.sheetBackdrop.addEventListener('click', function() {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    });
     if (els.dateDetailBackdrop) els.dateDetailBackdrop.addEventListener('click', closeDateDetail);
     els.quickForm.addEventListener('submit', handleQuickSubmit);
     document.querySelectorAll('[data-select-target]').forEach(function(trigger) {
@@ -3339,7 +3478,7 @@
       button.addEventListener('click', function(event) {
         if (!button.dataset.action) event.stopPropagation();
         setChoiceValue(button.dataset.choiceTarget, button.dataset.choiceValue);
-        if (window.updateQuickChips) updateQuickChips();
+        handleQuickDraftChange();
       });
     });
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
@@ -3352,7 +3491,7 @@
         } else {
           setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : preset === 'weekend' ? weekendKey() : '', preset);
         }
-        if (window.updateQuickChips) updateQuickChips();
+        handleQuickDraftChange();
       });
     });
     document.addEventListener('click', function(event) {
@@ -3375,7 +3514,7 @@
     if (els.quickNotes) {
       els.quickNotes.addEventListener('input', function() {
         autoResizeTextarea(els.quickNotes);
-        updateQuickChips();
+        handleQuickDraftChange();
       });
     }
     function closePanelsOnInputFocus() {
@@ -3386,6 +3525,7 @@
     }
     if (els.quickTitle) {
       els.quickTitle.addEventListener('focus', closePanelsOnInputFocus);
+      els.quickTitle.addEventListener('input', handleQuickDraftChange);
     }
     if (els.quickNotes) {
       els.quickNotes.addEventListener('focus', closePanelsOnInputFocus);
@@ -3404,14 +3544,17 @@
         } else if (chipType === 'reminder') {
           setChoiceValue('quick-reminder', 'none');
         }
-        updateQuickChips();
+        handleQuickDraftChange();
       });
     }
-    if (els.quickTone) {
-      els.quickTone.addEventListener('change', function() {
-        updateQuickChips();
-      });
-    }
+    [
+      els.quickPriority, els.quickArea, els.quickDate, els.quickEndDate,
+      els.quickRepeat, els.quickTimeMode, els.quickReminder,
+      els.quickStartTime, els.quickEndTime, els.quickTone
+    ].forEach(function(input) {
+      if (input) input.addEventListener('change', handleQuickDraftChange);
+    });
+    if (els.quickDragHandle) bindQuickDragHandle();
     if (els.quickExtraPanel) {
       els.quickExtraPanel.addEventListener('click', function(event) {
         if (event.target.classList.contains('quick-extra-close')) {
@@ -3503,6 +3646,11 @@
     document.addEventListener('touchstart', handleSwipeStart, { passive: true });
     document.addEventListener('touchmove', handleSwipeMove, { passive: false });
     document.addEventListener('touchend', handleSwipeEnd);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', function() {
+        if (isQuickEditorOpen()) updateQuickViewportHeight();
+      });
+    }
     window.addEventListener('hashchange', function() {
       var nextView = viewFromHash();
       if (nextView !== appState.view) {
@@ -3569,6 +3717,7 @@
     });
     document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
+        if (isQuickEditorOpen() && !appState.editingTaskId) persistCreateDraft();
         cancelNotificationRecovery();
         return;
       }
@@ -3577,7 +3726,10 @@
         handleNotificationBackendFailure(error, generation);
       });
     });
-    window.addEventListener('pagehide', cancelNotificationRecovery);
+    window.addEventListener('pagehide', function() {
+      if (isQuickEditorOpen() && !appState.editingTaskId) persistCreateDraft();
+      cancelNotificationRecovery();
+    });
   }
 
   function activateNotificationLifecycle() {

@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 
 test('quick editor exposes one replacement region and root-level detail panel', () => {
   assert.match(html, /id="quick-drag-handle"/);
@@ -32,4 +33,21 @@ test('editor resets the static sheet transform and keeps screen-reader labels ac
   assert.match(css, /\.quick-sheet-v2\s*\{[^}]*transform:\s*none;/s);
   assert.match(css, /\.quick-sheet-v2\.is-dragging\s*\{[^}]*transform:/s);
   assert.match(css, /\.sr-only\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
+});
+
+test('app coordinates scroll lock, draft storage and swipe suppression', () => {
+  assert.match(app, /today-youxu-quick-draft-v1/);
+  assert.match(app, /function lockQuickEditorScroll/);
+  assert.match(app, /function unlockQuickEditorScroll/);
+  assert.match(app, /if \(isQuickEditorOpen\(\)\) return;/);
+  assert.match(app, /visualViewport.*quick-viewport-height/s);
+});
+
+test('app limits sheet dismissal to the drag handle and cleans up every pointer end', () => {
+  assert.match(app, /els\.quickDragHandle\.addEventListener\('pointerdown'/);
+  assert.match(app, /els\.quickDragHandle\.addEventListener\('pointercancel'/);
+  assert.match(app, /classList\.add\('is-dragging'\)/);
+  assert.match(app, /style\.setProperty\('--quick-drag-offset'/);
+  assert.match(app, /function closeQuickSession/);
+  assert.match(app, /function persistCreateDraft/);
 });
