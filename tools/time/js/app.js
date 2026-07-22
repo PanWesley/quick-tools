@@ -1488,7 +1488,7 @@
     autoResizeTextarea(els.quickNotes);
     setTimeout(function() {
       if (els.quickTitle) els.quickTitle.focus();
-    }, 50);
+    }, 350);
   }
 
   function closeSheet() {
@@ -1735,10 +1735,15 @@
     }
   }
 
-  function closeQuickFullPanel() {
+  function closeQuickFullPanel(options) {
     if (!els.quickFullPanel || !els.quickSheet) return;
     els.quickSheet.classList.remove('is-full');
     els.quickFullPanel.hidden = true;
+    if (options && options.focusTitle && els.quickTitle) {
+      setTimeout(function() {
+        els.quickTitle.focus();
+      }, 280);
+    }
   }
 
   function renderQuickFullPanel() {
@@ -2422,7 +2427,7 @@
     autoResizeTextarea(els.quickNotes);
     setTimeout(function() {
       if (els.quickTitle) els.quickTitle.focus();
-    }, 50);
+    }, 350);
   }
 
   function openEditHabit(id) {
@@ -2489,7 +2494,7 @@
     autoResizeTextarea(els.quickNotes);
     setTimeout(function() {
       if (els.quickTitle) els.quickTitle.focus();
-    }, 50);
+    }, 350);
   }
 
   function changeMonth(delta) {
@@ -3355,7 +3360,9 @@
         if (btn.classList.contains('is-open')) {
           closeQuickExtra();
           closeQuickFullPanel();
-          if (els.quickTitle) els.quickTitle.focus();
+          setTimeout(function() {
+            if (els.quickTitle) els.quickTitle.focus();
+          }, 100);
           return;
         }
         openQuickTool(tool);
@@ -3409,7 +3416,9 @@
       });
     }
     if (els.quickFullBack) {
-      els.quickFullBack.addEventListener('click', closeQuickFullPanel);
+      els.quickFullBack.addEventListener('click', function() {
+        closeQuickFullPanel({ focusTitle: true });
+      });
     }
     if (els.quickFullSave) {
       els.quickFullSave.addEventListener('click', function() {
