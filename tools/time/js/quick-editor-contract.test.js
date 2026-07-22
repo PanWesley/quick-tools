@@ -27,3 +27,9 @@ test('editor CSS defines locked, child-panel, fullscreen and reduced-motion stat
   assert.match(css, /\.quick-full-panel\s*\{[^}]*position:\s*fixed/s);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
+
+test('editor resets the static sheet transform and keeps screen-reader labels accessible', () => {
+  assert.match(css, /\.quick-sheet-v2\s*\{[^}]*transform:\s*none;/s);
+  assert.match(css, /\.quick-sheet-v2\.is-dragging\s*\{[^}]*transform:/s);
+  assert.match(css, /\.sr-only\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
+});
