@@ -1451,6 +1451,18 @@
     localStorage.setItem('today-youxu-journal-enabled', enabled ? '1' : '0');
   }
 
+  function focusQuickTitle() {
+    if (!els.quickTitle) return;
+    if (document.activeElement === els.quickTitle) return;
+    els.quickTitle.blur();
+    requestAnimationFrame(function() {
+      els.quickTitle.focus();
+      try {
+        els.quickTitle.setSelectionRange(0, els.quickTitle.value.length);
+      } catch(e) {}
+    });
+  }
+
   function openSheet() {
     appState.editingTaskId = '';
     appState.editingType = '';
@@ -1486,7 +1498,7 @@
     els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    if (els.quickTitle) els.quickTitle.focus();
+    focusQuickTitle();
   }
 
   function closeSheet() {
@@ -1738,7 +1750,7 @@
     els.quickSheet.classList.remove('is-full');
     els.quickFullPanel.hidden = true;
     if (options && options.focusTitle && els.quickTitle) {
-      els.quickTitle.focus();
+      focusQuickTitle();
     }
   }
 
@@ -2421,7 +2433,7 @@
     els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    if (els.quickTitle) els.quickTitle.focus();
+    focusQuickTitle();
   }
 
   function openEditHabit(id) {
@@ -2486,7 +2498,7 @@
     els.quickSheet.hidden = false;
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    if (els.quickTitle) els.quickTitle.focus();
+    focusQuickTitle();
   }
 
   function changeMonth(delta) {
@@ -3352,7 +3364,7 @@
         if (btn.classList.contains('is-open')) {
           closeQuickExtra();
           closeQuickFullPanel();
-          if (els.quickTitle) els.quickTitle.focus();
+          focusQuickTitle();
           return;
         }
         openQuickTool(tool);
