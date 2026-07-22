@@ -1588,6 +1588,13 @@
     var opts = options || {};
     if (!appState.editingTaskId && opts.keepDraft !== false) persistCreateDraft();
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE' });
+    var activeQuickDrag = quickDrag;
+    quickDrag = null;
+    els.quickSheet.classList.remove('is-dragging');
+    els.quickSheet.style.removeProperty('--quick-drag-offset');
+    if (activeQuickDrag && els.quickDragHandle && els.quickDragHandle.hasPointerCapture && els.quickDragHandle.hasPointerCapture(activeQuickDrag.id)) {
+      els.quickDragHandle.releasePointerCapture(activeQuickDrag.id);
+    }
     closeQuickExtra();
     closeQuickFullPanel();
     closePicker();
@@ -2552,6 +2559,7 @@
     }
     els.quickStartTime.value = task.startTime || '';
     els.quickEndTime.value = task.endTime || '';
+    els.quickEndDate.value = task.endDate || task.date || '';
     els.quickNotes.value = task.notes || '';
     updateTimeDisplay();
     if (els.quickRepeatCustomHint) {
@@ -2616,6 +2624,7 @@
     }
     els.quickStartTime.value = habit.startTime || '';
     els.quickEndTime.value = habit.endTime || '';
+    els.quickEndDate.value = habit.startDate || appState.todayKey;
     els.quickNotes.value = habit.notes || '';
     updateTimeDisplay();
     if (scheduleVal === 'custom' && habit.customRepeat && els.quickRepeatCustomHint) {

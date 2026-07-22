@@ -51,3 +51,9 @@ test('app limits sheet dismissal to the drag handle and cleans up every pointer 
   assert.match(app, /function closeQuickSession/);
   assert.match(app, /function persistCreateDraft/);
 });
+
+test('app isolates edit end dates and resets drag state when a session closes', () => {
+  assert.match(app, /function openEditTask[\s\S]*els\.quickEndDate\.value = task\.endDate \|\| task\.date \|\| '';/);
+  assert.match(app, /function openEditHabit[\s\S]*els\.quickEndDate\.value = habit\.startDate \|\| appState\.todayKey;/);
+  assert.match(app, /function closeQuickSession[\s\S]*quickDrag = null;[\s\S]*classList\.remove\('is-dragging'\)[\s\S]*removeProperty\('--quick-drag-offset'\)/);
+});
