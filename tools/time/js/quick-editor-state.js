@@ -55,7 +55,10 @@
 
   function setDraftDate(draft, phase, dateKey) {
     var next = Object.assign({}, draft);
-    if (phase === 'end') next.endDate = dateKey < next.startDate ? next.startDate : dateKey;
+    if (phase === 'end') {
+      if (!next.startDate) next.startDate = dateKey;
+      next.endDate = dateKey < next.startDate ? next.startDate : dateKey;
+    }
     else {
       next.startDate = dateKey;
       if (!next.endDate || next.endDate < dateKey) next.endDate = dateKey;
@@ -103,8 +106,7 @@
     return next;
   }
 
-  function validateDraft(draft) {
-    if (!String(draft.title || '').trim()) return { valid: false, field: 'title', message: '请输入标题' };
+  function validateSchedule(draft) {
     if (draft.startDate && draft.endDate && draft.endDate < draft.startDate) {
       return { valid: false, field: 'endDate', message: '结束日期不能早于开始日期' };
     }
@@ -114,10 +116,15 @@
     return { valid: true };
   }
 
+  function validateDraft(draft) {
+    if (!String(draft.title || '').trim()) return { valid: false, field: 'title', message: '请输入标题' };
+    return validateSchedule(draft);
+  }
+
   function parseStoredDraft(text) {
     try { var value = JSON.parse(text); return value && typeof value === 'object' ? value : null; }
     catch (error) { return null; }
   }
 
-  return { createSessionState, transition, normalizeDraft, validateDraft, setDraftDate, setPending, defaultEndTime, createChildDraft, applyChildDraft, parseStoredDraft };
+  return { createSessionState, transition, normalizeDraft, validateDraft, validateSchedule, setDraftDate, setPending, defaultEndTime, createChildDraft, applyChildDraft, parseStoredDraft };
 });

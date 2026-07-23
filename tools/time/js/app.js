@@ -2152,9 +2152,11 @@
     dtCalendarState.viewYear = 0;
     renderDatetimeCalendar(document.getElementById('quick-dt-calendar-container'), phase === 'start' ? draft.startDate : draft.endDate);
     var presetHost = document.getElementById('quick-date-presets');
+    var phaseValue = phase === 'start' ? draft.startDate : draft.endDate;
     [{ key: 'today', label: '今天', value: appState.todayKey }, { key: 'tomorrow', label: '明天', value: tomorrowKey() }, { key: 'weekend', label: '周末', value: weekendKey() }, { key: 'pending', label: '待定', value: '' }].forEach(function(item) {
       var btn = document.createElement('button');
-      btn.type = 'button'; btn.className = 'quick-datetime-quick-btn'; btn.textContent = item.label;
+      var selected = phaseValue === item.value;
+      btn.type = 'button'; btn.className = 'quick-datetime-quick-btn' + (selected ? ' is-selected' : ''); btn.dataset.datePreset = item.key; btn.setAttribute('aria-pressed', String(selected)); btn.textContent = item.label;
       btn.addEventListener('click', function() {
         if (!item.value) { setQuickDate('', 'pending'); els.quickEndDate.value = ''; }
         else applyQuickDraft(QuickEditor.setDraftDate(readQuickDraft(), appState.quickEditor.datePhase, item.value));
@@ -2166,13 +2168,17 @@
     els.quickExtraPanel.querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
   }
 
+  function commitDateChild() {
+    var merged = QuickEditor.applyChildDraft(readQuickDraft(), appState.quickChildDraft);
+    var validity = QuickEditor.validateSchedule(merged);
+    if (!validity.valid) { var error = els.quickExtraPanel.querySelector('.quick-date-child-error'); if (error) error.textContent = validity.message; return false; }
+    applyQuickDraft(merged);
+    handleQuickDraftChange();
+    return true;
+  }
+
   function finishDateChild(commit) {
-    if (commit) {
-      var merged = QuickEditor.applyChildDraft(readQuickDraft(), appState.quickChildDraft);
-      var validity = QuickEditor.validateDraft(merged);
-      if (!validity.valid) { var error = els.quickExtraPanel.querySelector('.quick-date-child-error'); if (error) error.textContent = validity.message; return; }
-      applyQuickDraft(merged); handleQuickDraftChange();
-    }
+    if (commit && !commitDateChild()) return;
     appState.quickChildDraft = null;
     appState.quickChildWheels = null;
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DATE_CHILD' });
@@ -2192,10 +2198,14 @@
   }
 
   function renderTimeDateChild(content, child) {
-    var phase = child.timePhase || 'start';
-    content.innerHTML = '<div class="quick-date-tabs" role="tablist" aria-label="时间范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-time-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-time-phase="end">结束</button></div><label class="quick-date-all-day"><input type="checkbox"' + (child.timeMode === 'all-day' ? ' checked' : '') + '> 全天</label><div class="picker-wheels-row quick-date-child-wheels"></div>';
+    var mode = ['all-day', 'point', 'range'].includes(child.timeMode) ? child.timeMode : 'all-day';
+    var phase = mode === 'range' ? (child.timePhase || 'start') : 'start';
+    child.timeMode = mode;
+    child.timePhase = phase;
+    var tabs = mode === 'range' ? '<div class="quick-date-tabs" role="tablist" aria-label="时间范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-time-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-time-phase="end">结束</button></div>' : '';
+    content.innerHTML = '<div class="quick-time-mode-options" role="group" aria-label="时间类型"><button type="button" data-child-time-mode="all-day" aria-pressed="' + String(mode === 'all-day') + '">全天</button><button type="button" data-child-time-mode="point" aria-pressed="' + String(mode === 'point') + '">时间点</button><button type="button" data-child-time-mode="range" aria-pressed="' + String(mode === 'range') + '">时间段</button></div>' + tabs + '<div class="picker-wheels-row quick-date-child-wheels"' + (mode === 'all-day' ? ' hidden' : '') + '></div>';
     var wheels = content.querySelector('.quick-date-child-wheels');
-    if (child.timeMode !== 'all-day') {
+    if (mode !== 'all-day') {
       var value = phase === 'end' ? child.endTime : child.startTime;
       var parts = value.split(':').map(Number);
       var hours = Array.from({ length: 24 }, function(_, i) { return { label: String(i).padStart(2, '0') + '时', value: i }; });
@@ -2207,9 +2217,9 @@
     }
     function saveWheelValue() { if (!appState.quickChildWheels) return; var time = String(appState.quickChildWheels.hours.getValue()).padStart(2, '0') + ':' + String(appState.quickChildWheels.minutes.getValue()).padStart(2, '0'); child[phase === 'end' ? 'endTime' : 'startTime'] = time; }
     content.querySelectorAll('[data-time-phase]').forEach(function(btn) { btn.addEventListener('click', function() { saveWheelValue(); child.timePhase = btn.dataset.timePhase; renderDateChild('time'); }); });
-    content.querySelector('.quick-date-all-day input').addEventListener('change', function(event) { saveWheelValue(); child.timeMode = event.target.checked ? 'all-day' : 'range'; renderDateChild('time'); });
+    content.querySelectorAll('[data-child-time-mode]').forEach(function(btn) { btn.addEventListener('click', function() { saveWheelValue(); child.timeMode = btn.dataset.childTimeMode; child.timePhase = 'start'; if (child.timeMode === 'range' && !child.endTime) child.endTime = QuickEditor.defaultEndTime(child.startTime || '09:00'); renderDateChild('time'); }); });
     var confirm = els.quickExtraPanel.querySelector('[data-child-confirm]');
-    confirm.addEventListener('click', saveWheelValue, { once: true });
+    confirm.addEventListener('click', saveWheelValue);
   }
 
   function renderChoiceDateChild(content, child, type) {
@@ -2274,11 +2284,12 @@
 
   function handleQuickSubmit(event) {
     event.preventDefault();
-    var title = els.quickTitle.value.trim();
-    if (!title) {
-      showToast('请输入标题');
+    var draftValidity = QuickEditor.validateDraft(readQuickDraft());
+    if (!draftValidity.valid) {
+      showToast(draftValidity.message);
       return;
     }
+    var title = els.quickTitle.value.trim();
 
     var priorityRaw = els.quickPriority.value;
     var priorityForDb = QUAD_TO_PRIORITY[priorityRaw] || 'medium';

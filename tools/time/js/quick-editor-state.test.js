@@ -78,3 +78,22 @@ test('confirmed child values merge only their scheduling fields', () => {
   assert.equal(merged.title, '开会');
   assert.equal(merged.reminder, '15');
 });
+
+test('choosing an end date without a start date creates a same-day range', () => {
+  const result = Editor.setDraftDate({ startDate: '', endDate: '' }, 'end', '2026-07-25');
+  assert.deepEqual([result.startDate, result.endDate], ['2026-07-25', '2026-07-25']);
+});
+
+test('schedule validation permits a blank title while rejecting an invalid range', () => {
+  assert.deepEqual(Editor.validateSchedule({
+    title: '', startDate: '2026-07-25', endDate: '2026-07-25',
+    timeMode: 'range', startTime: '10:00', endTime: '09:30'
+  }), { valid: false, field: 'endTime', message: '结束时间需晚于开始时间' });
+  assert.deepEqual(Editor.validateSchedule({ title: '', startDate: '2026-07-25', endDate: '2026-07-25' }), { valid: true });
+});
+
+test('full draft validation still requires a title after schedule validation', () => {
+  assert.deepEqual(Editor.validateDraft({ title: '', startDate: '2026-07-25', endDate: '2026-07-25' }), {
+    valid: false, field: 'title', message: '请输入标题'
+  });
+});
