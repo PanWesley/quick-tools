@@ -432,10 +432,12 @@ function createTargetingHarness() {
     },
     querySelector() { return null; },
     getElementById(id) { return views[id.replace('view-', '')] || headers[id] || null; },
-    addEventListener() {}
+    addEventListener() {},
+    body: { setAttribute() {} }
   };
   const DateUtils = {
     getTodayKey: () => '2026-07-12',
+    formatWeekday: () => '日',
     fromDateKey(value) {
       const parts = String(value).split('-').map(Number);
       return new Date(parts[0], parts[1] - 1, parts[2]);
@@ -452,6 +454,7 @@ function createTargetingHarness() {
     TodayYouxuNotification: null,
     TodayYouxuNotificationModel: null,
     TodayYouxuNotificationSync: null,
+    TodayYouxuQuickEditor: require('./quick-editor-state.js'),
     location: { hash: '#today' },
     __renderCalls: 0
   };
@@ -550,19 +553,27 @@ test('app source renders stable notification attributes and owns message targeti
 });
 
 test('service worker cache matches current index assets and notification API is network-only', async () => {
-  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v33['"]/);
-  [
-    '/tools/time/css/style.css?v=138',
+  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v53['"]/);
+  const releaseAssets = [
+    '/tools/time/css/style.css?v=157',
+    '/tools/time/js/quick-editor-state.js?v=1',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
     '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=139'
-  ].forEach(asset => {
-    assert.ok(indexSource.includes(asset), asset + ' must be referenced by index');
-    assert.ok(swSource.includes("'" + asset + "'"), asset + ' must be precached exactly');
-  });
+    '/tools/time/js/app.js?v=161'
+  ];
+  const releaseAssetPaths = new Set(releaseAssets.map(asset => asset.split('?')[0]));
+  const indexedReleaseAssets = [...indexSource.matchAll(/(?:href|src)="([^"]+)"/g)]
+    .map(match => match[1])
+    .filter(asset => releaseAssetPaths.has(asset.split('?')[0]));
+  const appShell = swSource.match(/const APP_SHELL = \[([\s\S]*?)\];/)[1];
+  const cachedReleaseAssets = [...appShell.matchAll(/'([^']+)'/g)]
+    .map(match => match[1])
+    .filter(asset => releaseAssetPaths.has(asset.split('?')[0]));
+  assert.deepEqual(indexedReleaseAssets.slice().sort(), releaseAssets.slice().sort());
+  assert.deepEqual(cachedReleaseAssets.slice().sort(), releaseAssets.slice().sort());
 
   const networkResponse = { ok: true, marker: 'network', clone() { return this; } };
   const harness = await createHarness({ cachedResponse: { marker: 'cache' }, networkResponse });
@@ -585,6 +596,7 @@ test('service worker activation keeps delivery receipts while removing old app s
     cacheNames: [
       'today-youxu-v32',
       'today-youxu-v33',
+      'today-youxu-v53',
       'today-youxu-notification-receipts-v1',
       'unrelated-cache'
     ]
@@ -592,7 +604,7 @@ test('service worker activation keeps delivery receipts while removing old app s
 
   await harness.dispatch('activate', {});
 
-  assert.deepEqual(harness.deletedCaches, ['today-youxu-v32']);
+  assert.deepEqual(harness.deletedCaches, ['today-youxu-v32', 'today-youxu-v33']);
   assert.equal(harness.receiptCleanupCalls, 1);
 });
 

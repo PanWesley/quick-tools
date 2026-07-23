@@ -3638,6 +3638,10 @@ textarea {
   box-shadow: 0 -8px 32px rgba(40, 30, 20, 0.15);
 }
 
+.quick-sheet-v2:has(.quick-extra-panel:not([hidden])) {
+  max-height: calc(var(--quick-viewport-height, 100vh) - 4px);
+}
+
 .quick-sheet-v2.is-dragging {
   transform: translateY(var(--quick-drag-offset, 0px));
 }
@@ -3857,7 +3861,7 @@ textarea {
   padding: 0;
   background: var(--surface);
   animation: quickExtraFade 200ms ease;
-  max-height: min(58vh, calc(var(--quick-viewport-height, 100vh) - 170px));
+  max-height: min(74vh, calc(var(--quick-viewport-height, 100vh) - 226px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;

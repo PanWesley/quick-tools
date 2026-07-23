@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const quickEditor = require('./quick-editor-state.js');
 
 const root = path.resolve(__dirname, '..');
 const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
@@ -78,7 +79,8 @@ function createHarness(overrides = {}) {
     querySelector() { return null; },
     addEventListener(type, callback) { listeners.document[type] = callback; },
     createElement() { return makeElement('created'); },
-    documentElement: { dataset: {}, setAttribute() {}, getAttribute() { return ''; } }
+    documentElement: { dataset: {}, setAttribute() {}, getAttribute() { return ''; } },
+    body: { style: {}, classList: { add() {}, remove() {} }, setAttribute() {} }
   };
   const notification = overrides.Notification || {
     permission: 'default',
@@ -106,6 +108,7 @@ function createHarness(overrides = {}) {
     TodayYouxuNotification: legacy,
     TodayYouxuNotificationModel: overrides.model || { buildReminderRecords: async () => [] },
     TodayYouxuNotificationSync: syncFactory,
+    TodayYouxuQuickEditor: quickEditor,
     Notification: notification,
     navigator: overrides.navigator || {},
     location: { hash: '' },
@@ -180,21 +183,29 @@ test('loads cache-busted notification dependencies in strict order', () => {
     'notification-model.js',
     'notification-sync.js',
     'notification.js',
+    'quick-editor-state.js',
     'app.js'
   ];
   names.forEach(name => assert.notEqual(scriptPosition(name), -1, name + ' must be cache-busted'));
   names.slice(1).forEach((name, index) => {
     assert.ok(scriptPosition(names[index]) < scriptPosition(name), names[index] + ' must load before ' + name);
   });
-  [
-    '/tools/time/css/style.css?v=138',
+  const releaseAssets = [
+    '/tools/time/css/style.css?v=157',
+    '/tools/time/js/quick-editor-state.js?v=1',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
     '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=139'
-  ].forEach(asset => assert.ok(index.includes(asset), asset + ' must use the release version'));
+    '/tools/time/js/app.js?v=161'
+  ];
+  const releaseAssetPaths = new Set(releaseAssets.map(asset => asset.split('?')[0]));
+  const indexedReleaseAssets = [...index.matchAll(/(?:href|src)="([^"]+)"/g)]
+    .map(match => match[1])
+    .filter(asset => releaseAssetPaths.has(asset.split('?')[0]));
+  assert.deepEqual(indexedReleaseAssets.slice().sort(), releaseAssets.slice().sort());
+  assert.match(appSource, /var APP_VERSION = 'v0\.10\.0';/);
 });
 
 test('projects encrypted reminder records and preserves the exact sync call', () => {

@@ -1,5 +1,5 @@
 (function() {
-  var APP_VERSION = 'v0.9.0';
+  var APP_VERSION = 'v0.10.0';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -1943,6 +1943,7 @@
     els.quickSheet.hidden = false;
     els.quickSheet.removeAttribute('aria-hidden');
     els.quickSheet.inert = false;
+    renderQuickSurface();
     if (options && options.focusTitle && els.quickTitle) {
       void els.quickSheet.offsetHeight;
       focusQuickTitle();

@@ -35,6 +35,13 @@ test('editor resets the static sheet transform and keeps screen-reader labels ac
   assert.match(css, /\.sr-only\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
 });
 
+test('date parent panel expands to expose its settings in a 390 by 844 viewport', () => {
+  assert.match(css, /\.quick-sheet-v2:has\(\.quick-extra-panel:not\(\[hidden\]\)\)\s*\{[^}]*max-height:\s*calc\(var\(--quick-viewport-height,\s*100vh\)\s*-\s*4px\);/s);
+  assert.match(css, /\.quick-extra-panel\s*\{[^}]*max-height:\s*min\(74vh,\s*calc\(var\(--quick-viewport-height,\s*100vh\)\s*-\s*226px\)\);/s);
+  assert.match(css, /\.quick-date-settings button\s*\{[^}]*min-height:\s*52px;/s);
+  assert.match(css, /\.quick-date-child-head button\s*\{[^}]*min-height:\s*44px;/s);
+});
+
 test('app coordinates scroll lock, draft storage and swipe suppression', () => {
   assert.match(app, /today-youxu-quick-draft-v1/);
   assert.match(app, /function lockQuickEditorScroll/);
@@ -69,6 +76,11 @@ test('detail exits synchronously to focused keyboard surface', () => {
   assert.match(app, /function openQuickFullPanel[\s\S]*els\.quickSheet\.hidden\s*=\s*true/);
   assert.match(app, /if \(els\.quickFullSave\)[\s\S]{0,300}closeQuickFullPanel\(\{ focusTitle: true \}\)/);
   assert.doesNotMatch(app, /setTimeout\(function\(\)\s*\{\s*openQuickTool/s);
+});
+
+test('detail back clears the toolbar surface before it returns focus to the title', () => {
+  assert.match(app, /function renderQuickSurface[\s\S]{0,500}button\.setAttribute\('aria-pressed', String\(open\)\)[\s\S]{0,300}state\.surface === 'keyboard'[\s\S]{0,200}els\.quickExtraPanel\.hidden = true/s);
+  assert.match(app, /function closeQuickFullPanel[\s\S]{0,500}CLOSE_DETAIL[\s\S]{0,500}els\.quickSheet\.inert = false;[\s\S]{0,120}renderQuickSurface\(\);[\s\S]{0,300}focusQuickTitle\(\)/s);
 });
 
 test('calendar endpoint times and full-detail focus survive narrow surfaces', () => {
