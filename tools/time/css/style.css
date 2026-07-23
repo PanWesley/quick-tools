@@ -122,6 +122,18 @@
 
 * { box-sizing: border-box; }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -134,6 +146,14 @@ body {
   font-weight: var(--weight-regular);
   line-height: 1.5;
   padding-bottom: calc(82px + env(safe-area-inset-bottom));
+}
+
+body.quick-editor-open {
+  position: fixed;
+  inset-inline: 0;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button, input, select, textarea {
@@ -1505,6 +1525,37 @@ textarea {
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.calendar-strip.has-time {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.calendar-strip-time {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-strip-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .calendar-strip.has-time {
+    gap: 1px;
+    padding-right: 3px;
+  }
+
+  .calendar-strip-time {
+    flex-shrink: 0;
+    font-size: 9px;
+  }
 }
 
 .calendar-strip.is-done {
@@ -3578,13 +3629,46 @@ textarea {
   width: 100%;
   max-width: none;
   max-height: 92vh;
-  transform: translateY(0);
+  transform: none;
   overflow: hidden;
   padding: 0;
   background: var(--surface);
   border: none;
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -8px 32px rgba(40, 30, 20, 0.15);
+}
+
+.quick-sheet-v2:has(.quick-extra-panel:not([hidden])) {
+  max-height: calc(var(--quick-viewport-height, 100vh) - 4px);
+}
+
+.quick-sheet-v2:has(.quick-extra-panel:not([hidden])) .quick-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.quick-sheet-v2.is-dragging {
+  transform: translateY(var(--quick-drag-offset, 0px));
+}
+
+.quick-drag-handle {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.quick-drag-handle span {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
 }
 
 .quick-form-v2 {
@@ -3695,8 +3779,8 @@ textarea {
 
 .quick-tool-btn {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 12px;
   background: transparent;
@@ -3788,10 +3872,101 @@ textarea {
   padding: 0;
   background: var(--surface);
   animation: quickExtraFade 200ms ease;
-  max-height: 55vh;
+  max-height: min(74vh, calc(var(--quick-viewport-height, 100vh) - 226px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
+
+.quick-summary {
+  min-height: 22px;
+  padding: 0 16px 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.quick-date-child-panel {
+  min-height: 330px;
+  background: var(--surface);
+}
+
+.quick-date-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+.quick-date-tabs button {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.quick-date-tabs button[aria-selected="true"] {
+  color: var(--primary);
+  box-shadow: inset 0 -2px var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+.quick-date-settings {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.quick-date-settings button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-date-settings strong {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.quick-date-child-head {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 72px 1fr 72px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.quick-date-child-head button {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.quick-date-child-content { padding: 8px 0 16px; }
+.quick-date-child-content .picker-wheels-row { padding: 12px 16px; }
+.quick-time-mode-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 12px 16px; }
+.quick-time-mode-options button { min-height: 44px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-muted); font: inherit; cursor: pointer; }
+.quick-time-mode-options button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); font-weight: var(--weight-semibold); }
+.quick-date-all-day { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 8px 16px; color: var(--text-strong); }
+.quick-date-all-day input { width: 20px; height: 20px; accent-color: var(--primary); }
+.quick-date-choice-list { display: grid; gap: 2px; padding: 0 8px; }
+.quick-date-choice-list .quick-area-item { min-height: 44px; border-radius: 12px; }
+.quick-date-child-error { min-height: 20px; margin: 0; padding: 0 16px 12px; color: var(--danger); font-size: 13px; }
 
 @keyframes quickExtraFade {
   from { opacity: 0; transform: translateY(-8px); }
@@ -3805,14 +3980,14 @@ textarea {
 }
 
 .quick-datetime-calendar {
-  padding: 12px 16px 8px;
+  padding: 6px 16px 4px;
 }
 
 .quick-datetime-calendar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .quick-datetime-month {
@@ -3827,8 +4002,8 @@ textarea {
 }
 
 .quick-datetime-nav button {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
   background: transparent;
@@ -3851,11 +4026,11 @@ textarea {
   font-size: 11px;
   color: var(--text-muted);
   font-weight: var(--weight-medium);
-  padding-bottom: 4px;
+  padding-bottom: 0;
 }
 
 .quick-datetime-weekdays span {
-  padding: 6px 0;
+  padding: 2px 0;
 }
 
 .quick-datetime-grid {
@@ -3918,6 +4093,7 @@ textarea {
 
 .quick-datetime-quick-btn {
   flex-shrink: 0;
+  min-height: 44px;
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -3933,6 +4109,43 @@ textarea {
   border-color: var(--primary);
   background: var(--primary-soft);
   color: var(--primary-strong);
+}
+
+.quick-pending-confirmation {
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.quick-pending-confirmation strong {
+  font-size: 17px;
+  color: var(--text-strong);
+}
+
+.quick-pending-confirmation p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.quick-pending-confirmation > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.quick-pending-confirmation button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.quick-pending-confirmation [data-pending-confirm] {
+  color: #fff;
+  border-color: transparent;
+  background: var(--primary-gradient);
 }
 
 .quick-datetime-options {
@@ -4114,6 +4327,8 @@ textarea {
 
 .quick-tone-swatch {
   aspect-ratio: 1;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 50%;
   border: 2.5px solid transparent;
   cursor: pointer;
@@ -4161,8 +4376,10 @@ textarea {
 .quick-full-panel {
   position: fixed;
   inset: 0;
+  z-index: 170;
+  width: 100%;
+  height: 100%;
   background: var(--bg);
-  z-index: 200;
   display: flex;
   flex-direction: column;
   animation: quickFullSlideIn 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -4185,8 +4402,8 @@ textarea {
 }
 
 .quick-full-back {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: none;
   background: transparent;
   color: var(--text);
@@ -4210,7 +4427,7 @@ textarea {
 }
 
 .quick-full-save {
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 16px;
   border: none;
   border-radius: 18px;
@@ -4227,6 +4444,18 @@ textarea {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 16px;
+}
+
+.quick-full-body > .quick-datetime-panel,
+.quick-full-body > .quick-date-child-panel {
+  margin: -16px;
+  min-height: 100%;
+}
+
+.quick-full-body > .quick-priority-panel,
+.quick-full-body > .quick-area-panel,
+.quick-full-body > .quick-tone-panel {
+  padding-top: 0;
 }
 
 .quick-full-section {
@@ -4323,6 +4552,15 @@ textarea {
   border: 1px solid var(--border);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .quick-extra-panel,
+  .quick-full-panel,
+  .quick-form-v2 {
+    animation: none;
+    transition: none;
+  }
+}
+
 @media (max-width: 640px) {
   .quick-sheet-v2 {
     border-radius: 20px 20px 0 0;
@@ -4345,14 +4583,14 @@ textarea {
   }
 
   .quick-tool-btn {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
   }
 
   .quick-send-btn {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
   }
 
   .quick-priority-grid {
@@ -4365,7 +4603,7 @@ textarea {
   }
 
   .quick-tone-grid {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 6px;
   }
 

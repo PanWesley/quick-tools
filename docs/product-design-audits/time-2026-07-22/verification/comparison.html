@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quick editor visual comparison</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: #f4f1ed; color: #302d2a; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { margin: 0 0 18px; font-size: 22px; }
+  .row { display: grid; grid-template-columns: repeat(2, 390px); gap: 20px; margin-bottom: 28px; align-items: start; }
+  figure { margin: 0; }
+  figcaption { margin-bottom: 8px; color: #756e67; font-weight: 600; }
+  img { display: block; width: 390px; height: 844px; object-fit: cover; object-position: top; border-radius: 18px; box-shadow: 0 8px 30px rgba(55, 43, 32, .12); background: white; }
+</style>
+<h1>指尖时光参考与 quick-tools 验收对比</h1>
+<div class="row">
+  <figure><figcaption>参考：日期范围面板</figcaption><img src="reference-date.jpg"></figure>
+  <figure><figcaption>实现：日期父面板</figcaption><img src="02-date-parent.png"></figure>
+</div>
+<div class="row">
+  <figure><figcaption>参考：时间子面板</figcaption><img src="reference-time.jpg"></figure>
+  <figure><figcaption>实现：时间子面板</figcaption><img src="03-time-child.png"></figure>
+</div>
+<div class="row">
+  <figure><figcaption>参考：新增事项主弹层</figcaption><img src="reference-create.jpg"></figure>
+  <figure><figcaption>实现：新增事项主弹层</figcaption><img src="01-create-keyboard.png"></figure>
+</div>

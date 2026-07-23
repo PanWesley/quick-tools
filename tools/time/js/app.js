@@ -1,5 +1,5 @@
 (function() {
-  var APP_VERSION = 'v0.9.0';
+  var APP_VERSION = 'v0.10.0';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -8,6 +8,8 @@
   var NotificationModel = window.TodayYouxuNotificationModel;
   var NotificationSyncFactory = window.TodayYouxuNotificationSync;
   var NotificationSync = null;
+  var QuickEditor = window.TodayYouxuQuickEditor;
+  var QUICK_DRAFT_KEY = 'today-youxu-quick-draft-v1';
 
   var NOTIFICATION_STATUS_COPY = {
     'subscribing': '正在连接',
@@ -49,12 +51,15 @@
     editingType: '',
     customRepeat: null,
     customReminder: null,
-    pickerState: null
+    pickerState: null,
+    quickEditor: QuickEditor.createSessionState(),
+    quickScrollY: 0
   };
 
   var els = {};
   var journalSaveTimer = null;
   var swipeState = null;
+  var quickDrag = null;
   var notificationBackendStatus = { status: 'disabled' };
   var notificationRegistration = null;
   var notificationSetupState = 'idle';
@@ -322,6 +327,7 @@
   }
 
   function handleSwipeStart(event) {
+    if (isQuickEditorOpen()) return;
     var row = event.target.closest('.task-row.has-swipe-actions') || event.target.closest('.list-swipe-row');
     if (!row || !event.touches || event.touches.length !== 1) return;
     var touch = event.touches[0];
@@ -336,6 +342,7 @@
   }
 
   function handleSwipeMove(event) {
+    if (isQuickEditorOpen()) return;
     if (!swipeState || !event.touches || event.touches.length !== 1) return;
     var touch = event.touches[0];
     swipeState.currentX = touch.clientX;
@@ -348,6 +355,7 @@
   }
 
   function handleSwipeEnd(event) {
+    if (isQuickEditorOpen()) return;
     if (!swipeState) return;
     var touch = event.changedTouches && event.changedTouches[0];
     var endX = touch ? touch.clientX : swipeState.currentX;
@@ -575,6 +583,13 @@
     return ['completed', 'done', 'skipped'].includes(entry.state) ? ' is-done' : '';
   }
 
+  function calendarEntryLabel(entry) {
+    if (entry.type !== 'task' || entry.timeMode === 'all-day') return entry.label;
+    if ((entry.rangePosition === 'single' || entry.rangePosition === 'start') && entry.startTime) return entry.startTime + ' ' + entry.label;
+    if (entry.rangePosition === 'end' && entry.endTime) return entry.endTime + ' ' + entry.label;
+    return entry.label;
+  }
+
   function renderHabit(habit) {
     var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, appState.todayKey);
     var done = log && log.state === 'done';
@@ -683,7 +698,12 @@
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
       var maxStrips = 4;
       var strips = entries.slice(0, maxStrips).map(function(entry) {
-        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(truncateLabel(entry.label, 4)) + '</span>';
+        var label = calendarEntryLabel(entry);
+        var timeMatch = /^(\d{2}:\d{2})\s+/.exec(label);
+        var classes = 'calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry);
+        if (!timeMatch) return '<span class="' + classes + '">' + escapeHtml(truncateLabel(label, 4)) + '</span>';
+        var title = label.slice(timeMatch[0].length);
+        return '<span class="' + classes + ' has-time"><span class="calendar-strip-time">' + escapeHtml(timeMatch[1]) + '</span><span class="calendar-strip-title">' + escapeHtml(truncateLabel(title, 4)) + '</span></span>';
       }).join('');
       var overflow = entries.length > maxStrips ? '<span class="calendar-more">+' + (entries.length - maxStrips) + '</span>' : '';
       return [
@@ -1461,6 +1481,260 @@
     } catch(e) {}
   }
 
+  function isQuickEditorOpen() {
+    return appState.quickEditor.session === 'open';
+  }
+
+  function readQuickDraft() {
+    var raw = {
+      title: els.quickTitle.value,
+      notes: els.quickNotes.value,
+      priority: els.quickPriority.value,
+      area: els.quickArea.value,
+      tone: els.quickTone.value,
+      startDate: els.quickDate.value,
+      endDate: els.quickEndDate.value,
+      timeMode: els.quickTimeMode.value,
+      startTime: els.quickStartTime.value,
+      endTime: els.quickEndTime.value,
+      repeat: els.quickRepeat.value,
+      customRepeat: appState.customRepeat,
+      reminder: els.quickReminder.value,
+      customReminder: appState.customReminder
+    };
+    var draft = QuickEditor.normalizeDraft(raw, { todayKey: appState.todayKey });
+    if (!raw.startDate) { draft.startDate = ''; draft.endDate = ''; }
+    return draft;
+  }
+
+  function persistCreateDraft() {
+    if (appState.editingTaskId) return;
+    try {
+      localStorage.setItem(QUICK_DRAFT_KEY, JSON.stringify(readQuickDraft()));
+    } catch (error) {}
+  }
+
+  function clearCreateDraft() {
+    try {
+      localStorage.removeItem(QUICK_DRAFT_KEY);
+    } catch (error) {}
+  }
+
+  function applyQuickDraft(draft) {
+    els.quickTitle.value = draft.title;
+    els.quickNotes.value = draft.notes;
+    setChoiceValue('quick-priority', draft.priority);
+    setChoiceValue('quick-area', draft.area);
+    setChoiceValue('quick-tone', draft.tone);
+    els.quickDate.value = draft.startDate;
+    els.quickEndDate.value = draft.endDate;
+    setQuickDate(draft.startDate);
+    setChoiceValue('quick-time-mode', draft.timeMode);
+    els.quickStartTime.value = draft.startTime;
+    els.quickEndTime.value = draft.endTime;
+    setChoiceValue('quick-repeat', draft.repeat);
+    setChoiceValue('quick-reminder', draft.reminder);
+    appState.customRepeat = draft.customRepeat;
+    appState.customReminder = draft.customReminder;
+    autoResizeTextarea(els.quickNotes);
+    updateTimeDisplay();
+    updateToolStates();
+    updateQuickSummary();
+    renderQuickSurface();
+  }
+
+  function setQuickSurface(surface) {
+    if (!QuickEditor || !surface) return;
+    if (appState.quickEditor.surface === surface && surface !== 'detail') {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
+      renderQuickSurface();
+      focusQuickTitle();
+      return;
+    }
+    if (document.activeElement === els.quickTitle || document.activeElement === els.quickNotes) document.activeElement.blur();
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+      type: surface === 'detail' ? 'OPEN_DETAIL' : 'OPEN_TOOL',
+      tool: surface
+    });
+    renderQuickSurface();
+  }
+
+  function renderQuickSurface() {
+    if (!els.quickExtraPanel) return;
+    var state = appState.quickEditor;
+    updateQuickSummary();
+    document.querySelectorAll('.quick-tool-btn').forEach(function(button) {
+      var open = button.dataset.tool === state.surface;
+      button.classList.toggle('is-open', open);
+      button.setAttribute('aria-pressed', String(open));
+    });
+    if (state.surface === 'keyboard') {
+      els.quickExtraPanel.hidden = true;
+      els.quickExtraPanel.innerHTML = '';
+      return;
+    }
+    if (state.surface === 'date') renderDateSurface();
+    else if (state.surface === 'priority') renderPrioritySurface();
+    else if (state.surface === 'area') renderAreaSurface();
+    else if (state.surface === 'tone') renderToneSurface();
+  }
+
+  function handleQuickDraftChange() {
+    updateTimeDisplay();
+    updateToolStates();
+    if (typeof updateQuickSummary === 'function') updateQuickSummary();
+    renderQuickSurface();
+    if (!appState.editingTaskId) persistCreateDraft();
+  }
+
+  function updateQuickSummary() {
+    var draft = readQuickDraft();
+    var dateText = !draft.startDate ? '待定' : draft.startDate === draft.endDate
+      ? formatDateLabel(draft.startDate)
+      : formatDateLabel(draft.startDate) + '–' + formatDateLabel(draft.endDate);
+    var timeText = draft.timeMode === 'all-day' ? '全天' : draft.timeMode === 'range'
+      ? draft.startTime + '–' + draft.endTime : draft.startTime;
+    if (els.quickSummary) {
+      els.quickSummary.textContent = [dateText, timeText, formatRepeatLabel(draft.repeat, draft.customRepeat), formatReminderLabel(draft.reminder, draft.customReminder)]
+        .filter(function(value) { return value && value !== '不重复' && value !== '不提醒'; }).join(' · ');
+    }
+    var saveButton = els.quickForm && els.quickForm.querySelector('.quick-send-btn');
+    if (saveButton) saveButton.disabled = !String(draft.title || '').trim();
+  }
+
+  function lockQuickEditorScroll() {
+    appState.quickScrollY = window.scrollY || 0;
+    document.body.style.top = '-' + appState.quickScrollY + 'px';
+    document.body.classList.add('quick-editor-open');
+  }
+
+  var quickInertElements = [];
+
+  function setQuickEditorBackgroundInert(active) {
+    if (!document.body) return;
+    if (!active) {
+      quickInertElements.forEach(function(entry) {
+        entry.node.inert = entry.inert;
+        if (entry.ariaHidden === null) entry.node.removeAttribute('aria-hidden');
+        else entry.node.setAttribute('aria-hidden', entry.ariaHidden);
+      });
+      quickInertElements = [];
+      return;
+    }
+    quickInertElements = [];
+    Array.prototype.forEach.call(document.body.children, function(node) {
+      if (node === els.sheetBackdrop || node === els.quickSheet || node === els.quickFullPanel ||
+          node === els.pickerBackdrop || node === els.pickerSheet || node === els.calPickerSheet ||
+          node === els.toast || node.tagName === 'SCRIPT') return;
+      quickInertElements.push({ node: node, inert: Boolean(node.inert), ariaHidden: node.getAttribute('aria-hidden') });
+      node.inert = true;
+      node.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  function quickFocusRoot() {
+    if (!isQuickEditorOpen()) return null;
+    if (els.pickerSheet && !els.pickerSheet.hidden) return null;
+    if (els.calPickerSheet && !els.calPickerSheet.hidden) return null;
+    if (isQuickFullPanelOpen()) return els.quickFullPanel;
+    return els.quickSheet && !els.quickSheet.hidden ? els.quickSheet : null;
+  }
+
+  function trapQuickEditorFocus(event) {
+    var root = quickFocusRoot();
+    if (!root) return;
+    if (event.key === 'Tab') {
+      var focusable = Array.prototype.filter.call(root.querySelectorAll('a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'), function(node) {
+        return !node.hidden && node.offsetParent !== null;
+      });
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (!root.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    if (isPendingConfirmationOpen()) {
+      renderDateParent(true);
+    } else if (isQuickFullPanelOpen() && appState.quickEditor.surface !== 'detail') {
+      returnQuickFullToDetailSummary();
+    } else if (isQuickFullPanelOpen()) {
+      closeQuickFullPanel({ focusTitle: true });
+    } else if (appState.quickEditor.surface === 'date' && appState.quickEditor.dateChild !== 'none') {
+      finishDateChild(false);
+    } else if (appState.quickEditor.surface !== 'keyboard') {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
+      renderQuickSurface();
+      focusQuickTitle();
+    } else {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    }
+  }
+
+  function unlockQuickEditorScroll() {
+    document.body.classList.remove('quick-editor-open');
+    document.body.style.top = '';
+    window.scrollTo(0, appState.quickScrollY || 0);
+  }
+
+  function updateQuickViewportHeight() {
+    var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--quick-viewport-height', height + 'px');
+  }
+
+  function openQuickSession(mode, source) {
+    var sessionMode = mode || 'create';
+    appState.quickEditor = QuickEditor.transition(QuickEditor.createSessionState(sessionMode), { type: 'OPEN' });
+    var stored = sessionMode === 'create' ? QuickEditor.parseStoredDraft((function() {
+      try { return localStorage.getItem(QUICK_DRAFT_KEY); } catch (error) { return null; }
+    })()) : null;
+    var initial = stored || source || {};
+    applyQuickDraft(QuickEditor.normalizeDraft(initial, { todayKey: appState.todayKey }));
+    closeQuickExtra();
+    closeQuickFullPanel();
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    lockQuickEditorScroll();
+    setQuickEditorBackgroundInert(true);
+    updateQuickViewportHeight();
+    void els.quickSheet.offsetHeight;
+    focusQuickTitle();
+  }
+
+  function closeQuickSession(options) {
+    var opts = options || {};
+    if (!appState.editingTaskId && opts.keepDraft !== false) persistCreateDraft();
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE' });
+    var activeQuickDrag = quickDrag;
+    quickDrag = null;
+    els.quickSheet.classList.remove('is-dragging');
+    els.quickSheet.style.removeProperty('--quick-drag-offset');
+    if (activeQuickDrag && els.quickDragHandle && els.quickDragHandle.hasPointerCapture && els.quickDragHandle.hasPointerCapture(activeQuickDrag.id)) {
+      els.quickDragHandle.releasePointerCapture(activeQuickDrag.id);
+    }
+    closeQuickExtra();
+    closeQuickFullPanel();
+    closePicker();
+    els.sheetBackdrop.hidden = true;
+    els.quickSheet.hidden = true;
+    els.quickFullPanel.hidden = true;
+    unlockQuickEditorScroll();
+    setQuickEditorBackgroundInert(false);
+    appState.editingTaskId = '';
+    appState.editingType = '';
+    if (opts.restoreFocus && els.openAdd) els.openAdd.focus();
+  }
+
   function openSheet() {
     appState.editingTaskId = '';
     appState.editingType = '';
@@ -1468,63 +1742,50 @@
     appState.customReminder = null;
     var sheetTitle = $('quick-sheet-title');
     if (sheetTitle) sheetTitle.textContent = '新增事项';
-    els.quickEditId.value = '';
-    setChoiceValue('quick-priority', 'medium');
-    setChoiceValue('quick-area', 'life');
-    setChoiceValue('quick-repeat', 'none');
-    setChoiceValue('quick-time-mode', 'all-day');
-    setChoiceValue('quick-reminder', 'none');
-    setChoiceValue('quick-tone', '');
-    els.quickStartTime.value = '';
-    els.quickEndTime.value = '';
-    updateTimeDisplay();
-    if (els.quickRepeatCustomHint) {
-      els.quickRepeatCustomHint.hidden = true;
-      els.quickRepeatCustomHint.textContent = '';
-    }
     var defaultDate = appState.todayKey;
-    var defaultLabel = 'today';
     if (appState.view === 'calendar' && appState.selectedDateKey) {
       defaultDate = appState.selectedDateKey;
-      defaultLabel = defaultDate === appState.todayKey ? 'today' : 'custom';
     }
-    setQuickDate(defaultDate, defaultLabel);
-    if (els.quickMoreSettings) els.quickMoreSettings.open = false;
-    closeQuickExtra();
-    closeQuickFullPanel();
-    updateToolStates();
-    autoResizeTextarea(els.quickNotes);
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
-    void els.quickSheet.offsetHeight;
-    focusQuickTitle();
+    els.quickEditId.value = '';
+    openQuickSession('create', { startDate: defaultDate, endDate: defaultDate });
   }
 
   function closeSheet() {
-    closeQuickExtra();
-    closeQuickFullPanel();
-    els.sheetBackdrop.hidden = true;
-    els.quickSheet.hidden = true;
-    els.quickForm.reset();
-    appState.customRepeat = null;
-    appState.customReminder = null;
-    closePicker();
-    setChoiceValue('quick-priority', 'medium');
-    setChoiceValue('quick-area', 'life');
-    setChoiceValue('quick-repeat', 'none');
-    setChoiceValue('quick-time-mode', 'all-day');
-    setChoiceValue('quick-reminder', 'none');
-    setChoiceValue('quick-tone', '');
-    els.quickStartTime.value = '';
-    els.quickEndTime.value = '';
-    updateTimeDisplay();
-    if (els.quickRepeatCustomHint) {
-      els.quickRepeatCustomHint.hidden = true;
-      els.quickRepeatCustomHint.textContent = '';
+    closeQuickSession({ keepDraft: true, restoreFocus: true });
+  }
+
+  function finishQuickDrag(event, canClose) {
+    if (!quickDrag || quickDrag.id !== event.pointerId) return;
+    var threshold = Math.min(120, els.quickSheet.getBoundingClientRect().height * 0.22);
+    var shouldClose = canClose && quickDrag.deltaY >= threshold;
+    quickDrag = null;
+    els.quickSheet.classList.remove('is-dragging');
+    els.quickSheet.style.removeProperty('--quick-drag-offset');
+    if (els.quickDragHandle.hasPointerCapture && els.quickDragHandle.hasPointerCapture(event.pointerId)) {
+      els.quickDragHandle.releasePointerCapture(event.pointerId);
     }
-    if (els.quickMoreSettings) els.quickMoreSettings.open = false;
-    appState.editingTaskId = '';
-    appState.editingType = '';
+    if (shouldClose) closeQuickSession({ keepDraft: true, restoreFocus: true });
+  }
+
+  function bindQuickDragHandle() {
+    els.quickDragHandle.addEventListener('pointerdown', function(event) {
+      if (!isQuickEditorOpen()) return;
+      quickDrag = { id: event.pointerId, startY: event.clientY, deltaY: 0 };
+      els.quickDragHandle.setPointerCapture(event.pointerId);
+      els.quickSheet.classList.add('is-dragging');
+      els.quickSheet.style.setProperty('--quick-drag-offset', '0px');
+    });
+    els.quickDragHandle.addEventListener('pointermove', function(event) {
+      if (!quickDrag || quickDrag.id !== event.pointerId) return;
+      quickDrag.deltaY = Math.max(0, event.clientY - quickDrag.startY);
+      els.quickSheet.style.setProperty('--quick-drag-offset', quickDrag.deltaY + 'px');
+    });
+    els.quickDragHandle.addEventListener('pointerup', function(event) {
+      finishQuickDrag(event, true);
+    });
+    els.quickDragHandle.addEventListener('pointercancel', function(event) {
+      finishQuickDrag(event, false);
+    });
   }
 
   // 自动调整textarea高度
@@ -1732,10 +1993,14 @@
 
   function openQuickFullPanel() {
     if (!els.quickFullPanel || !els.quickSheet) return;
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DETAIL' });
     closeQuickExtra();
     renderQuickFullPanel();
-    els.quickSheet.classList.add('is-full');
+    els.quickSheet.hidden = true;
+    els.quickSheet.setAttribute('aria-hidden', 'true');
+    els.quickSheet.inert = true;
     els.quickFullPanel.hidden = false;
+    if (els.quickFullBack) els.quickFullBack.focus();
     if (els.quickTitle && document.activeElement === els.quickTitle) {
       els.quickTitle.blur();
     }
@@ -1744,10 +2009,24 @@
     }
   }
 
+  function returnQuickFullToDetailSummary() {
+    appState.quickChildDraft = null;
+    appState.quickChildWheels = null;
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DETAIL' });
+    renderQuickFullPanel();
+    if (els.quickFullBack) els.quickFullBack.focus();
+  }
+
   function closeQuickFullPanel(options) {
     if (!els.quickFullPanel || !els.quickSheet) return;
-    els.quickSheet.classList.remove('is-full');
+    if (isQuickEditorOpen()) {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DETAIL' });
+    }
     els.quickFullPanel.hidden = true;
+    els.quickSheet.hidden = false;
+    els.quickSheet.removeAttribute('aria-hidden');
+    els.quickSheet.inert = false;
+    renderQuickSurface();
     if (options && options.focusTitle && els.quickTitle) {
       void els.quickSheet.offsetHeight;
       focusQuickTitle();
@@ -1756,15 +2035,15 @@
 
   function renderQuickFullPanel() {
     if (!els.quickFullBody) return;
+    var draft = readQuickDraft();
     var s = getQuickSummary();
-    var title = (els.quickTitle && els.quickTitle.value.trim()) || '未命名事项';
     var html = '';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">标题</div>';
-    html += '<input type="text" class="quick-full-input" id="qf-title-input" value="' + escapeHtml(els.quickTitle.value) + '" placeholder="事项标题"></div>';
+    html += '<input type="text" class="quick-full-input" id="qf-title-input" value="' + escapeHtml(draft.title) + '" placeholder="事项标题"></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">备注</div>';
-    html += '<textarea class="quick-full-textarea" id="qf-notes-input" rows="4" placeholder="添加备注...">' + escapeHtml(els.quickNotes.value || '') + '</textarea></div>';
+    html += '<textarea class="quick-full-textarea" id="qf-notes-input" rows="4" placeholder="添加备注...">' + escapeHtml(draft.notes) + '</textarea></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">日期与时间</div>';
     html += '<button type="button" class="quick-full-value" data-qf-jump="date">';
@@ -1803,16 +2082,19 @@
     els.quickFullBody.querySelectorAll('[data-qf-jump]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var tool = btn.dataset.qfJump;
-        closeQuickFullPanel();
-        setTimeout(function() {
-          openQuickTool(tool);
-        }, 280);
+        appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: tool === 'repeat' || tool === 'reminder' ? 'date' : tool });
+        if (tool === 'repeat' || tool === 'reminder') {
+          appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), tool);
+          appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: tool });
+        }
+        renderQuickSurface();
       });
     });
     var qfTitle = els.quickFullBody.querySelector('#qf-title-input');
     if (qfTitle) {
       qfTitle.addEventListener('input', function() {
         els.quickTitle.value = qfTitle.value;
+        handleQuickDraftChange();
       });
     }
     var qfNotes = els.quickFullBody.querySelector('#qf-notes-input');
@@ -1820,6 +2102,7 @@
       qfNotes.addEventListener('input', function() {
         els.quickNotes.value = qfNotes.value;
         autoResizeTextarea(els.quickNotes);
+        handleQuickDraftChange();
       });
     }
   }
@@ -1905,8 +2188,11 @@
           dtCalendarState.viewYear = today.getFullYear();
           dtCalendarState.viewMonth = today.getMonth();
           dtCalendarState.selectedDate = todayKey;
-          setQuickDate(todayKey, 'today');
-          updateToolStates();
+          if (appState.quickEditor.surface === 'date') {
+            applyQuickDateSelection(todayKey);
+            return;
+          }
+          setQuickDate(todayKey, 'today'); handleQuickDraftChange();
         }
         renderDatetimeCalendar(container, dtCalendarState.selectedDate);
       });
@@ -1915,274 +2201,222 @@
     container.querySelectorAll('[data-cal-date]').forEach(function(dayBtn) {
       dayBtn.addEventListener('click', function() {
         dtCalendarState.selectedDate = dayBtn.dataset.calDate;
-        setQuickDate(dtCalendarState.selectedDate, 'custom');
-        renderDatetimeCalendar(container, dtCalendarState.selectedDate);
-        updateToolStates();
+        if (appState.quickEditor.surface === 'date') {
+          applyQuickDateSelection(dtCalendarState.selectedDate);
+          return;
+        }
+        setQuickDate(dtCalendarState.selectedDate, 'custom'); renderDatetimeCalendar(container, dtCalendarState.selectedDate); handleQuickDraftChange();
       });
     });
   }
 
-  // 打开工具extra面板
   function openQuickTool(tool) {
-    closeQuickExtra();
-    closeQuickFullPanel();
-    if (!els.quickExtraPanel) return;
-
-    var html = '';
-    var currentDate = els.quickDate ? els.quickDate.value : '';
-    var currentTimeMode = els.quickTimeMode ? els.quickTimeMode.value : 'all-day';
-    var currentPriorityRaw = els.quickPriority ? els.quickPriority.value : '';
-    var currentPriority = PRIORITY_TO_QUAD[currentPriorityRaw] || 'q4';
-    var currentRepeat = els.quickRepeat ? els.quickRepeat.value : 'none';
-    var currentReminder = els.quickReminder ? els.quickReminder.value : 'none';
-    var currentArea = els.quickArea ? els.quickArea.value : '';
-    var currentTone = els.quickTone ? els.quickTone.value : '';
-
-    function getDatePreset() {
-      if (!currentDate) return 'pending';
-      if (currentDate === appState.todayKey) return 'today';
-      if (currentDate === tomorrowKey()) return 'tomorrow';
-      if (currentDate === weekendKey()) return 'weekend';
-      return 'custom';
-    }
-    var datePreset = getDatePreset();
-
-    if (tool === 'date') {
-      dtCalendarState.viewYear = 0;
-      html += '<div class="quick-datetime-panel">';
-      html += '<div id="quick-dt-calendar-container"></div>';
-
-      html += '<div class="quick-datetime-quick">';
-      var quickDates = [
-        { preset: 'today', label: '今天' },
-        { preset: 'tomorrow', label: '明天' },
-        { preset: 'weekend', label: '周末' },
-        { preset: 'pending', label: '待定' }
-      ];
-      quickDates.forEach(function(item) {
-        var selected = datePreset === item.preset ? ' is-selected' : '';
-        html += '<button type="button" class="quick-datetime-quick-btn' + selected + '" data-date-preset="' + item.preset + '">' + item.label + '</button>';
-      });
-      html += '</div>';
-
-      html += '<div class="quick-datetime-options">';
-      html += '<button type="button" class="quick-datetime-opt' + (currentTimeMode === 'all-day' ? ' is-active' : '') + '" data-dt-opt="time-all">';
-      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-      html += '<span class="quick-datetime-opt-label">全天</span></button>';
-
-      html += '<button type="button" class="quick-datetime-opt' + (currentTimeMode !== 'all-day' ? ' is-active' : '') + '" data-dt-opt="time-set">';
-      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-      html += '<span class="quick-datetime-opt-label">时间</span></button>';
-
-      html += '<button type="button" class="quick-datetime-opt' + (currentRepeat !== 'none' ? ' is-active' : '') + '" data-dt-opt="repeat">';
-      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
-      html += '<span class="quick-datetime-opt-label">重复</span></button>';
-
-      html += '<button type="button" class="quick-datetime-opt' + (currentReminder !== 'none' ? ' is-active' : '') + '" data-dt-opt="reminder">';
-      html += '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-      html += '<span class="quick-datetime-opt-label">提醒</span></button>';
-
-      html += '</div></div>';
-
-    } else if (tool === 'priority') {
-      html += '<div class="quick-priority-panel">';
-      html += '<div class="quick-priority-grid">';
-      QUAD_PRIORITIES.forEach(function(q) {
-        var selected = currentPriority === q.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-priority-quad q' + q.value.charAt(1) + selected + '" data-quad="' + q.value + '">';
-        html += '<span class="quick-priority-roman">' + q.roman + '</span>';
-        html += '<span class="quick-priority-label">' + q.label + '</span>';
-        html += '<span class="quick-priority-desc">' + q.desc + '</span>';
-        html += '</button>';
-      });
-      html += '</div></div>';
-
-    } else if (tool === 'area') {
-      html += '<div class="quick-area-panel">';
-      var areaKeys = Object.keys(AREA_LABELS);
-      areaKeys.forEach(function(key) {
-        var selected = currentArea === key ? ' is-selected' : '';
-        html += '<button type="button" class="quick-area-item' + selected + '" data-area="' + key + '">';
-        html += '<span class="quick-area-icon" style="background:' + AREA_COLORS[key] + '22;color:' + AREA_COLORS[key] + '">' + AREA_ICONS[key] + '</span>';
-        html += '<span class="quick-area-info"><span class="quick-area-name">' + AREA_LABELS[key] + '</span></span>';
-        html += '<span class="quick-area-check">' + (currentArea === key ? '✓' : '') + '</span>';
-        html += '</button>';
-      });
-      if (currentArea) {
-        html += '<button type="button" class="quick-area-item" data-area="">';
-        html += '<span class="quick-area-icon" style="background:var(--surface-soft);color:var(--text-muted)">✕</span>';
-        html += '<span class="quick-area-info"><span class="quick-area-name" style="color:var(--text-muted)">清除归属</span></span>';
-        html += '<span class="quick-area-check"></span>';
-        html += '</button>';
-      }
-      html += '</div>';
-
-    } else if (tool === 'tone') {
-      html += '<div class="quick-tone-panel">';
-      html += '<div class="quick-tone-grid">';
-      TONE_LIST.forEach(function(tone) {
-        var selected = currentTone === tone.value ? ' is-selected' : '';
-        var isNone = tone.value === '';
-        var style = isNone ? '' : 'background:' + tone.color;
-        html += '<button type="button" class="quick-tone-swatch' + (isNone ? ' quick-tone-none' : '') + selected + '" data-tone="' + tone.value + '" style="' + style + '">';
-        if (isNone) html += '✕';
-        html += '</button>';
-      });
-      html += '</div></div>';
-
-    } else if (tool === 'more') {
-      openQuickFullPanel();
-      return;
-    } else if (tool === 'repeat') {
-      html += '<div style="padding:16px;">';
-      html += '<div style="display:grid;gap:8px;">';
-      var repeatOptions = [
-        { value: 'none', label: '不重复' },
-        { value: 'daily', label: '每天' },
-        { value: 'weekly', label: '每周' }
-      ];
-      repeatOptions.forEach(function(opt) {
-        var selected = currentRepeat === opt.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-area-item' + selected + '" data-repeat="' + opt.value + '" style="border-radius:12px;">';
-        html += '<span class="quick-area-name" style="font-size:15px;">' + opt.label + '</span>';
-        html += '<span class="quick-area-check">' + (currentRepeat === opt.value ? '✓' : '') + '</span>';
-        html += '</button>';
-      });
-      html += '</div></div>';
-
-    } else if (tool === 'reminder') {
-      html += '<div style="padding:16px;">';
-      html += '<div style="display:grid;gap:8px;">';
-      var reminderOptions = [
-        { value: 'none', label: '不提醒' },
-        { value: 'at-time', label: '准时提醒' },
-        { value: '5', label: '5分钟前' },
-        { value: '15', label: '15分钟前' },
-        { value: '30', label: '30分钟前' },
-        { value: '60', label: '1小时前' }
-      ];
-      reminderOptions.forEach(function(opt) {
-        var selected = currentReminder === opt.value ? ' is-selected' : '';
-        html += '<button type="button" class="quick-area-item' + selected + '" data-reminder="' + opt.value + '" style="border-radius:12px;">';
-        html += '<span class="quick-area-name" style="font-size:15px;">' + opt.label + '</span>';
-        html += '<span class="quick-area-check">' + (currentReminder === opt.value ? '✓' : '') + '</span>';
-        html += '</button>';
-      });
-      html += '</div></div>';
-    }
-
-    els.quickExtraPanel.innerHTML = html;
-    els.quickExtraPanel.hidden = false;
-
-    if (els.quickTools) {
-      var curBtn = els.quickTools.querySelector('[data-tool="' + tool + '"]');
-      if (curBtn) curBtn.classList.add('is-open');
-    }
-    if (els.quickTitle && document.activeElement === els.quickTitle) {
-      els.quickTitle.blur();
-    }
-    if (els.quickNotes && document.activeElement === els.quickNotes) {
-      els.quickNotes.blur();
-    }
-
-    if (tool === 'date') {
-      var calContainer = document.getElementById('quick-dt-calendar-container');
-      if (calContainer) {
-        renderDatetimeCalendar(calContainer, currentDate);
-      }
-
-      els.quickExtraPanel.querySelectorAll('[data-date-preset]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var preset = btn.dataset.datePreset;
-          dtCalendarState.viewYear = 0;
-          if (preset === 'pending') {
-            setQuickDate('', 'pending');
-            dtCalendarState.selectedDate = '';
-          } else {
-            var dateKey = '';
-            if (preset === 'today') dateKey = appState.todayKey;
-            else if (preset === 'tomorrow') dateKey = tomorrowKey();
-            else if (preset === 'weekend') dateKey = weekendKey();
-            setQuickDate(dateKey, preset);
-            dtCalendarState.selectedDate = dateKey;
-          }
-          openQuickTool('date');
-          updateToolStates();
-        });
-      });
-
-      els.quickExtraPanel.querySelectorAll('[data-dt-opt]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var opt = btn.dataset.dtOpt;
-          if (opt === 'time-all') {
-            setChoiceValue('quick-time-mode', 'all-day');
-            updateToolStates();
-            openQuickTool('date');
-          } else if (opt === 'time-set') {
-            if (!currentDate) {
-              setQuickDate(appState.todayKey, 'today');
-              dtCalendarState.selectedDate = appState.todayKey;
-            }
-            openTimePickerForV2({ isQuick: true, onSelect: function(t) {
-              setChoiceValue('quick-time-mode', 'point');
-              els.quickStartTime.value = t;
-              updateToolStates();
-            }});
-          } else if (opt === 'repeat') {
-            openQuickTool('repeat');
-          } else if (opt === 'reminder') {
-            openQuickTool('reminder');
-          }
-        });
-      });
-    }
-
-    els.quickExtraPanel.querySelectorAll('[data-quad]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var quad = btn.dataset.quad;
-        setChoiceValue('quick-priority', quad);
-        updateToolStates();
-        openQuickTool('priority');
-      });
-    });
-
-    els.quickExtraPanel.querySelectorAll('[data-area]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        setChoiceValue('quick-area', btn.dataset.area);
-        updateToolStates();
-        openQuickTool('area');
-      });
-    });
-
-    els.quickExtraPanel.querySelectorAll('[data-tone]').forEach(function(swatch) {
-      swatch.addEventListener('click', function() {
-        setChoiceValue('quick-tone', swatch.dataset.tone);
-        updateToolStates();
-        openQuickTool('tone');
-      });
-    });
-
-    els.quickExtraPanel.querySelectorAll('[data-repeat]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        setChoiceValue('quick-repeat', btn.dataset.repeat);
-        updateToolStates();
-        openQuickTool('repeat');
-      });
-    });
-
-    els.quickExtraPanel.querySelectorAll('[data-reminder]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        setChoiceValue('quick-reminder', btn.dataset.reminder);
-        updateToolStates();
-        openQuickTool('reminder');
-      });
-    });
+    if (tool === 'more') { openQuickFullPanel(); return; }
+    setQuickSurface(tool);
   }
 
-  // 兼容新UI的时间选择器
-  function openTimePickerForV2(target) {
-    if (typeof openTimePicker === 'function') {
-      openTimePicker(target);
+  function isQuickFullPanelOpen() {
+    return Boolean(els.quickFullPanel && !els.quickFullPanel.hidden);
+  }
+
+  function quickPanelHost() {
+    return isQuickFullPanelOpen() ? els.quickFullBody : els.quickExtraPanel;
+  }
+
+  function replaceQuickPanel(html) {
+    var host = quickPanelHost();
+    if (!host) return;
+    host.innerHTML = html;
+    if (host === els.quickExtraPanel) host.hidden = false;
+  }
+
+  function renderPrioritySurface() {
+    var current = PRIORITY_TO_QUAD[els.quickPriority.value] || 'q4';
+    var html = '<div class="quick-priority-panel"><div class="quick-priority-grid">';
+    QUAD_PRIORITIES.forEach(function(q) {
+      html += '<button type="button" class="quick-priority-quad q' + q.value.charAt(1) + (current === q.value ? ' is-selected' : '') + '" data-quad="' + q.value + '"><span class="quick-priority-roman">' + q.roman + '</span><span class="quick-priority-label">' + q.label + '</span><span class="quick-priority-desc">' + q.desc + '</span></button>';
+    });
+    replaceQuickPanel(html + '</div></div>');
+    quickPanelHost().querySelectorAll('[data-quad]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-priority', btn.dataset.quad); handleQuickDraftChange(); renderPrioritySurface(); }); });
+  }
+
+  function renderAreaSurface() {
+    var current = els.quickArea.value;
+    var html = '<div class="quick-area-panel">';
+    Object.keys(AREA_LABELS).forEach(function(key) {
+      html += '<button type="button" class="quick-area-item' + (current === key ? ' is-selected' : '') + '" data-area="' + key + '"><span class="quick-area-icon" style="background:' + AREA_COLORS[key] + '22;color:' + AREA_COLORS[key] + '">' + AREA_ICONS[key] + '</span><span class="quick-area-info"><span class="quick-area-name">' + AREA_LABELS[key] + '</span></span><span class="quick-area-check">' + (current === key ? '✓' : '') + '</span></button>';
+    });
+    replaceQuickPanel(html + '</div>');
+    quickPanelHost().querySelectorAll('[data-area]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-area', btn.dataset.area); handleQuickDraftChange(); renderAreaSurface(); }); });
+  }
+
+  function renderToneSurface() {
+    var current = els.quickTone.value;
+    var html = '<div class="quick-tone-panel"><div class="quick-tone-grid">';
+    TONE_LIST.forEach(function(tone) { var none = tone.value === ''; html += '<button type="button" class="quick-tone-swatch' + (none ? ' quick-tone-none' : '') + (current === tone.value ? ' is-selected' : '') + '" data-tone="' + tone.value + '" style="' + (none ? '' : 'background:' + tone.color) + '">' + (none ? '✕' : '') + '</button>'; });
+    replaceQuickPanel(html + '</div></div>');
+    quickPanelHost().querySelectorAll('[data-tone]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-tone', btn.dataset.tone); handleQuickDraftChange(); renderToneSurface(); }); });
+  }
+
+  function renderDateSurface() {
+    if (appState.quickEditor.dateChild === 'none') renderDateParent();
+    else renderDateChild(appState.quickEditor.dateChild);
+  }
+
+  function hasScheduleDependentValues(draft) {
+    return Boolean(draft.startDate || draft.endDate || draft.timeMode !== 'all-day' || draft.startTime || draft.endTime ||
+      draft.repeat !== 'none' || draft.customRepeat || draft.reminder !== 'none' || draft.customReminder);
+  }
+
+  function isPendingConfirmationOpen() {
+    var panel = quickPanelHost();
+    return Boolean(panel && panel.querySelector('[data-pending-cancel]'));
+  }
+
+  function applyPendingDate() {
+    applyQuickDraft(QuickEditor.setPending(readQuickDraft()));
+    handleQuickDraftChange();
+    renderDateParent(true);
+  }
+
+  function renderPendingConfirmation() {
+    replaceQuickPanel('<section class="quick-pending-confirmation" aria-labelledby="quick-pending-title"><strong id="quick-pending-title">设为待定？</strong><p>这会清除日期、时间、提醒和重复设置。</p><div><button type="button" data-pending-cancel="true">取消</button><button type="button" data-pending-confirm="true">设为待定</button></div></section>');
+    var panel = quickPanelHost();
+    var cancel = panel.querySelector('[data-pending-cancel]');
+    cancel.addEventListener('click', function() { renderDateParent(true); });
+    panel.querySelector('[data-pending-confirm]').addEventListener('click', applyPendingDate);
+    cancel.focus();
+  }
+
+  function requestPendingDate() {
+    if (hasScheduleDependentValues(readQuickDraft())) {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: 'date' });
+      renderPendingConfirmation();
+    } else {
+      applyPendingDate();
+    }
+  }
+
+  function applyQuickDateSelection(dateKey) {
+    var draft = readQuickDraft();
+    var wasClamped = appState.quickEditor.datePhase === 'end' && Boolean(draft.startDate) && dateKey < draft.startDate;
+    applyQuickDraft(QuickEditor.setDraftDate(draft, appState.quickEditor.datePhase, dateKey));
+    handleQuickDraftChange();
+    if (wasClamped) showToast('结束日期不能早于开始日期，已调整为开始日期');
+    renderDateParent();
+  }
+
+  function renderDateParent(focusPending) {
+    var draft = readQuickDraft();
+    var phase = appState.quickEditor.datePhase;
+    var html = '<div class="quick-datetime-panel"><div class="quick-date-tabs" role="tablist" aria-label="日期范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-date-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-date-phase="end">结束</button></div><div id="quick-dt-calendar-container"></div><div class="quick-datetime-quick" id="quick-date-presets"></div><div class="quick-date-settings"><button type="button" data-date-child="time"><span>时间</span><strong id="quick-date-time-summary">' + escapeHtml(getQuickSummary().timeLabel) + '</strong></button><button type="button" data-date-child="reminder"><span>提醒</span><strong id="quick-date-reminder-summary">' + escapeHtml(formatReminderLabel(draft.reminder, draft.customReminder)) + '</strong></button><button type="button" data-date-child="repeat"><span>重复</span><strong id="quick-date-repeat-summary">' + escapeHtml(formatRepeatLabel(draft.repeat, draft.customRepeat)) + '</strong></button></div></div>';
+    replaceQuickPanel(html);
+    dtCalendarState.viewYear = 0;
+    renderDatetimeCalendar(document.getElementById('quick-dt-calendar-container'), phase === 'start' ? draft.startDate : draft.endDate);
+    var presetHost = document.getElementById('quick-date-presets');
+    var phaseValue = phase === 'start' ? draft.startDate : draft.endDate;
+    [{ key: 'today', label: '今天', value: appState.todayKey }, { key: 'tomorrow', label: '明天', value: tomorrowKey() }, { key: 'weekend', label: '周末', value: weekendKey() }, { key: 'pending', label: '待定', value: '' }].forEach(function(item) {
+      var btn = document.createElement('button');
+      var selected = phaseValue === item.value;
+      btn.type = 'button'; btn.className = 'quick-datetime-quick-btn' + (selected ? ' is-selected' : ''); btn.dataset.datePreset = item.key; btn.setAttribute('aria-pressed', String(selected)); btn.textContent = item.label;
+      btn.addEventListener('click', function() {
+        if (!item.value) {
+          requestPendingDate();
+          return;
+        }
+        applyQuickDateSelection(item.value);
+      });
+      presetHost.appendChild(btn);
+    });
+    quickPanelHost().querySelectorAll('[data-date-phase]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SET_DATE_PHASE', phase: btn.dataset.datePhase }); renderDateParent(); }); });
+    quickPanelHost().querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
+    if (focusPending) {
+      var pendingButton = quickPanelHost().querySelector('[data-date-preset="pending"]');
+      if (pendingButton) pendingButton.focus();
+    }
+  }
+
+  function commitDateChild() {
+    var merged = QuickEditor.applyChildDraft(readQuickDraft(), appState.quickChildDraft);
+    var validity = QuickEditor.validateSchedule(merged);
+    if (!validity.valid) { var error = quickPanelHost().querySelector('.quick-date-child-error'); if (error) error.textContent = validity.message; return false; }
+    applyQuickDraft(merged);
+    handleQuickDraftChange();
+    return true;
+  }
+
+  function finishDateChild(commit) {
+    if (commit && !commitDateChild()) return;
+    appState.quickChildDraft = null;
+    appState.quickChildWheels = null;
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DATE_CHILD' });
+    renderDateSurface();
+  }
+
+  function renderDateChild(type) {
+    var child = appState.quickChildDraft || QuickEditor.createChildDraft(readQuickDraft(), type);
+    appState.quickChildDraft = child;
+    var labels = { time: '时间', reminder: '提醒', repeat: '重复' };
+    replaceQuickPanel('<div class="quick-date-child-panel"><div class="quick-date-child-head"><button type="button" data-child-back="true">返回</button><strong>' + labels[type] + '</strong><button type="button" data-child-confirm="true">确定</button></div><div class="quick-date-child-content"></div><p class="quick-date-child-error" aria-live="polite"></p></div>');
+    var panel = quickPanelHost();
+    var content = panel.querySelector('.quick-date-child-content');
+    if (type === 'time') renderTimeDateChild(content, child);
+    else renderChoiceDateChild(content, child, type);
+    panel.querySelector('[data-child-back]').addEventListener('click', function() { finishDateChild(false); });
+    panel.querySelector('[data-child-confirm]').addEventListener('click', function() { finishDateChild(true); });
+  }
+
+  function renderTimeDateChild(content, child) {
+    var mode = ['all-day', 'point', 'range'].includes(child.timeMode) ? child.timeMode : 'all-day';
+    var phase = mode === 'range' ? (child.timePhase || 'start') : 'start';
+    child.timeMode = mode;
+    child.timePhase = phase;
+    var tabs = mode === 'range' ? '<div class="quick-date-tabs" role="tablist" aria-label="时间范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-time-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-time-phase="end">结束</button></div>' : '';
+    content.innerHTML = '<div class="quick-time-mode-options" role="group" aria-label="时间类型"><button type="button" data-child-time-mode="all-day" aria-pressed="' + String(mode === 'all-day') + '">全天</button><button type="button" data-child-time-mode="point" aria-pressed="' + String(mode === 'point') + '">时间点</button><button type="button" data-child-time-mode="range" aria-pressed="' + String(mode === 'range') + '">时间段</button></div>' + tabs + '<div class="picker-wheels-row quick-date-child-wheels"' + (mode === 'all-day' ? ' hidden' : '') + '></div>';
+    var wheels = content.querySelector('.quick-date-child-wheels');
+    if (mode !== 'all-day') {
+      var value = phase === 'end' ? child.endTime : child.startTime;
+      var parts = value.split(':').map(Number);
+      var hours = Array.from({ length: 24 }, function(_, i) { return { label: String(i).padStart(2, '0') + '时', value: i }; });
+      var minutes = Array.from({ length: 60 }, function(_, i) { return { label: String(i).padStart(2, '0') + '分', value: i }; });
+      appState.quickChildWheels = {
+        hours: createPickerWheel(wheels, hours, parts[0] || 0, 'picker-col-hours'),
+        minutes: createPickerWheel(wheels, minutes, parts[1] || 0, 'picker-col-minutes')
+      };
+    }
+    function saveWheelValue() { if (!appState.quickChildWheels) return; var time = String(appState.quickChildWheels.hours.getValue()).padStart(2, '0') + ':' + String(appState.quickChildWheels.minutes.getValue()).padStart(2, '0'); child[phase === 'end' ? 'endTime' : 'startTime'] = time; }
+    content.querySelectorAll('[data-time-phase]').forEach(function(btn) { btn.addEventListener('click', function() { saveWheelValue(); child.timePhase = btn.dataset.timePhase; renderDateChild('time'); }); });
+    content.querySelectorAll('[data-child-time-mode]').forEach(function(btn) { btn.addEventListener('click', function() { saveWheelValue(); child.timeMode = btn.dataset.childTimeMode; child.timePhase = 'start'; if (child.timeMode === 'range' && !child.endTime) child.endTime = QuickEditor.defaultEndTime(child.startTime || '09:00'); renderDateChild('time'); }); });
+    var confirm = quickPanelHost().querySelector('[data-child-confirm]');
+    confirm.addEventListener('click', saveWheelValue);
+  }
+
+  function renderChoiceDateChild(content, child, type) {
+    var options = type === 'repeat' ? [{ value: 'none', label: '不重复' }, { value: 'daily', label: '每天' }, { value: 'weekdays', label: '工作日' }, { value: 'weekly', label: '每周' }, { value: 'monthly', label: '每月' }, { value: 'custom', label: '自定义' }] : [{ value: 'none', label: '不提醒' }, { value: 'at-time', label: '准时' }, { value: '5', label: '5分钟前' }, { value: '15', label: '15分钟前' }, { value: '30', label: '30分钟前' }, { value: '60', label: '1小时前' }, { value: 'custom', label: '自定义' }];
+    var selected = type === 'repeat' ? child.repeat : child.reminder;
+    content.innerHTML = '<div class="quick-date-choice-list">' + options.map(function(opt) { return '<button type="button" class="quick-area-item' + (selected === opt.value ? ' is-selected' : '') + '" data-child-choice="' + opt.value + '"><span class="quick-area-name">' + opt.label + '</span><span class="quick-area-check">' + (selected === opt.value ? '✓' : '') + '</span></button>'; }).join('') + '</div>';
+    content.querySelectorAll('[data-child-choice]').forEach(function(btn) { btn.addEventListener('click', function() { var value = btn.dataset.childChoice; if (type === 'repeat') { child.repeat = value; if (value !== 'custom') child.customRepeat = null; } else { child.reminder = value; if (value !== 'custom') child.customReminder = null; } if (value === 'custom') { if (type === 'repeat') child.customRepeat = child.customRepeat || { interval: 1, unit: 'day', skipHolidays: false, skipWeekends: false }; else child.customReminder = child.customReminder || { days: 0, hours: 0, minutes: 5 }; } renderDateChild(type); }); });
+    if (selected !== 'custom') return;
+    var row = document.createElement('div');
+    row.className = 'picker-wheels-row' + (type === 'reminder' ? ' three-cols' : '');
+    content.appendChild(row);
+    if (type === 'repeat') {
+      var repeat = child.customRepeat;
+      var intervals = Array.from({ length: 30 }, function(_, i) { return { label: '每' + (i + 1), value: i + 1 }; });
+      var units = [{ label: '天重复', value: 'day' }, { label: '周重复', value: 'week' }, { label: '月重复', value: 'month' }];
+      appState.quickChildWheels = { interval: createPickerWheel(row, intervals, repeat.interval - 1, 'picker-col-interval'), unit: createPickerWheel(row, units, Math.max(0, ['day', 'week', 'month'].indexOf(repeat.unit)), 'picker-col-unit') };
+      var toggles = document.createElement('div');
+      toggles.className = 'picker-toggles';
+      toggles.innerHTML = '<label class="picker-toggle"><input type="checkbox" data-child-skip="holidays"' + (repeat.skipHolidays ? ' checked' : '') + '><span>跳过法定节假日</span></label><label class="picker-toggle"><input type="checkbox" data-child-skip="weekends"' + (repeat.skipWeekends ? ' checked' : '') + '><span>跳过双休日</span></label>';
+      content.appendChild(toggles);
+      quickPanelHost().querySelector('[data-child-confirm]').addEventListener('click', function() { child.customRepeat = { interval: appState.quickChildWheels.interval.getValue(), unit: appState.quickChildWheels.unit.getValue(), skipHolidays: Boolean(content.querySelector('[data-child-skip="holidays"]').checked), skipWeekends: Boolean(content.querySelector('[data-child-skip="weekends"]').checked) }; });
+    } else {
+      var reminder = child.customReminder;
+      var days = Array.from({ length: 8 }, function(_, i) { return { label: i + '天', value: i }; });
+      var hours = Array.from({ length: 24 }, function(_, i) { return { label: i + '小时', value: i }; });
+      var minutes = Array.from({ length: 60 }, function(_, i) { return { label: i + '分钟', value: i }; });
+      appState.quickChildWheels = { days: createPickerWheel(row, days, reminder.days, 'picker-col-days'), hours: createPickerWheel(row, hours, reminder.hours, 'picker-col-hours'), minutes: createPickerWheel(row, minutes, reminder.minutes, 'picker-col-minutes') };
+      quickPanelHost().querySelector('[data-child-confirm]').addEventListener('click', function(event) { var next = { days: appState.quickChildWheels.days.getValue(), hours: appState.quickChildWheels.hours.getValue(), minutes: appState.quickChildWheels.minutes.getValue() }; if (!next.days && !next.hours && !next.minutes) { event.stopImmediatePropagation(); var error = quickPanelHost().querySelector('.quick-date-child-error'); if (error) error.textContent = '提醒时间不能为0'; return; } child.customReminder = next; });
     }
   }
 
@@ -2219,11 +2453,13 @@
 
   function handleQuickSubmit(event) {
     event.preventDefault();
-    var title = els.quickTitle.value.trim();
-    if (!title) {
-      showToast('请输入标题');
+    var draft = readQuickDraft();
+    var draftValidity = QuickEditor.validateDraft(draft);
+    if (!draftValidity.valid) {
+      showToast(draftValidity.message);
       return;
     }
+    var title = draft.title.trim();
 
     var priorityRaw = els.quickPriority.value;
     var priorityForDb = QUAD_TO_PRIORITY[priorityRaw] || 'medium';
@@ -2232,14 +2468,15 @@
     var reminder = els.quickReminder.value || 'none';
     var payload = {
       title: title,
-      notes: els.quickNotes.value,
-      date: els.quickDate.value,
+      notes: draft.notes,
+      date: draft.startDate,
+      endDate: els.quickEndDate.value || draft.startDate,
       priority: priorityForDb,
-      area: els.quickArea.value || 'life',
-      tone: els.quickTone.value || '',
-      timeMode: els.quickTimeMode.value || 'all-day',
-      startTime: els.quickStartTime.value,
-      endTime: els.quickTimeMode.value === 'range' ? els.quickEndTime.value : '',
+      area: draft.area || 'life',
+      tone: draft.tone || '',
+      timeMode: draft.timeMode,
+      startTime: draft.startTime,
+      endTime: draft.timeMode === 'range' ? draft.endTime : '',
       reminder: reminder
     };
     if (repeat === 'custom' && appState.customRepeat) {
@@ -2250,12 +2487,23 @@
     }
     var action;
     var wasEditing = Boolean(appState.editingTaskId);
+    function createHabitPayload() {
+      var habitData = Object.assign({}, payload, {
+        schedule: repeat,
+        customRepeat: repeat === 'custom' ? appState.customRepeat : null,
+        startDate: payload.date,
+        weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
+      });
+      delete habitData.endDate;
+      return habitData;
+    }
     if (wasEditing && appState.editingType === 'habit') {
       var habitPayload = {
         title: title,
         notes: els.quickNotes.value,
         area: els.quickArea.value || 'life',
         priority: priorityForDb,
+        tone: draft.tone || '',
         reminder: reminder,
         timeMode: els.quickTimeMode.value || 'all-day',
         startTime: els.quickStartTime.value || '',
@@ -2271,14 +2519,8 @@
       action = DB.updateHabit(appState.editingTaskId, habitPayload);
     } else if (wasEditing) {
       if (repeat !== 'none') {
-        var habitCreateData = Object.assign({}, payload, {
-          schedule: repeat,
-          customRepeat: repeat === 'custom' ? appState.customRepeat : null,
-          startDate: payload.date,
-          weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
-        });
         var convertingTaskId = appState.editingTaskId;
-        action = DB.createHabit(habitCreateData).then(function() {
+        action = DB.createHabit(createHabitPayload()).then(function() {
           return DB.purgeTask(convertingTaskId);
         });
       } else {
@@ -2287,16 +2529,12 @@
     } else {
       action = repeat === 'none'
         ? DB.createTask(payload)
-        : DB.createHabit(Object.assign({}, payload, {
-          schedule: repeat,
-          customRepeat: repeat === 'custom' ? appState.customRepeat : null,
-          startDate: payload.date,
-          weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
-        }));
+        : DB.createHabit(createHabitPayload());
     }
 
     action.then(function() {
-      closeSheet();
+      if (!wasEditing) clearCreateDraft();
+      closeQuickSession({ keepDraft: false, restoreFocus: true });
       showToast(wasEditing ? '事项已更新' : '事项已创建');
       return loadData();
     }).catch(function(error) {
@@ -2391,6 +2629,23 @@
     }
   }
 
+  function openLockedQuickEditSession() {
+    appState.quickEditor = QuickEditor.transition(
+      QuickEditor.createSessionState(appState.editingType === 'habit' ? 'edit-habit' : 'edit-task'),
+      { type: 'OPEN' }
+    );
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    els.quickSheet.removeAttribute('aria-hidden');
+    els.quickSheet.inert = false;
+    lockQuickEditorScroll();
+    setQuickEditorBackgroundInert(true);
+    updateQuickViewportHeight();
+    void els.quickSheet.offsetHeight;
+    updateQuickSummary();
+    focusQuickTitle();
+  }
+
   function openEditTask(id) {
     var task = appState.data.tasks.find(function(item) { return item.id === id; });
     if (!task) {
@@ -2418,6 +2673,8 @@
     }
     els.quickStartTime.value = task.startTime || '';
     els.quickEndTime.value = task.endTime || '';
+    els.quickDate.value = task.date || '';
+    els.quickEndDate.value = task.endDate || task.date || '';
     els.quickNotes.value = task.notes || '';
     updateTimeDisplay();
     if (els.quickRepeatCustomHint) {
@@ -2431,10 +2688,7 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
-    void els.quickSheet.offsetHeight;
-    focusQuickTitle();
+    openLockedQuickEditSession();
   }
 
   function openEditHabit(id) {
@@ -2485,6 +2739,8 @@
     }
     els.quickStartTime.value = habit.startTime || '';
     els.quickEndTime.value = habit.endTime || '';
+    els.quickDate.value = habit.startDate || appState.todayKey;
+    els.quickEndDate.value = habit.startDate || appState.todayKey;
     els.quickNotes.value = habit.notes || '';
     updateTimeDisplay();
     if (scheduleVal === 'custom' && habit.customRepeat && els.quickRepeatCustomHint) {
@@ -2492,15 +2748,13 @@
       els.quickRepeatCustomHint.textContent = formatRepeatLabel('custom', habit.customRepeat);
     }
     setQuickDate(habit.startDate || appState.todayKey);
+    setChoiceValue('quick-tone', habit.tone || '');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     closeQuickExtra();
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    els.sheetBackdrop.hidden = false;
-    els.quickSheet.hidden = false;
-    void els.quickSheet.offsetHeight;
-    focusQuickTitle();
+    openLockedQuickEditSession();
   }
 
   function changeMonth(delta) {
@@ -2758,7 +3012,13 @@
     return '不提醒';
   }
 
-  function createPickerWheel(options, selectedIndex, columnClass) {
+  function createPickerWheel(mount, options, selectedIndex, columnClass) {
+    if (Array.isArray(mount)) {
+      columnClass = selectedIndex;
+      selectedIndex = options;
+      options = mount;
+      mount = null;
+    }
     var itemHeight = 40;
     var visibleCount = 5;
     var container = document.createElement('div');
@@ -2792,6 +3052,7 @@
     list.appendChild(paddingBottom);
 
     container.appendChild(list);
+    if (mount) mount.appendChild(container);
 
     var currentIndex = selectedIndex;
     var startY = 0;
@@ -3075,6 +3336,7 @@
       }
       updateTimeDisplay();
     }
+    handleQuickDraftChange();
     closePicker();
   }
 
@@ -3131,6 +3393,7 @@
     var selectedKey = appState.calPicker.tempKey;
     if (selectedKey) {
       setQuickDate(selectedKey, 'custom');
+      handleQuickDraftChange();
     }
     closeCalPicker();
   }
@@ -3234,6 +3497,9 @@
     els.quickEditId = $('quick-edit-id');
     els.quickTitle = $('quick-title');
     els.quickDate = $('quick-date');
+    els.quickEndDate = $('quick-end-date');
+    els.quickSummary = $('quick-summary');
+    els.quickDragHandle = $('quick-drag-handle');
     els.quickDateField = $('quick-date-field');
     els.quickDatePicker = $('quick-date-picker');
     els.quickPriority = $('quick-priority');
@@ -3319,9 +3585,15 @@
       renderCalendar();
     });
     els.openAdd.addEventListener('click', openSheet);
-    if (els.closeAdd) els.closeAdd.addEventListener('click', closeSheet);
-    if (els.cancelAdd) els.cancelAdd.addEventListener('click', closeSheet);
-    els.sheetBackdrop.addEventListener('click', closeSheet);
+    if (els.closeAdd) els.closeAdd.addEventListener('click', function() {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    });
+    if (els.cancelAdd) els.cancelAdd.addEventListener('click', function() {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    });
+    els.sheetBackdrop.addEventListener('click', function() {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    });
     if (els.dateDetailBackdrop) els.dateDetailBackdrop.addEventListener('click', closeDateDetail);
     els.quickForm.addEventListener('submit', handleQuickSubmit);
     document.querySelectorAll('[data-select-target]').forEach(function(trigger) {
@@ -3339,7 +3611,7 @@
       button.addEventListener('click', function(event) {
         if (!button.dataset.action) event.stopPropagation();
         setChoiceValue(button.dataset.choiceTarget, button.dataset.choiceValue);
-        if (window.updateQuickChips) updateQuickChips();
+        handleQuickDraftChange();
       });
     });
     document.querySelectorAll('[data-date-preset]').forEach(function(button) {
@@ -3352,40 +3624,39 @@
         } else {
           setQuickDate(preset === 'today' ? appState.todayKey : preset === 'tomorrow' ? tomorrowKey() : preset === 'weekend' ? weekendKey() : '', preset);
         }
-        if (window.updateQuickChips) updateQuickChips();
+        handleQuickDraftChange();
       });
     });
     document.addEventListener('click', function(event) {
       if (!event.target.closest('.custom-select')) closeSelectMenus();
     });
+    document.addEventListener('keydown', trapQuickEditorFocus);
     if (els.quickTools) {
       els.quickTools.addEventListener('click', function(event) {
         var btn = event.target.closest('.quick-tool-btn');
         if (!btn) return;
         var tool = btn.dataset.tool;
-        if (btn.classList.contains('is-open')) {
-          closeQuickExtra();
-          closeQuickFullPanel();
-          focusQuickTitle();
-          return;
-        }
         openQuickTool(tool);
       });
     }
     if (els.quickNotes) {
       els.quickNotes.addEventListener('input', function() {
         autoResizeTextarea(els.quickNotes);
-        updateQuickChips();
+        handleQuickDraftChange();
       });
     }
     function closePanelsOnInputFocus() {
       var extraOpen = els.quickExtraPanel && !els.quickExtraPanel.hidden;
       var fullOpen = els.quickFullPanel && !els.quickFullPanel.hidden;
-      if (extraOpen) closeQuickExtra();
+      if (extraOpen) {
+        appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
+        renderQuickSurface();
+      }
       if (fullOpen) closeQuickFullPanel();
     }
     if (els.quickTitle) {
       els.quickTitle.addEventListener('focus', closePanelsOnInputFocus);
+      els.quickTitle.addEventListener('input', handleQuickDraftChange);
     }
     if (els.quickNotes) {
       els.quickNotes.addEventListener('focus', closePanelsOnInputFocus);
@@ -3396,7 +3667,8 @@
         if (!btn) return;
         var chipType = btn.dataset.chipType;
         if (chipType === 'date') {
-          setQuickDate('', 'pending');
+          requestPendingDate();
+          return;
         } else if (chipType === 'priority') {
           setChoiceValue('quick-priority', 'medium');
         } else if (chipType === 'repeat') {
@@ -3404,14 +3676,17 @@
         } else if (chipType === 'reminder') {
           setChoiceValue('quick-reminder', 'none');
         }
-        updateQuickChips();
+        handleQuickDraftChange();
       });
     }
-    if (els.quickTone) {
-      els.quickTone.addEventListener('change', function() {
-        updateQuickChips();
-      });
-    }
+    [
+      els.quickPriority, els.quickArea, els.quickDate, els.quickEndDate,
+      els.quickRepeat, els.quickTimeMode, els.quickReminder,
+      els.quickStartTime, els.quickEndTime, els.quickTone
+    ].forEach(function(input) {
+      if (input) input.addEventListener('change', handleQuickDraftChange);
+    });
+    if (els.quickDragHandle) bindQuickDragHandle();
     if (els.quickExtraPanel) {
       els.quickExtraPanel.addEventListener('click', function(event) {
         if (event.target.classList.contains('quick-extra-close')) {
@@ -3421,14 +3696,16 @@
     }
     if (els.quickFullBack) {
       els.quickFullBack.addEventListener('click', function() {
+        if (appState.quickEditor.surface !== 'detail') {
+          returnQuickFullToDetailSummary();
+          return;
+        }
         closeQuickFullPanel({ focusTitle: true });
       });
     }
     if (els.quickFullSave) {
       els.quickFullSave.addEventListener('click', function() {
-        if (els.quickForm) {
-          els.quickForm.dispatchEvent(new Event('submit', { cancelable: true }));
-        }
+        closeQuickFullPanel({ focusTitle: true });
       });
     }
     els.journalForm.addEventListener('submit', handleJournalSubmit);
@@ -3503,6 +3780,11 @@
     document.addEventListener('touchstart', handleSwipeStart, { passive: true });
     document.addEventListener('touchmove', handleSwipeMove, { passive: false });
     document.addEventListener('touchend', handleSwipeEnd);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', function() {
+        if (isQuickEditorOpen()) updateQuickViewportHeight();
+      });
+    }
     window.addEventListener('hashchange', function() {
       var nextView = viewFromHash();
       if (nextView !== appState.view) {
@@ -3569,6 +3851,7 @@
     });
     document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
+        if (isQuickEditorOpen() && !appState.editingTaskId) persistCreateDraft();
         cancelNotificationRecovery();
         return;
       }
@@ -3577,7 +3860,10 @@
         handleNotificationBackendFailure(error, generation);
       });
     });
-    window.addEventListener('pagehide', cancelNotificationRecovery);
+    window.addEventListener('pagehide', function() {
+      if (isQuickEditorOpen() && !appState.editingTaskId) persistCreateDraft();
+      cancelNotificationRecovery();
+    });
   }
 
   function activateNotificationLifecycle() {

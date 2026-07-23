@@ -10,6 +10,7 @@ const {
   normalizeArea,
   getCalendarEntries,
   getCalendarMarks,
+  taskOccursOn,
   habitDueOn,
   getHabitLogForDate
 } = require('./app-state.js');
@@ -91,6 +92,22 @@ test('getCalendarMarks reports task habit and journal markers', () => {
   }, ['2026-07-02']);
 
   assert.deepEqual(marks['2026-07-02'], { tasks: 1, habits: 1, journal: true });
+});
+
+test('taskOccursOn includes every date in a task range', () => {
+  const task = { date: '2026-07-22', endDate: '2026-07-24', status: 'active' };
+  assert.equal(taskOccursOn(task, '2026-07-21'), false);
+  assert.equal(taskOccursOn(task, '2026-07-22'), true);
+  assert.equal(taskOccursOn(task, '2026-07-23'), true);
+  assert.equal(taskOccursOn(task, '2026-07-24'), true);
+  assert.equal(taskOccursOn(task, '2026-07-25'), false);
+});
+
+test('calendar entries expose range position', () => {
+  const data = { tasks: [{ id: 'task_1', title: '出差', date: '2026-07-22', endDate: '2026-07-24', status: 'active' }], habits: [], habitLogs: [], journals: [] };
+  assert.equal(getCalendarEntries(data, '2026-07-22')[0].rangePosition, 'start');
+  assert.equal(getCalendarEntries(data, '2026-07-23')[0].rangePosition, 'middle');
+  assert.equal(getCalendarEntries(data, '2026-07-24')[0].rangePosition, 'end');
 });
 
 test('getCalendarEntries returns compact task habit and journal entries', () => {

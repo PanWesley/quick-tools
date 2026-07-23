@@ -193,11 +193,25 @@
     }) || null;
   }
 
+  function taskOccursOn(task, dateKey) {
+    if (!task || task.status === 'deleted' || !task.date) return false;
+    var endDate = task.endDate && task.endDate >= task.date ? task.endDate : task.date;
+    return dateKey >= task.date && dateKey <= endDate;
+  }
+
+  function taskRangePosition(task, dateKey) {
+    var endDate = task.endDate && task.endDate >= task.date ? task.endDate : task.date;
+    if (task.date === endDate) return 'single';
+    if (dateKey === task.date) return 'start';
+    if (dateKey === endDate) return 'end';
+    return 'middle';
+  }
+
   function getCalendarMarks(data, dateKeys) {
     var marks = {};
     (dateKeys || []).forEach(function(dateKey) {
       var taskCount = (data.tasks || []).filter(function(task) {
-        return task.status !== 'deleted' && task.date === dateKey;
+        return taskOccursOn(task, dateKey);
       }).length;
       var habitCount = (data.habits || []).filter(function(habit) {
         return habitDueOn(habit, dateKey);
@@ -218,7 +232,7 @@
     var entries = [];
     (data.tasks || [])
       .filter(function(task) {
-        return task && task.status !== 'deleted' && task.date === dateKey;
+        return taskOccursOn(task, dateKey);
       })
       .sort(function(a, b) {
         var statusRank = { active: 0, completed: 1 };
@@ -232,7 +246,11 @@
           label: getTaskDisplayTitle(task),
           state: task.status || 'active',
           priority: task.priority || 'none',
-          tone: task.tone || ''
+          tone: task.tone || '',
+          rangePosition: taskRangePosition(task, dateKey),
+          timeMode: task.timeMode || 'all-day',
+          startTime: task.startTime || '',
+          endTime: task.endTime || ''
         });
       });
 
@@ -279,6 +297,7 @@
     getRepeatLabel: getRepeatLabel,
     getTaskDisplayTitle: getTaskDisplayTitle,
     getCalendarEntries: getCalendarEntries,
+    taskOccursOn: taskOccursOn,
     habitDueOn: habitDueOn,
     getHabitLogForDate: getHabitLogForDate,
     getCalendarMarks: getCalendarMarks
