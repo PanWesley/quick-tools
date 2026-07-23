@@ -698,7 +698,12 @@
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
       var maxStrips = 4;
       var strips = entries.slice(0, maxStrips).map(function(entry) {
-        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(truncateLabel(calendarEntryLabel(entry), 4)) + '</span>';
+        var label = calendarEntryLabel(entry);
+        var timeMatch = /^(\d{2}:\d{2})\s+/.exec(label);
+        var classes = 'calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry);
+        if (!timeMatch) return '<span class="' + classes + '">' + escapeHtml(truncateLabel(label, 4)) + '</span>';
+        var title = label.slice(timeMatch[0].length);
+        return '<span class="' + classes + ' has-time"><span class="calendar-strip-time">' + escapeHtml(timeMatch[1]) + '</span><span class="calendar-strip-title">' + escapeHtml(truncateLabel(title, 4)) + '</span></span>';
       }).join('');
       var overflow = entries.length > maxStrips ? '<span class="calendar-more">+' + (entries.length - maxStrips) + '</span>' : '';
       return [
@@ -1920,6 +1925,7 @@
     els.quickSheet.setAttribute('aria-hidden', 'true');
     els.quickSheet.inert = true;
     els.quickFullPanel.hidden = false;
+    if (els.quickFullBack) els.quickFullBack.focus();
     if (els.quickTitle && document.activeElement === els.quickTitle) {
       els.quickTitle.blur();
     }

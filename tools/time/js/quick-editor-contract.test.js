@@ -70,3 +70,12 @@ test('detail exits synchronously to focused keyboard surface', () => {
   assert.match(app, /if \(els\.quickFullSave\)[\s\S]{0,300}closeQuickFullPanel\(\{ focusTitle: true \}\)/);
   assert.doesNotMatch(app, /setTimeout\(function\(\)\s*\{\s*openQuickTool/s);
 });
+
+test('calendar endpoint times and full-detail focus survive narrow surfaces', () => {
+  assert.match(app, /calendar-strip-time/);
+  assert.match(app, /calendar-strip-title/);
+  assert.match(app, /function calendarEntryLabel/);
+  assert.match(css, /\.calendar-strip-time\s*\{[^}]*flex-shrink:\s*0;/s);
+  assert.match(css, /\.calendar-strip-title\s*\{[^}]*text-overflow:\s*ellipsis;/s);
+  assert.match(app, /function openQuickFullPanel[\s\S]{0,700}els\.quickFullPanel\.hidden\s*=\s*false;[\s\S]{0,300}els\.quickFullBack\.focus\(\)/);
+});

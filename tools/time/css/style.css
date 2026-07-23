@@ -1527,6 +1527,37 @@ textarea {
   white-space: nowrap;
 }
 
+.calendar-strip.has-time {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.calendar-strip-time {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-strip-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .calendar-strip.has-time {
+    gap: 1px;
+    padding-right: 3px;
+  }
+
+  .calendar-strip-time {
+    flex-shrink: 0;
+    font-size: 9px;
+  }
+}
+
 .calendar-strip.is-done {
   opacity: 0.45;
   text-decoration: line-through;
