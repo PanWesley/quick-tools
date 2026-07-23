@@ -19,7 +19,7 @@ test('quick editor exposes one replacement region and root-level detail panel', 
 
 test('state module loads before app and is cached', () => {
   assert.ok(html.indexOf('/tools/time/js/quick-editor-state.js') < html.indexOf('/tools/time/js/app.js'));
-  assert.match(sw, /\/tools\/time\/js\/quick-editor-state\.js\?v=1/);
+  assert.match(sw, /\/tools\/time\/js\/quick-editor-state\.js\?v=2/);
 });
 
 test('editor CSS defines locked, child-panel, fullscreen and reduced-motion states', () => {
@@ -69,6 +69,42 @@ test('save payload and edit restoration include endDate', () => {
   assert.match(app, /endDate:\s*els\.quickEndDate\.value/);
   assert.match(app, /els\.quickEndDate\.value\s*=\s*task\.endDate\s*\|\|\s*task\.date/);
   assert.match(app, /clearCreateDraft\(\)/);
+});
+
+test('pending is confirmed inline before schedule-dependent values are discarded', () => {
+  assert.match(app, /function hasScheduleDependentValues/);
+  assert.match(app, /function renderPendingConfirmation/);
+  assert.match(app, /data-pending-confirm/);
+  assert.match(app, /QuickEditor\.setPending\(readQuickDraft\(\)\)/);
+  assert.doesNotMatch(app, /if \(!item\.value\) \{ setQuickDate\('', 'pending'\); els\.quickEndDate\.value = ''; \}/);
+});
+
+test('quick editor keeps background inert and its visible dialog owns tab and escape keys', () => {
+  assert.match(app, /function setQuickEditorBackgroundInert/);
+  assert.match(app, /setQuickEditorBackgroundInert\(true\)/);
+  assert.match(app, /setQuickEditorBackgroundInert\(false\)/);
+  assert.match(app, /function trapQuickEditorFocus/);
+  assert.match(app, /event\.key === 'Tab'/);
+  assert.match(app, /event\.key !== 'Escape'/);
+  assert.match(app, /closeQuickSession\(\{ keepDraft: false, restoreFocus: true \}\)/);
+});
+
+test('quick editor recaptures escaped tab focus and treats pending confirmation as a date-layer cancel', () => {
+  assert.match(app, /if \(!root\.contains\(document\.activeElement\)\)/);
+  assert.match(app, /event\.shiftKey \? last : first/);
+  assert.match(app, /function isPendingConfirmationOpen/);
+  assert.match(app, /isPendingConfirmationOpen\(\)[\s\S]{0,180}renderDateParent\(true\)/);
+  assert.match(app, /data-pending-cancel[\s\S]{0,300}cancel\.focus\(\)/);
+  assert.match(app, /function requestPendingDate/);
+  assert.match(app, /chipType === 'date'[\s\S]{0,140}requestPendingDate\(\)/);
+});
+
+test('date range clamping is announced and all editor controls retain 44px targets', () => {
+  assert.match(app, /结束日期不能早于开始日期，已调整为开始日期/);
+  assert.match(css, /\.quick-drag-handle\s*\{[^}]*min-height:\s*44px;/s);
+  assert.match(css, /\.quick-tone-swatch\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s);
+  assert.match(css, /\.quick-full-back\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
+  assert.match(css, /\.quick-full-save\s*\{[^}]*min-height:\s*44px;/s);
 });
 
 test('detail exits synchronously to focused keyboard surface', () => {

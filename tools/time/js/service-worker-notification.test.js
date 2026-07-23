@@ -553,16 +553,16 @@ test('app source renders stable notification attributes and owns message targeti
 });
 
 test('service worker cache matches current index assets and notification API is network-only', async () => {
-  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v53['"]/);
+  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v54['"]/);
   const releaseAssets = [
-    '/tools/time/css/style.css?v=157',
-    '/tools/time/js/quick-editor-state.js?v=1',
+    '/tools/time/css/style.css?v=158',
+    '/tools/time/js/quick-editor-state.js?v=2',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
     '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=161'
+    '/tools/time/js/app.js?v=162'
   ];
   const releaseAssetPaths = new Set(releaseAssets.map(asset => asset.split('?')[0]));
   const indexedReleaseAssets = [...indexSource.matchAll(/(?:href|src)="([^"]+)"/g)]
@@ -596,7 +596,7 @@ test('service worker activation keeps delivery receipts while removing old app s
     cacheNames: [
       'today-youxu-v32',
       'today-youxu-v33',
-      'today-youxu-v53',
+      'today-youxu-v54',
       'today-youxu-notification-receipts-v1',
       'unrelated-cache'
     ]

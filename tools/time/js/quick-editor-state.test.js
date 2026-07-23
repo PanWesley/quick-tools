@@ -43,6 +43,16 @@ test('draft normalization preserves valid values and repairs an invalid end date
   assert.equal(draft.endTime, '10:30');
 });
 
+test('draft normalization keeps an explicitly pending stored date pending', () => {
+  const storedPending = Editor.normalizeDraft({
+    title: '稍后再排', startDate: '', endDate: '', timeMode: 'all-day'
+  }, { todayKey: '2026-07-22' });
+  const freshDraft = Editor.normalizeDraft({}, { todayKey: '2026-07-22' });
+
+  assert.deepEqual([storedPending.startDate, storedPending.endDate], ['', '']);
+  assert.deepEqual([freshDraft.startDate, freshDraft.endDate], ['2026-07-22', '2026-07-22']);
+});
+
 test('pending clears schedule-dependent values', () => {
   const result = Editor.setPending(Editor.normalizeDraft({
     startDate: '2026-07-22', endDate: '2026-07-23', timeMode: 'range',

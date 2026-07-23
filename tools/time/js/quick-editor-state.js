@@ -38,8 +38,11 @@
   function normalizeDraft(input, defaults) {
     input = input && typeof input === 'object' ? input : {};
     var todayKey = defaults && defaults.todayKey || '';
-    var startDate = isDateKey(input.startDate || input.date) ? (input.startDate || input.date) : todayKey;
-    var endDate = isDateKey(input.endDate) && input.endDate >= startDate ? input.endDate : startDate;
+    var hasStartDate = Object.prototype.hasOwnProperty.call(input, 'startDate');
+    var hasDate = Object.prototype.hasOwnProperty.call(input, 'date');
+    var rawStartDate = hasStartDate ? input.startDate : hasDate ? input.date : undefined;
+    var startDate = rawStartDate === '' ? '' : isDateKey(rawStartDate) ? rawStartDate : todayKey;
+    var endDate = startDate && isDateKey(input.endDate) && input.endDate >= startDate ? input.endDate : startDate;
     var draft = {
       title: String(input.title || ''), notes: String(input.notes || ''),
       priority: input.priority || 'medium', area: input.area || 'life', tone: input.tone || '',

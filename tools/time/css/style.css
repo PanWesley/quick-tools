@@ -3647,7 +3647,7 @@ textarea {
 }
 
 .quick-drag-handle {
-  min-height: 20px;
+  min-height: 44px;
   display: grid;
   place-items: center;
   touch-action: none;
@@ -4100,6 +4100,43 @@ textarea {
   color: var(--primary-strong);
 }
 
+.quick-pending-confirmation {
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.quick-pending-confirmation strong {
+  font-size: 17px;
+  color: var(--text-strong);
+}
+
+.quick-pending-confirmation p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.quick-pending-confirmation > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.quick-pending-confirmation button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.quick-pending-confirmation [data-pending-confirm] {
+  color: #fff;
+  border-color: transparent;
+  background: var(--primary-gradient);
+}
+
 .quick-datetime-options {
   display: flex;
   gap: 0;
@@ -4279,6 +4316,8 @@ textarea {
 
 .quick-tone-swatch {
   aspect-ratio: 1;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 50%;
   border: 2.5px solid transparent;
   cursor: pointer;
@@ -4352,8 +4391,8 @@ textarea {
 }
 
 .quick-full-back {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: none;
   background: transparent;
   color: var(--text);
@@ -4377,7 +4416,7 @@ textarea {
 }
 
 .quick-full-save {
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 16px;
   border: none;
   border-radius: 18px;
@@ -4553,7 +4592,7 @@ textarea {
   }
 
   .quick-tone-grid {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 6px;
   }
 

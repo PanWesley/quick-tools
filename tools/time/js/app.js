@@ -1608,6 +1608,77 @@
     document.body.classList.add('quick-editor-open');
   }
 
+  var quickInertElements = [];
+
+  function setQuickEditorBackgroundInert(active) {
+    if (!document.body) return;
+    if (!active) {
+      quickInertElements.forEach(function(entry) {
+        entry.node.inert = entry.inert;
+        if (entry.ariaHidden === null) entry.node.removeAttribute('aria-hidden');
+        else entry.node.setAttribute('aria-hidden', entry.ariaHidden);
+      });
+      quickInertElements = [];
+      return;
+    }
+    quickInertElements = [];
+    Array.prototype.forEach.call(document.body.children, function(node) {
+      if (node === els.sheetBackdrop || node === els.quickSheet || node === els.quickFullPanel ||
+          node === els.pickerBackdrop || node === els.pickerSheet || node === els.calPickerSheet ||
+          node === els.toast || node.tagName === 'SCRIPT') return;
+      quickInertElements.push({ node: node, inert: Boolean(node.inert), ariaHidden: node.getAttribute('aria-hidden') });
+      node.inert = true;
+      node.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  function quickFocusRoot() {
+    if (!isQuickEditorOpen()) return null;
+    if (els.pickerSheet && !els.pickerSheet.hidden) return null;
+    if (els.calPickerSheet && !els.calPickerSheet.hidden) return null;
+    if (isQuickFullPanelOpen()) return els.quickFullPanel;
+    return els.quickSheet && !els.quickSheet.hidden ? els.quickSheet : null;
+  }
+
+  function trapQuickEditorFocus(event) {
+    var root = quickFocusRoot();
+    if (!root) return;
+    if (event.key === 'Tab') {
+      var focusable = Array.prototype.filter.call(root.querySelectorAll('a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'), function(node) {
+        return !node.hidden && node.offsetParent !== null;
+      });
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (!root.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    if (isPendingConfirmationOpen()) {
+      renderDateParent(true);
+    } else if (isQuickFullPanelOpen()) {
+      closeQuickFullPanel({ focusTitle: true });
+    } else if (appState.quickEditor.surface === 'date' && appState.quickEditor.dateChild !== 'none') {
+      finishDateChild(false);
+    } else if (appState.quickEditor.surface !== 'keyboard') {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
+      renderQuickSurface();
+      focusQuickTitle();
+    } else {
+      closeQuickSession({ keepDraft: true, restoreFocus: true });
+    }
+  }
+
   function unlockQuickEditorScroll() {
     document.body.classList.remove('quick-editor-open');
     document.body.style.top = '';
@@ -1632,6 +1703,7 @@
     els.sheetBackdrop.hidden = false;
     els.quickSheet.hidden = false;
     lockQuickEditorScroll();
+    setQuickEditorBackgroundInert(true);
     updateQuickViewportHeight();
     void els.quickSheet.offsetHeight;
     focusQuickTitle();
@@ -1655,6 +1727,7 @@
     els.quickSheet.hidden = true;
     els.quickFullPanel.hidden = true;
     unlockQuickEditorScroll();
+    setQuickEditorBackgroundInert(false);
     appState.editingTaskId = '';
     appState.editingType = '';
     if (opts.restoreFocus && els.openAdd) els.openAdd.focus();
@@ -2106,9 +2179,7 @@
           dtCalendarState.viewMonth = today.getMonth();
           dtCalendarState.selectedDate = todayKey;
           if (appState.quickEditor.surface === 'date') {
-            applyQuickDraft(QuickEditor.setDraftDate(readQuickDraft(), appState.quickEditor.datePhase, todayKey));
-            handleQuickDraftChange();
-            renderDateParent();
+            applyQuickDateSelection(todayKey);
             return;
           }
           setQuickDate(todayKey, 'today'); handleQuickDraftChange();
@@ -2121,9 +2192,7 @@
       dayBtn.addEventListener('click', function() {
         dtCalendarState.selectedDate = dayBtn.dataset.calDate;
         if (appState.quickEditor.surface === 'date') {
-          applyQuickDraft(QuickEditor.setDraftDate(readQuickDraft(), appState.quickEditor.datePhase, dtCalendarState.selectedDate));
-          handleQuickDraftChange();
-          renderDateParent();
+          applyQuickDateSelection(dtCalendarState.selectedDate);
           return;
         }
         setQuickDate(dtCalendarState.selectedDate, 'custom'); renderDatetimeCalendar(container, dtCalendarState.selectedDate); handleQuickDraftChange();
@@ -2184,7 +2253,50 @@
     else renderDateChild(appState.quickEditor.dateChild);
   }
 
-  function renderDateParent() {
+  function hasScheduleDependentValues(draft) {
+    return Boolean(draft.startDate || draft.endDate || draft.timeMode !== 'all-day' || draft.startTime || draft.endTime ||
+      draft.repeat !== 'none' || draft.customRepeat || draft.reminder !== 'none' || draft.customReminder);
+  }
+
+  function isPendingConfirmationOpen() {
+    var panel = quickPanelHost();
+    return Boolean(panel && panel.querySelector('[data-pending-cancel]'));
+  }
+
+  function applyPendingDate() {
+    applyQuickDraft(QuickEditor.setPending(readQuickDraft()));
+    handleQuickDraftChange();
+    renderDateParent(true);
+  }
+
+  function renderPendingConfirmation() {
+    replaceQuickPanel('<section class="quick-pending-confirmation" aria-labelledby="quick-pending-title"><strong id="quick-pending-title">设为待定？</strong><p>这会清除日期、时间、提醒和重复设置。</p><div><button type="button" data-pending-cancel="true">取消</button><button type="button" data-pending-confirm="true">设为待定</button></div></section>');
+    var panel = quickPanelHost();
+    var cancel = panel.querySelector('[data-pending-cancel]');
+    cancel.addEventListener('click', function() { renderDateParent(true); });
+    panel.querySelector('[data-pending-confirm]').addEventListener('click', applyPendingDate);
+    cancel.focus();
+  }
+
+  function requestPendingDate() {
+    if (hasScheduleDependentValues(readQuickDraft())) {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: 'date' });
+      renderPendingConfirmation();
+    } else {
+      applyPendingDate();
+    }
+  }
+
+  function applyQuickDateSelection(dateKey) {
+    var draft = readQuickDraft();
+    var wasClamped = appState.quickEditor.datePhase === 'end' && Boolean(draft.startDate) && dateKey < draft.startDate;
+    applyQuickDraft(QuickEditor.setDraftDate(draft, appState.quickEditor.datePhase, dateKey));
+    handleQuickDraftChange();
+    if (wasClamped) showToast('结束日期不能早于开始日期，已调整为开始日期');
+    renderDateParent();
+  }
+
+  function renderDateParent(focusPending) {
     var draft = readQuickDraft();
     var phase = appState.quickEditor.datePhase;
     var html = '<div class="quick-datetime-panel"><div class="quick-date-tabs" role="tablist" aria-label="日期范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-date-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-date-phase="end">结束</button></div><div id="quick-dt-calendar-container"></div><div class="quick-datetime-quick" id="quick-date-presets"></div><div class="quick-date-settings"><button type="button" data-date-child="time"><span>时间</span><strong id="quick-date-time-summary">' + escapeHtml(getQuickSummary().timeLabel) + '</strong></button><button type="button" data-date-child="reminder"><span>提醒</span><strong id="quick-date-reminder-summary">' + escapeHtml(formatReminderLabel(draft.reminder, draft.customReminder)) + '</strong></button><button type="button" data-date-child="repeat"><span>重复</span><strong id="quick-date-repeat-summary">' + escapeHtml(formatRepeatLabel(draft.repeat, draft.customRepeat)) + '</strong></button></div></div>';
@@ -2198,14 +2310,20 @@
       var selected = phaseValue === item.value;
       btn.type = 'button'; btn.className = 'quick-datetime-quick-btn' + (selected ? ' is-selected' : ''); btn.dataset.datePreset = item.key; btn.setAttribute('aria-pressed', String(selected)); btn.textContent = item.label;
       btn.addEventListener('click', function() {
-        if (!item.value) { setQuickDate('', 'pending'); els.quickEndDate.value = ''; }
-        else applyQuickDraft(QuickEditor.setDraftDate(readQuickDraft(), appState.quickEditor.datePhase, item.value));
-        handleQuickDraftChange(); renderDateParent();
+        if (!item.value) {
+          requestPendingDate();
+          return;
+        }
+        applyQuickDateSelection(item.value);
       });
       presetHost.appendChild(btn);
     });
     quickPanelHost().querySelectorAll('[data-date-phase]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SET_DATE_PHASE', phase: btn.dataset.datePhase }); renderDateParent(); }); });
     quickPanelHost().querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
+    if (focusPending) {
+      var pendingButton = quickPanelHost().querySelector('[data-date-preset="pending"]');
+      if (pendingButton) pendingButton.focus();
+    }
   }
 
   function commitDateChild() {
@@ -2375,6 +2493,7 @@
         notes: els.quickNotes.value,
         area: els.quickArea.value || 'life',
         priority: priorityForDb,
+        tone: draft.tone || '',
         reminder: reminder,
         timeMode: els.quickTimeMode.value || 'all-day',
         startTime: els.quickStartTime.value || '',
@@ -2405,7 +2524,7 @@
 
     action.then(function() {
       if (!wasEditing) clearCreateDraft();
-      closeQuickSession({ keepDraft: false });
+      closeQuickSession({ keepDraft: false, restoreFocus: true });
       showToast(wasEditing ? '事项已更新' : '事项已创建');
       return loadData();
     }).catch(function(error) {
@@ -3499,6 +3618,7 @@
     document.addEventListener('click', function(event) {
       if (!event.target.closest('.custom-select')) closeSelectMenus();
     });
+    document.addEventListener('keydown', trapQuickEditorFocus);
     if (els.quickTools) {
       els.quickTools.addEventListener('click', function(event) {
         var btn = event.target.closest('.quick-tool-btn');
@@ -3535,7 +3655,8 @@
         if (!btn) return;
         var chipType = btn.dataset.chipType;
         if (chipType === 'date') {
-          setQuickDate('', 'pending');
+          requestPendingDate();
+          return;
         } else if (chipType === 'priority') {
           setChoiceValue('quick-priority', 'medium');
         } else if (chipType === 'repeat') {
