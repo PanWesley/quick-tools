@@ -2064,6 +2064,26 @@
     renderQuickSurface();
   }
 
+  function handleQuickFullBack() {
+    if (appState.quickEditor.surface === 'date') {
+      cancelQuickDateSession();
+      return;
+    }
+    if (appState.quickEditor.surface !== 'detail') {
+      returnQuickFullToDetailSummary();
+      return;
+    }
+    closeQuickFullPanel({ focusTitle: true });
+  }
+
+  function handleQuickFullSave() {
+    if (appState.quickEditor.surface === 'date') {
+      return confirmQuickDateSession();
+    }
+    closeQuickFullPanel({ focusTitle: true });
+    return true;
+  }
+
   function returnQuickFullToDetailSummary() {
     appState.quickChildDraft = null;
     appState.quickChildWheels = null;
@@ -3752,18 +3772,10 @@
       });
     }
     if (els.quickFullBack) {
-      els.quickFullBack.addEventListener('click', function() {
-        if (appState.quickEditor.surface !== 'detail') {
-          returnQuickFullToDetailSummary();
-          return;
-        }
-        closeQuickFullPanel({ focusTitle: true });
-      });
+      els.quickFullBack.addEventListener('click', handleQuickFullBack);
     }
     if (els.quickFullSave) {
-      els.quickFullSave.addEventListener('click', function() {
-        closeQuickFullPanel({ focusTitle: true });
-      });
+      els.quickFullSave.addEventListener('click', handleQuickFullSave);
     }
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);

@@ -38,7 +38,10 @@ function createElement(id) {
         this.ownerDocument.activeElement = null;
       }
     },
-    setSelectionRange() {}
+    setSelectionRange(start, end) {
+      this.selectionRange = { start, end };
+      this.selectionRangeCalls = (this.selectionRangeCalls || 0) + 1;
+    }
   };
 }
 
@@ -139,6 +142,8 @@ function createRuntime() {
       handleSwipeEnd: handleSwipeEnd,
       openQuickFullPanel: openQuickFullPanel,
       openQuickFullTool: openQuickFullTool,
+      handleQuickFullBack: handleQuickFullBack,
+      handleQuickFullSave: handleQuickFullSave,
       beginQuickDateSession: beginQuickDateSession,
       cancelQuickDateSession: cancelQuickDateSession,
       confirmQuickDateSession: confirmQuickDateSession,
@@ -348,6 +353,21 @@ test('date confirmation applies the full temporary schedule and refocuses the ti
   assert.equal(runtime.document.activeElement, title);
   assert.equal(runtime.storageWrites.length, 1);
   assert.equal(runtime.storageWrites[0].key, 'today-youxu-quick-draft-v1');
+  const persisted = JSON.parse(runtime.storageWrites[0].value);
+  assert.deepEqual(
+    [
+      persisted.startDate,
+      persisted.endDate,
+      persisted.timeMode,
+      persisted.startTime,
+      persisted.endTime,
+      persisted.repeat,
+      persisted.reminder
+    ],
+    ['2026-07-25', '2026-07-26', 'range', '09:30', '10:45', 'custom', 'custom']
+  );
+  assert.equal(JSON.stringify(persisted.customRepeat), JSON.stringify({ interval: 2, unit: 'week', skipHolidays: true }));
+  assert.equal(JSON.stringify(persisted.customReminder), JSON.stringify({ days: 1, hours: 2, minutes: 3 }));
 });
 
 test('escape from the date parent cancels only the date session', () => {
@@ -507,4 +527,113 @@ test('ordinary full detail tool Escape returns to its summary before closing det
   assert.equal(runtime.elements.get('quick-sheet').hidden, false);
   assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
   assert.equal(runtime.document.activeElement, title);
+});
+
+test('full detail back handler cancels a date child transaction and restores the title cursor', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const title = runtime.elements.get('quick-title');
+  title.value = '返回后的标题';
+  const before = runtime.hooks.readQuickDraft();
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('repeat');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week' }
+  }));
+  runtime.hooks.handleQuickFullBack();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.elements.get('quick-sheet').inert, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.document.activeElement, title);
+  assert.deepEqual(title.selectionRange, {
+    start: title.value.length,
+    end: title.value.length
+  });
+  assert.equal(runtime.hooks.readQuickDraft().startDate, before.startDate);
+  assert.equal(runtime.hooks.readQuickDraft().repeat, before.repeat);
+  assert.equal(runtime.storageWrites.length, 0);
+});
+
+test('full detail save handler confirms the complete date transaction and restores the title cursor', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const title = runtime.elements.get('quick-title');
+  title.value = '完成后的标题';
+  const before = runtime.hooks.readQuickDraft();
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('reminder');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    timeMode: 'range',
+    startTime: '09:30',
+    endTime: '10:45',
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week', skipWeekends: true },
+    reminder: 'custom',
+    customReminder: { days: 1, hours: 2, minutes: 3 }
+  }));
+  runtime.hooks.handleQuickFullSave();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.elements.get('quick-sheet').inert, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.document.activeElement, title);
+  assert.deepEqual(title.selectionRange, {
+    start: title.value.length,
+    end: title.value.length
+  });
+  const after = runtime.hooks.readQuickDraft();
+  assert.deepEqual(
+    [after.startDate, after.endDate, after.timeMode, after.startTime, after.endTime, after.repeat, after.reminder],
+    ['2026-07-25', '2026-07-26', 'range', '09:30', '10:45', 'custom', 'custom']
+  );
+  assert.equal(JSON.stringify(after.customRepeat), JSON.stringify({ interval: 2, unit: 'week', skipWeekends: true }));
+  assert.equal(JSON.stringify(after.customReminder), JSON.stringify({ days: 1, hours: 2, minutes: 3 }));
+  assert.equal(runtime.storageWrites.length, 1);
+  const persisted = JSON.parse(runtime.storageWrites[0].value);
+  assert.deepEqual(
+    [
+      persisted.startDate,
+      persisted.endDate,
+      persisted.timeMode,
+      persisted.startTime,
+      persisted.endTime,
+      persisted.repeat,
+      persisted.reminder
+    ],
+    ['2026-07-25', '2026-07-26', 'range', '09:30', '10:45', 'custom', 'custom']
+  );
+  assert.equal(JSON.stringify(persisted.customRepeat), JSON.stringify({ interval: 2, unit: 'week', skipWeekends: true }));
+  assert.equal(JSON.stringify(persisted.customReminder), JSON.stringify({ days: 1, hours: 2, minutes: 3 }));
+});
+
+test('full detail top handlers retain non-date return and save behavior', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('priority');
+  runtime.hooks.handleQuickFullBack();
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'detail');
+
+  runtime.hooks.openQuickFullTool('priority');
+  runtime.hooks.handleQuickFullSave();
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
 });
