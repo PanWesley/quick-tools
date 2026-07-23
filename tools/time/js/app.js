@@ -59,7 +59,6 @@
   var els = {};
   var journalSaveTimer = null;
   var swipeState = null;
-  var quickDrag = null;
   var notificationBackendStatus = { status: 'disabled' };
   var notificationRegistration = null;
   var notificationSetupState = 'idle';
@@ -342,7 +341,12 @@
   }
 
   function handleSwipeMove(event) {
-    if (isQuickEditorOpen()) return;
+    if (isQuickEditorOpen()) {
+      if (!isQuickFullPanelOpen() && appState.quickEditor.surface === 'keyboard') {
+        event.preventDefault();
+      }
+      return;
+    }
     if (!swipeState || !event.touches || event.touches.length !== 1) return;
     var touch = event.touches[0];
     swipeState.currentX = touch.clientX;
@@ -1715,13 +1719,6 @@
     var opts = options || {};
     if (!appState.editingTaskId && opts.keepDraft !== false) persistCreateDraft();
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE' });
-    var activeQuickDrag = quickDrag;
-    quickDrag = null;
-    els.quickSheet.classList.remove('is-dragging');
-    els.quickSheet.style.removeProperty('--quick-drag-offset');
-    if (activeQuickDrag && els.quickDragHandle && els.quickDragHandle.hasPointerCapture && els.quickDragHandle.hasPointerCapture(activeQuickDrag.id)) {
-      els.quickDragHandle.releasePointerCapture(activeQuickDrag.id);
-    }
     closeQuickExtra();
     closeQuickFullPanel();
     closePicker();
@@ -1752,40 +1749,6 @@
 
   function closeSheet() {
     closeQuickSession({ keepDraft: true, restoreFocus: true });
-  }
-
-  function finishQuickDrag(event, canClose) {
-    if (!quickDrag || quickDrag.id !== event.pointerId) return;
-    var threshold = Math.min(120, els.quickSheet.getBoundingClientRect().height * 0.22);
-    var shouldClose = canClose && quickDrag.deltaY >= threshold;
-    quickDrag = null;
-    els.quickSheet.classList.remove('is-dragging');
-    els.quickSheet.style.removeProperty('--quick-drag-offset');
-    if (els.quickDragHandle.hasPointerCapture && els.quickDragHandle.hasPointerCapture(event.pointerId)) {
-      els.quickDragHandle.releasePointerCapture(event.pointerId);
-    }
-    if (shouldClose) closeQuickSession({ keepDraft: true, restoreFocus: true });
-  }
-
-  function bindQuickDragHandle() {
-    els.quickDragHandle.addEventListener('pointerdown', function(event) {
-      if (!isQuickEditorOpen()) return;
-      quickDrag = { id: event.pointerId, startY: event.clientY, deltaY: 0 };
-      els.quickDragHandle.setPointerCapture(event.pointerId);
-      els.quickSheet.classList.add('is-dragging');
-      els.quickSheet.style.setProperty('--quick-drag-offset', '0px');
-    });
-    els.quickDragHandle.addEventListener('pointermove', function(event) {
-      if (!quickDrag || quickDrag.id !== event.pointerId) return;
-      quickDrag.deltaY = Math.max(0, event.clientY - quickDrag.startY);
-      els.quickSheet.style.setProperty('--quick-drag-offset', quickDrag.deltaY + 'px');
-    });
-    els.quickDragHandle.addEventListener('pointerup', function(event) {
-      finishQuickDrag(event, true);
-    });
-    els.quickDragHandle.addEventListener('pointercancel', function(event) {
-      finishQuickDrag(event, false);
-    });
   }
 
   // 自动调整textarea高度
@@ -3686,7 +3649,6 @@
     ].forEach(function(input) {
       if (input) input.addEventListener('change', handleQuickDraftChange);
     });
-    if (els.quickDragHandle) bindQuickDragHandle();
     if (els.quickExtraPanel) {
       els.quickExtraPanel.addEventListener('click', function(event) {
         if (event.target.classList.contains('quick-extra-close')) {

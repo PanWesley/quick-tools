@@ -3653,10 +3653,6 @@ textarea {
   white-space: nowrap;
 }
 
-.quick-sheet-v2.is-dragging {
-  transform: translateY(var(--quick-drag-offset, 0px));
-}
-
 .quick-drag-handle {
   min-height: 44px;
   display: grid;
