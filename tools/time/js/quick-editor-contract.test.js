@@ -8,6 +8,15 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
+
+test('app version matches the latest changelog release', () => {
+  const appVersion = app.match(/var APP_VERSION = '(v\d+\.\d+\.\d+)'/);
+  const changelogVersion = changelog.match(/^## (v\d+\.\d+\.\d+)/m);
+  assert.ok(appVersion, 'APP_VERSION must be declared');
+  assert.ok(changelogVersion, 'CHANGELOG must start with a versioned release');
+  assert.equal(appVersion[1], changelogVersion[1]);
+});
 
 test('quick editor separates the compact primary panel from one replacement region', () => {
   assert.doesNotMatch(html, /quick-drag-handle/);

@@ -1,5 +1,5 @@
 (function() {
-  var APP_VERSION = 'v0.10.0';
+  var APP_VERSION = 'v0.10.1';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -1801,6 +1801,7 @@
     appState.quickDateSession = null;
     appState.quickChildDraft = null;
     appState.quickChildWheels = null;
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE' });
     closeQuickExtra();
     closeQuickFullPanel();

@@ -237,6 +237,80 @@ test('task and habit editing lock and restore background interaction', () => {
   assert.equal(runtime.background.inert, false);
 });
 
+test('closing a task from the date parent tears down its date transaction before editing another habit', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{
+      id: 'task-old', title: '旧任务', date: '2026-07-12', endDate: '2026-07-13',
+      priority: 'medium', area: 'life', timeMode: 'range', startTime: '08:00', endTime: '09:00'
+    }],
+    habits: [{
+      id: 'habit-new', title: '新习惯', startDate: '2026-07-20', schedule: 'daily',
+      priority: 'medium', area: 'life', tone: 'sky', timeMode: 'point', startTime: '18:30'
+    }]
+  });
+
+  runtime.hooks.openEditTask('task-old');
+  runtime.hooks.setQuickSurface('date');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, runtime.hooks.readQuickDraft(), {
+    startDate: '2026-07-30',
+    endDate: '2026-07-31',
+    timeMode: 'range',
+    startTime: '22:00',
+    endTime: '23:00'
+  }));
+  runtime.hooks.closeQuickSession({ keepDraft: false });
+
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+
+  runtime.hooks.openEditHabit('habit-new');
+  const nextDraft = runtime.hooks.readQuickDraft();
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.deepEqual(
+    [nextDraft.startDate, nextDraft.endDate, nextDraft.timeMode, nextDraft.startTime, nextDraft.endTime],
+    ['2026-07-20', '2026-07-20', 'point', '18:30', '']
+  );
+});
+
+test('closing a habit from a full-detail date child tears down its date transaction before editing another task', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{
+      id: 'task-new', title: '新任务', date: '2026-07-22', endDate: '2026-07-24',
+      priority: 'medium', area: 'life', timeMode: 'range', startTime: '10:15', endTime: '11:45'
+    }],
+    habits: [{
+      id: 'habit-old', title: '旧习惯', startDate: '2026-07-12', schedule: 'daily',
+      priority: 'medium', area: 'life', tone: 'sky', timeMode: 'all-day'
+    }]
+  });
+
+  runtime.hooks.openEditHabit('habit-old');
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('repeat');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, runtime.hooks.readQuickDraft(), {
+    startDate: '2026-08-01',
+    endDate: '2026-08-02',
+    repeat: 'custom',
+    customRepeat: { interval: 3, unit: 'week' }
+  }));
+  runtime.hooks.closeQuickSession({ keepDraft: false });
+
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+
+  runtime.hooks.openEditTask('task-new');
+  const nextDraft = runtime.hooks.readQuickDraft();
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.deepEqual(
+    [nextDraft.startDate, nextDraft.endDate, nextDraft.timeMode, nextDraft.startTime, nextDraft.endTime],
+    ['2026-07-22', '2026-07-24', 'range', '10:15', '11:45']
+  );
+});
+
 test('editing a habit retains its tone into the update payload', async () => {
   const runtime = createRuntime();
   runtime.hooks.setData({ tasks: [], habits: [{

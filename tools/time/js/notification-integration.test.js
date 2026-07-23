@@ -205,7 +205,7 @@ test('loads cache-busted notification dependencies in strict order', () => {
     .map(match => match[1])
     .filter(asset => releaseAssetPaths.has(asset.split('?')[0]));
   assert.deepEqual(indexedReleaseAssets.slice().sort(), releaseAssets.slice().sort());
-  assert.match(appSource, /var APP_VERSION = 'v0\.10\.0';/);
+  assert.match(appSource, /var APP_VERSION = 'v0\.10\.1';/);
 });
 
 test('projects encrypted reminder records and preserves the exact sync call', () => {
