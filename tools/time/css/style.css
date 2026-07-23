@@ -3642,6 +3642,17 @@ textarea {
   max-height: calc(var(--quick-viewport-height, 100vh) - 4px);
 }
 
+.quick-sheet-v2:has(.quick-extra-panel:not([hidden])) .quick-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .quick-sheet-v2.is-dragging {
   transform: translateY(var(--quick-drag-offset, 0px));
 }
@@ -3969,14 +3980,14 @@ textarea {
 }
 
 .quick-datetime-calendar {
-  padding: 12px 16px 8px;
+  padding: 6px 16px 4px;
 }
 
 .quick-datetime-calendar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .quick-datetime-month {
@@ -3991,8 +4002,8 @@ textarea {
 }
 
 .quick-datetime-nav button {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
   background: transparent;
@@ -4015,11 +4026,11 @@ textarea {
   font-size: 11px;
   color: var(--text-muted);
   font-weight: var(--weight-medium);
-  padding-bottom: 4px;
+  padding-bottom: 0;
 }
 
 .quick-datetime-weekdays span {
-  padding: 6px 0;
+  padding: 2px 0;
 }
 
 .quick-datetime-grid {
@@ -4578,8 +4589,8 @@ textarea {
   }
 
   .quick-send-btn {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
   }
 
   .quick-priority-grid {

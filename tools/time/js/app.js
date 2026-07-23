@@ -1666,6 +1666,8 @@
     event.preventDefault();
     if (isPendingConfirmationOpen()) {
       renderDateParent(true);
+    } else if (isQuickFullPanelOpen() && appState.quickEditor.surface !== 'detail') {
+      returnQuickFullToDetailSummary();
     } else if (isQuickFullPanelOpen()) {
       closeQuickFullPanel({ focusTitle: true });
     } else if (appState.quickEditor.surface === 'date' && appState.quickEditor.dateChild !== 'none') {
@@ -2005,6 +2007,14 @@
     if (els.quickNotes && document.activeElement === els.quickNotes) {
       els.quickNotes.blur();
     }
+  }
+
+  function returnQuickFullToDetailSummary() {
+    appState.quickChildDraft = null;
+    appState.quickChildWheels = null;
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DETAIL' });
+    renderQuickFullPanel();
+    if (els.quickFullBack) els.quickFullBack.focus();
   }
 
   function closeQuickFullPanel(options) {
@@ -2629,6 +2639,7 @@
     els.quickSheet.removeAttribute('aria-hidden');
     els.quickSheet.inert = false;
     lockQuickEditorScroll();
+    setQuickEditorBackgroundInert(true);
     updateQuickViewportHeight();
     void els.quickSheet.offsetHeight;
     updateQuickSummary();
@@ -2737,6 +2748,7 @@
       els.quickRepeatCustomHint.textContent = formatRepeatLabel('custom', habit.customRepeat);
     }
     setQuickDate(habit.startDate || appState.todayKey);
+    setChoiceValue('quick-tone', habit.tone || '');
     if (els.quickMoreSettings) els.quickMoreSettings.open = false;
     closeQuickExtra();
     closeQuickFullPanel();
@@ -3685,10 +3697,7 @@
     if (els.quickFullBack) {
       els.quickFullBack.addEventListener('click', function() {
         if (appState.quickEditor.surface !== 'detail') {
-          appState.quickChildDraft = null;
-          appState.quickChildWheels = null;
-          appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DETAIL' });
-          renderQuickFullPanel();
+          returnQuickFullToDetailSummary();
           return;
         }
         closeQuickFullPanel({ focusTitle: true });

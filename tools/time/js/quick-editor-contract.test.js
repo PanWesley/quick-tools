@@ -42,6 +42,14 @@ test('date parent panel expands to expose its settings in a 390 by 844 viewport'
   assert.match(css, /\.quick-date-child-head button\s*\{[^}]*min-height:\s*44px;/s);
 });
 
+test('date parent preserves its live summary semantically while keeping all settings in the first 390 by 844 viewport', () => {
+  assert.match(css, /\.quick-sheet-v2:has\(\.quick-extra-panel:not\(\[hidden\]\)\) \.quick-summary\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
+  assert.match(css, /\.quick-datetime-calendar\s*\{[^}]*padding:\s*6px 16px 4px;/s);
+  assert.match(css, /\.quick-datetime-calendar-header\s*\{[^}]*margin-bottom:\s*0;/s);
+  assert.match(css, /\.quick-datetime-weekdays\s*\{[^}]*padding-bottom:\s*0;/s);
+  assert.match(css, /\.quick-datetime-weekdays span\s*\{[^}]*padding:\s*2px 0;/s);
+});
+
 test('app coordinates scroll lock, draft storage and swipe suppression', () => {
   assert.match(app, /today-youxu-quick-draft-v1/);
   assert.match(app, /function lockQuickEditorScroll/);
@@ -97,6 +105,16 @@ test('quick editor recaptures escaped tab focus and treats pending confirmation 
   assert.match(app, /data-pending-cancel[\s\S]{0,300}cancel\.focus\(\)/);
   assert.match(app, /function requestPendingDate/);
   assert.match(app, /chipType === 'date'[\s\S]{0,140}requestPendingDate\(\)/);
+});
+
+test('fullscreen selectors return to their detail summary before the editor closes', () => {
+  assert.match(app, /isQuickFullPanelOpen\(\) && appState\.quickEditor\.surface !== 'detail'/);
+  assert.match(app, /OPEN_DETAIL[\s\S]{0,220}renderQuickFullPanel\(\)/);
+});
+
+test('calendar navigation and mobile save affordances retain 44px targets', () => {
+  assert.match(css, /\.quick-datetime-nav button\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
+  assert.match(css, /@media \(max-width: 640px\)[\s\S]*?\.quick-send-btn\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
 });
 
 test('date range clamping is announced and all editor controls retain 44px targets', () => {
