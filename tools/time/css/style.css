@@ -4361,6 +4361,18 @@ textarea {
   padding: 16px;
 }
 
+.quick-full-body > .quick-datetime-panel,
+.quick-full-body > .quick-date-child-panel {
+  margin: -16px;
+  min-height: 100%;
+}
+
+.quick-full-body > .quick-priority-panel,
+.quick-full-body > .quick-area-panel,
+.quick-full-body > .quick-tone-panel {
+  padding-top: 0;
+}
+
 .quick-full-section {
   margin-bottom: 20px;
 }

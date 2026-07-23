@@ -583,6 +583,13 @@
     return ['completed', 'done', 'skipped'].includes(entry.state) ? ' is-done' : '';
   }
 
+  function calendarEntryLabel(entry) {
+    if (entry.type !== 'task' || entry.timeMode === 'all-day') return entry.label;
+    if ((entry.rangePosition === 'single' || entry.rangePosition === 'start') && entry.startTime) return entry.startTime + ' ' + entry.label;
+    if (entry.rangePosition === 'end' && entry.endTime) return entry.endTime + ' ' + entry.label;
+    return entry.label;
+  }
+
   function renderHabit(habit) {
     var log = State.getHabitLogForDate(appState.data.habitLogs, habit.id, appState.todayKey);
     var done = log && log.state === 'done';
@@ -691,7 +698,7 @@
       var entries = State.getCalendarEntries(appState.data, cell.dateKey);
       var maxStrips = 4;
       var strips = entries.slice(0, maxStrips).map(function(entry) {
-        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(truncateLabel(entry.label, 4)) + '</span>';
+        return '<span class="calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry) + '">' + escapeHtml(truncateLabel(calendarEntryLabel(entry), 4)) + '</span>';
       }).join('');
       var overflow = entries.length > maxStrips ? '<span class="calendar-more">+' + (entries.length - maxStrips) + '</span>' : '';
       return [
@@ -1527,6 +1534,7 @@
     autoResizeTextarea(els.quickNotes);
     updateTimeDisplay();
     updateToolStates();
+    updateQuickSummary();
     renderQuickSurface();
   }
 
@@ -1549,10 +1557,7 @@
   function renderQuickSurface() {
     if (!els.quickExtraPanel) return;
     var state = appState.quickEditor;
-    if (els.quickSummary) {
-      var summary = getQuickSummary();
-      els.quickSummary.textContent = summary.dateLabel + ' · ' + summary.timeLabel;
-    }
+    updateQuickSummary();
     document.querySelectorAll('.quick-tool-btn').forEach(function(button) {
       var open = button.dataset.tool === state.surface;
       button.classList.toggle('is-open', open);
@@ -1575,6 +1580,21 @@
     if (typeof updateQuickSummary === 'function') updateQuickSummary();
     renderQuickSurface();
     if (!appState.editingTaskId) persistCreateDraft();
+  }
+
+  function updateQuickSummary() {
+    var draft = readQuickDraft();
+    var dateText = !draft.startDate ? '待定' : draft.startDate === draft.endDate
+      ? formatDateLabel(draft.startDate)
+      : formatDateLabel(draft.startDate) + '–' + formatDateLabel(draft.endDate);
+    var timeText = draft.timeMode === 'all-day' ? '全天' : draft.timeMode === 'range'
+      ? draft.startTime + '–' + draft.endTime : draft.startTime;
+    if (els.quickSummary) {
+      els.quickSummary.textContent = [dateText, timeText, formatRepeatLabel(draft.repeat, draft.customRepeat), formatReminderLabel(draft.reminder, draft.customReminder)]
+        .filter(function(value) { return value && value !== '不重复' && value !== '不提醒'; }).join(' · ');
+    }
+    var saveButton = els.quickForm && els.quickForm.querySelector('.quick-send-btn');
+    if (saveButton) saveButton.disabled = !String(draft.title || '').trim();
   }
 
   function lockQuickEditorScroll() {
@@ -1893,10 +1913,12 @@
 
   function openQuickFullPanel() {
     if (!els.quickFullPanel || !els.quickSheet) return;
-    setQuickSurface('detail');
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DETAIL' });
     closeQuickExtra();
     renderQuickFullPanel();
-    els.quickSheet.classList.add('is-full');
+    els.quickSheet.hidden = true;
+    els.quickSheet.setAttribute('aria-hidden', 'true');
+    els.quickSheet.inert = true;
     els.quickFullPanel.hidden = false;
     if (els.quickTitle && document.activeElement === els.quickTitle) {
       els.quickTitle.blur();
@@ -1911,8 +1933,10 @@
     if (isQuickEditorOpen()) {
       appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DETAIL' });
     }
-    els.quickSheet.classList.remove('is-full');
     els.quickFullPanel.hidden = true;
+    els.quickSheet.hidden = false;
+    els.quickSheet.removeAttribute('aria-hidden');
+    els.quickSheet.inert = false;
     if (options && options.focusTitle && els.quickTitle) {
       void els.quickSheet.offsetHeight;
       focusQuickTitle();
@@ -1921,15 +1945,15 @@
 
   function renderQuickFullPanel() {
     if (!els.quickFullBody) return;
+    var draft = readQuickDraft();
     var s = getQuickSummary();
-    var title = (els.quickTitle && els.quickTitle.value.trim()) || '未命名事项';
     var html = '';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">标题</div>';
-    html += '<input type="text" class="quick-full-input" id="qf-title-input" value="' + escapeHtml(els.quickTitle.value) + '" placeholder="事项标题"></div>';
+    html += '<input type="text" class="quick-full-input" id="qf-title-input" value="' + escapeHtml(draft.title) + '" placeholder="事项标题"></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">备注</div>';
-    html += '<textarea class="quick-full-textarea" id="qf-notes-input" rows="4" placeholder="添加备注...">' + escapeHtml(els.quickNotes.value || '') + '</textarea></div>';
+    html += '<textarea class="quick-full-textarea" id="qf-notes-input" rows="4" placeholder="添加备注...">' + escapeHtml(draft.notes) + '</textarea></div>';
 
     html += '<div class="quick-full-section"><div class="quick-full-label">日期与时间</div>';
     html += '<button type="button" class="quick-full-value" data-qf-jump="date">';
@@ -1968,13 +1992,12 @@
     els.quickFullBody.querySelectorAll('[data-qf-jump]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var tool = btn.dataset.qfJump;
-        closeQuickFullPanel();
-        openQuickTool(tool === 'repeat' || tool === 'reminder' ? 'date' : tool);
+        appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: tool === 'repeat' || tool === 'reminder' ? 'date' : tool });
         if (tool === 'repeat' || tool === 'reminder') {
           appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), tool);
           appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: tool });
-          renderQuickSurface();
         }
+        renderQuickSurface();
       });
     });
     var qfTitle = els.quickFullBody.querySelector('#qf-title-input');
@@ -2106,9 +2129,19 @@
     setQuickSurface(tool);
   }
 
+  function isQuickFullPanelOpen() {
+    return Boolean(els.quickFullPanel && !els.quickFullPanel.hidden);
+  }
+
+  function quickPanelHost() {
+    return isQuickFullPanelOpen() ? els.quickFullBody : els.quickExtraPanel;
+  }
+
   function replaceQuickPanel(html) {
-    els.quickExtraPanel.innerHTML = html;
-    els.quickExtraPanel.hidden = false;
+    var host = quickPanelHost();
+    if (!host) return;
+    host.innerHTML = html;
+    if (host === els.quickExtraPanel) host.hidden = false;
   }
 
   function renderPrioritySurface() {
@@ -2118,7 +2151,7 @@
       html += '<button type="button" class="quick-priority-quad q' + q.value.charAt(1) + (current === q.value ? ' is-selected' : '') + '" data-quad="' + q.value + '"><span class="quick-priority-roman">' + q.roman + '</span><span class="quick-priority-label">' + q.label + '</span><span class="quick-priority-desc">' + q.desc + '</span></button>';
     });
     replaceQuickPanel(html + '</div></div>');
-    els.quickExtraPanel.querySelectorAll('[data-quad]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-priority', btn.dataset.quad); handleQuickDraftChange(); renderPrioritySurface(); }); });
+    quickPanelHost().querySelectorAll('[data-quad]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-priority', btn.dataset.quad); handleQuickDraftChange(); renderPrioritySurface(); }); });
   }
 
   function renderAreaSurface() {
@@ -2128,7 +2161,7 @@
       html += '<button type="button" class="quick-area-item' + (current === key ? ' is-selected' : '') + '" data-area="' + key + '"><span class="quick-area-icon" style="background:' + AREA_COLORS[key] + '22;color:' + AREA_COLORS[key] + '">' + AREA_ICONS[key] + '</span><span class="quick-area-info"><span class="quick-area-name">' + AREA_LABELS[key] + '</span></span><span class="quick-area-check">' + (current === key ? '✓' : '') + '</span></button>';
     });
     replaceQuickPanel(html + '</div>');
-    els.quickExtraPanel.querySelectorAll('[data-area]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-area', btn.dataset.area); handleQuickDraftChange(); renderAreaSurface(); }); });
+    quickPanelHost().querySelectorAll('[data-area]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-area', btn.dataset.area); handleQuickDraftChange(); renderAreaSurface(); }); });
   }
 
   function renderToneSurface() {
@@ -2136,7 +2169,7 @@
     var html = '<div class="quick-tone-panel"><div class="quick-tone-grid">';
     TONE_LIST.forEach(function(tone) { var none = tone.value === ''; html += '<button type="button" class="quick-tone-swatch' + (none ? ' quick-tone-none' : '') + (current === tone.value ? ' is-selected' : '') + '" data-tone="' + tone.value + '" style="' + (none ? '' : 'background:' + tone.color) + '">' + (none ? '✕' : '') + '</button>'; });
     replaceQuickPanel(html + '</div></div>');
-    els.quickExtraPanel.querySelectorAll('[data-tone]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-tone', btn.dataset.tone); handleQuickDraftChange(); renderToneSurface(); }); });
+    quickPanelHost().querySelectorAll('[data-tone]').forEach(function(btn) { btn.addEventListener('click', function() { setChoiceValue('quick-tone', btn.dataset.tone); handleQuickDraftChange(); renderToneSurface(); }); });
   }
 
   function renderDateSurface() {
@@ -2164,14 +2197,14 @@
       });
       presetHost.appendChild(btn);
     });
-    els.quickExtraPanel.querySelectorAll('[data-date-phase]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SET_DATE_PHASE', phase: btn.dataset.datePhase }); renderDateParent(); }); });
-    els.quickExtraPanel.querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
+    quickPanelHost().querySelectorAll('[data-date-phase]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SET_DATE_PHASE', phase: btn.dataset.datePhase }); renderDateParent(); }); });
+    quickPanelHost().querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
   }
 
   function commitDateChild() {
     var merged = QuickEditor.applyChildDraft(readQuickDraft(), appState.quickChildDraft);
     var validity = QuickEditor.validateSchedule(merged);
-    if (!validity.valid) { var error = els.quickExtraPanel.querySelector('.quick-date-child-error'); if (error) error.textContent = validity.message; return false; }
+    if (!validity.valid) { var error = quickPanelHost().querySelector('.quick-date-child-error'); if (error) error.textContent = validity.message; return false; }
     applyQuickDraft(merged);
     handleQuickDraftChange();
     return true;
@@ -2190,11 +2223,12 @@
     appState.quickChildDraft = child;
     var labels = { time: '时间', reminder: '提醒', repeat: '重复' };
     replaceQuickPanel('<div class="quick-date-child-panel"><div class="quick-date-child-head"><button type="button" data-child-back="true">返回</button><strong>' + labels[type] + '</strong><button type="button" data-child-confirm="true">确定</button></div><div class="quick-date-child-content"></div><p class="quick-date-child-error" aria-live="polite"></p></div>');
-    var content = els.quickExtraPanel.querySelector('.quick-date-child-content');
+    var panel = quickPanelHost();
+    var content = panel.querySelector('.quick-date-child-content');
     if (type === 'time') renderTimeDateChild(content, child);
     else renderChoiceDateChild(content, child, type);
-    els.quickExtraPanel.querySelector('[data-child-back]').addEventListener('click', function() { finishDateChild(false); });
-    els.quickExtraPanel.querySelector('[data-child-confirm]').addEventListener('click', function() { finishDateChild(true); });
+    panel.querySelector('[data-child-back]').addEventListener('click', function() { finishDateChild(false); });
+    panel.querySelector('[data-child-confirm]').addEventListener('click', function() { finishDateChild(true); });
   }
 
   function renderTimeDateChild(content, child) {
@@ -2218,7 +2252,7 @@
     function saveWheelValue() { if (!appState.quickChildWheels) return; var time = String(appState.quickChildWheels.hours.getValue()).padStart(2, '0') + ':' + String(appState.quickChildWheels.minutes.getValue()).padStart(2, '0'); child[phase === 'end' ? 'endTime' : 'startTime'] = time; }
     content.querySelectorAll('[data-time-phase]').forEach(function(btn) { btn.addEventListener('click', function() { saveWheelValue(); child.timePhase = btn.dataset.timePhase; renderDateChild('time'); }); });
     content.querySelectorAll('[data-child-time-mode]').forEach(function(btn) { btn.addEventListener('click', function() { saveWheelValue(); child.timeMode = btn.dataset.childTimeMode; child.timePhase = 'start'; if (child.timeMode === 'range' && !child.endTime) child.endTime = QuickEditor.defaultEndTime(child.startTime || '09:00'); renderDateChild('time'); }); });
-    var confirm = els.quickExtraPanel.querySelector('[data-child-confirm]');
+    var confirm = quickPanelHost().querySelector('[data-child-confirm]');
     confirm.addEventListener('click', saveWheelValue);
   }
 
@@ -2240,14 +2274,14 @@
       toggles.className = 'picker-toggles';
       toggles.innerHTML = '<label class="picker-toggle"><input type="checkbox" data-child-skip="holidays"' + (repeat.skipHolidays ? ' checked' : '') + '><span>跳过法定节假日</span></label><label class="picker-toggle"><input type="checkbox" data-child-skip="weekends"' + (repeat.skipWeekends ? ' checked' : '') + '><span>跳过双休日</span></label>';
       content.appendChild(toggles);
-      els.quickExtraPanel.querySelector('[data-child-confirm]').addEventListener('click', function() { child.customRepeat = { interval: appState.quickChildWheels.interval.getValue(), unit: appState.quickChildWheels.unit.getValue(), skipHolidays: Boolean(content.querySelector('[data-child-skip="holidays"]').checked), skipWeekends: Boolean(content.querySelector('[data-child-skip="weekends"]').checked) }; });
+      quickPanelHost().querySelector('[data-child-confirm]').addEventListener('click', function() { child.customRepeat = { interval: appState.quickChildWheels.interval.getValue(), unit: appState.quickChildWheels.unit.getValue(), skipHolidays: Boolean(content.querySelector('[data-child-skip="holidays"]').checked), skipWeekends: Boolean(content.querySelector('[data-child-skip="weekends"]').checked) }; });
     } else {
       var reminder = child.customReminder;
       var days = Array.from({ length: 8 }, function(_, i) { return { label: i + '天', value: i }; });
       var hours = Array.from({ length: 24 }, function(_, i) { return { label: i + '小时', value: i }; });
       var minutes = Array.from({ length: 60 }, function(_, i) { return { label: i + '分钟', value: i }; });
       appState.quickChildWheels = { days: createPickerWheel(row, days, reminder.days, 'picker-col-days'), hours: createPickerWheel(row, hours, reminder.hours, 'picker-col-hours'), minutes: createPickerWheel(row, minutes, reminder.minutes, 'picker-col-minutes') };
-      els.quickExtraPanel.querySelector('[data-child-confirm]').addEventListener('click', function(event) { var next = { days: appState.quickChildWheels.days.getValue(), hours: appState.quickChildWheels.hours.getValue(), minutes: appState.quickChildWheels.minutes.getValue() }; if (!next.days && !next.hours && !next.minutes) { event.stopImmediatePropagation(); var error = els.quickExtraPanel.querySelector('.quick-date-child-error'); if (error) error.textContent = '提醒时间不能为0'; return; } child.customReminder = next; });
+      quickPanelHost().querySelector('[data-child-confirm]').addEventListener('click', function(event) { var next = { days: appState.quickChildWheels.days.getValue(), hours: appState.quickChildWheels.hours.getValue(), minutes: appState.quickChildWheels.minutes.getValue() }; if (!next.days && !next.hours && !next.minutes) { event.stopImmediatePropagation(); var error = quickPanelHost().querySelector('.quick-date-child-error'); if (error) error.textContent = '提醒时间不能为0'; return; } child.customReminder = next; });
     }
   }
 
@@ -2284,12 +2318,13 @@
 
   function handleQuickSubmit(event) {
     event.preventDefault();
-    var draftValidity = QuickEditor.validateDraft(readQuickDraft());
+    var draft = readQuickDraft();
+    var draftValidity = QuickEditor.validateDraft(draft);
     if (!draftValidity.valid) {
       showToast(draftValidity.message);
       return;
     }
-    var title = els.quickTitle.value.trim();
+    var title = draft.title.trim();
 
     var priorityRaw = els.quickPriority.value;
     var priorityForDb = QUAD_TO_PRIORITY[priorityRaw] || 'medium';
@@ -2298,14 +2333,15 @@
     var reminder = els.quickReminder.value || 'none';
     var payload = {
       title: title,
-      notes: els.quickNotes.value,
-      date: els.quickDate.value,
+      notes: draft.notes,
+      date: draft.startDate,
+      endDate: els.quickEndDate.value || draft.startDate,
       priority: priorityForDb,
-      area: els.quickArea.value || 'life',
-      tone: els.quickTone.value || '',
-      timeMode: els.quickTimeMode.value || 'all-day',
-      startTime: els.quickStartTime.value,
-      endTime: els.quickTimeMode.value === 'range' ? els.quickEndTime.value : '',
+      area: draft.area || 'life',
+      tone: draft.tone || '',
+      timeMode: draft.timeMode,
+      startTime: draft.startTime,
+      endTime: draft.timeMode === 'range' ? draft.endTime : '',
       reminder: reminder
     };
     if (repeat === 'custom' && appState.customRepeat) {
@@ -2316,6 +2352,16 @@
     }
     var action;
     var wasEditing = Boolean(appState.editingTaskId);
+    function createHabitPayload() {
+      var habitData = Object.assign({}, payload, {
+        schedule: repeat,
+        customRepeat: repeat === 'custom' ? appState.customRepeat : null,
+        startDate: payload.date,
+        weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
+      });
+      delete habitData.endDate;
+      return habitData;
+    }
     if (wasEditing && appState.editingType === 'habit') {
       var habitPayload = {
         title: title,
@@ -2337,14 +2383,8 @@
       action = DB.updateHabit(appState.editingTaskId, habitPayload);
     } else if (wasEditing) {
       if (repeat !== 'none') {
-        var habitCreateData = Object.assign({}, payload, {
-          schedule: repeat,
-          customRepeat: repeat === 'custom' ? appState.customRepeat : null,
-          startDate: payload.date,
-          weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
-        });
         var convertingTaskId = appState.editingTaskId;
-        action = DB.createHabit(habitCreateData).then(function() {
+        action = DB.createHabit(createHabitPayload()).then(function() {
           return DB.purgeTask(convertingTaskId);
         });
       } else {
@@ -2353,12 +2393,7 @@
     } else {
       action = repeat === 'none'
         ? DB.createTask(payload)
-        : DB.createHabit(Object.assign({}, payload, {
-          schedule: repeat,
-          customRepeat: repeat === 'custom' ? appState.customRepeat : null,
-          startDate: payload.date,
-          weekday: payload.date ? DateUtils.fromDateKey(payload.date).getDay() : DateUtils.fromDateKey(appState.todayKey).getDay()
-        }));
+        : DB.createHabit(createHabitPayload());
     }
 
     action.then(function() {
@@ -2458,6 +2493,22 @@
     }
   }
 
+  function openLockedQuickEditSession() {
+    appState.quickEditor = QuickEditor.transition(
+      QuickEditor.createSessionState(appState.editingType === 'habit' ? 'edit-habit' : 'edit-task'),
+      { type: 'OPEN' }
+    );
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = false;
+    els.quickSheet.removeAttribute('aria-hidden');
+    els.quickSheet.inert = false;
+    lockQuickEditorScroll();
+    updateQuickViewportHeight();
+    void els.quickSheet.offsetHeight;
+    updateQuickSummary();
+    focusQuickTitle();
+  }
+
   function openEditTask(id) {
     var task = appState.data.tasks.find(function(item) { return item.id === id; });
     if (!task) {
@@ -2485,6 +2536,7 @@
     }
     els.quickStartTime.value = task.startTime || '';
     els.quickEndTime.value = task.endTime || '';
+    els.quickDate.value = task.date || '';
     els.quickEndDate.value = task.endDate || task.date || '';
     els.quickNotes.value = task.notes || '';
     updateTimeDisplay();
@@ -2499,7 +2551,7 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    openQuickSession('edit', readQuickDraft());
+    openLockedQuickEditSession();
   }
 
   function openEditHabit(id) {
@@ -2550,6 +2602,7 @@
     }
     els.quickStartTime.value = habit.startTime || '';
     els.quickEndTime.value = habit.endTime || '';
+    els.quickDate.value = habit.startDate || appState.todayKey;
     els.quickEndDate.value = habit.startDate || appState.todayKey;
     els.quickNotes.value = habit.notes || '';
     updateTimeDisplay();
@@ -2563,7 +2616,7 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    openQuickSession('edit', readQuickDraft());
+    openLockedQuickEditSession();
   }
 
   function changeMonth(delta) {
@@ -3503,14 +3556,19 @@
     }
     if (els.quickFullBack) {
       els.quickFullBack.addEventListener('click', function() {
+        if (appState.quickEditor.surface !== 'detail') {
+          appState.quickChildDraft = null;
+          appState.quickChildWheels = null;
+          appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DETAIL' });
+          renderQuickFullPanel();
+          return;
+        }
         closeQuickFullPanel({ focusTitle: true });
       });
     }
     if (els.quickFullSave) {
       els.quickFullSave.addEventListener('click', function() {
-        if (els.quickForm) {
-          els.quickForm.dispatchEvent(new Event('submit', { cancelable: true }));
-        }
+        closeQuickFullPanel({ focusTitle: true });
       });
     }
     els.journalForm.addEventListener('submit', handleJournalSubmit);

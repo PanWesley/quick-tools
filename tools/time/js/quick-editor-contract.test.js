@@ -57,3 +57,16 @@ test('app isolates edit end dates and resets drag state when a session closes', 
   assert.match(app, /function openEditHabit[\s\S]*els\.quickEndDate\.value = habit\.startDate \|\| appState\.todayKey;/);
   assert.match(app, /function closeQuickSession[\s\S]*quickDrag = null;[\s\S]*classList\.remove\('is-dragging'\)[\s\S]*removeProperty\('--quick-drag-offset'\)/);
 });
+
+test('save payload and edit restoration include endDate', () => {
+  assert.match(app, /endDate:\s*els\.quickEndDate\.value/);
+  assert.match(app, /els\.quickEndDate\.value\s*=\s*task\.endDate\s*\|\|\s*task\.date/);
+  assert.match(app, /clearCreateDraft\(\)/);
+});
+
+test('detail exits synchronously to focused keyboard surface', () => {
+  assert.match(app, /CLOSE_DETAIL/);
+  assert.match(app, /function openQuickFullPanel[\s\S]*els\.quickSheet\.hidden\s*=\s*true/);
+  assert.match(app, /if \(els\.quickFullSave\)[\s\S]{0,300}closeQuickFullPanel\(\{ focusTitle: true \}\)/);
+  assert.doesNotMatch(app, /setTimeout\(function\(\)\s*\{\s*openQuickTool/s);
+});
