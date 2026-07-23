@@ -31,7 +31,6 @@ test('editor CSS defines locked, child-panel, fullscreen and reduced-motion stat
 
 test('editor resets the static sheet transform and keeps screen-reader labels accessible', () => {
   assert.match(css, /\.quick-sheet-v2\s*\{[^}]*transform:\s*none;/s);
-  assert.match(css, /\.quick-sheet-v2\.is-dragging\s*\{[^}]*transform:/s);
   assert.match(css, /\.sr-only\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
 });
 
@@ -54,23 +53,22 @@ test('app coordinates scroll lock, draft storage and swipe suppression', () => {
   assert.match(app, /today-youxu-quick-draft-v1/);
   assert.match(app, /function lockQuickEditorScroll/);
   assert.match(app, /function unlockQuickEditorScroll/);
-  assert.match(app, /if \(isQuickEditorOpen\(\)\) return;/);
+  assert.match(app, /if \(isQuickEditorOpen\(\)\)[\s\S]*surface === 'keyboard'[\s\S]*event\.preventDefault\(\);[\s\S]*return;/);
   assert.match(app, /visualViewport.*quick-viewport-height/s);
 });
 
-test('app limits sheet dismissal to the drag handle and cleans up every pointer end', () => {
-  assert.match(app, /els\.quickDragHandle\.addEventListener\('pointerdown'/);
-  assert.match(app, /els\.quickDragHandle\.addEventListener\('pointercancel'/);
-  assert.match(app, /classList\.add\('is-dragging'\)/);
-  assert.match(app, /style\.setProperty\('--quick-drag-offset'/);
-  assert.match(app, /function closeQuickSession/);
-  assert.match(app, /function persistCreateDraft/);
+test('quick editor handle is decorative and cannot translate or dismiss the sheet', () => {
+  assert.doesNotMatch(app, /var quickDrag/);
+  assert.doesNotMatch(app, /function bindQuickDragHandle/);
+  assert.doesNotMatch(app, /function finishQuickDrag/);
+  assert.doesNotMatch(app, /--quick-drag-offset/);
+  assert.doesNotMatch(css, /\.quick-sheet-v2\.is-dragging/);
+  assert.match(html, /id="quick-drag-handle"[^>]*aria-hidden="true"/);
 });
 
-test('app isolates edit end dates and resets drag state when a session closes', () => {
+test('app isolates edit end dates between task and habit sessions', () => {
   assert.match(app, /function openEditTask[\s\S]*els\.quickEndDate\.value = task\.endDate \|\| task\.date \|\| '';/);
   assert.match(app, /function openEditHabit[\s\S]*els\.quickEndDate\.value = habit\.startDate \|\| appState\.todayKey;/);
-  assert.match(app, /function closeQuickSession[\s\S]*quickDrag = null;[\s\S]*classList\.remove\('is-dragging'\)[\s\S]*removeProperty\('--quick-drag-offset'\)/);
 });
 
 test('save payload and edit restoration include endDate', () => {

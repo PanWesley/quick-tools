@@ -16,6 +16,7 @@ function createElement(id) {
     inert: false,
     value: '',
     textContent: '',
+    dataset: {},
     disabled: false,
     scrollHeight: 24,
     offsetHeight: 1,
@@ -26,6 +27,7 @@ function createElement(id) {
     removeAttribute(name) { attrs.delete(name); },
     querySelectorAll() { return []; },
     querySelector() { return null; },
+    appendChild() {},
     addEventListener() {},
     focus() {},
     blur() {},
@@ -64,7 +66,12 @@ function createRuntime() {
     updateHabit(id, payload) { updates.push({ id, payload }); return Promise.resolve(); }
   };
   const window = {
-    TodayYouxuDateUtils: { getTodayKey: () => '2026-07-12', fromDateKey: () => new Date('2026-07-12T00:00:00') },
+    TodayYouxuDateUtils: {
+      getTodayKey: () => '2026-07-12',
+      fromDateKey: () => new Date('2026-07-12T00:00:00'),
+      toDateKey: date => date.toISOString().slice(0, 10),
+      addDays: (date, days) => new Date(date.getTime() + days * 86400000)
+    },
     TodayYouxuState: { habitDueOn: () => false, normalizeArea: value => value || 'life' },
     TodayYouxuExport: {},
     TodayYouxuDB: db,
@@ -91,6 +98,19 @@ function createRuntime() {
       openEditHabit: openEditHabit,
       closeQuickSession: closeQuickSession,
       handleQuickSubmit: handleQuickSubmit,
+      handleSwipeMove: handleSwipeMove,
+      openCreate: function() {
+        openQuickSession('create', {
+          startDate: appState.todayKey,
+          endDate: appState.todayKey
+        });
+      },
+      setQuickSurface: function(surface) {
+        appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+          type: surface === 'keyboard' ? 'SHOW_KEYBOARD' : 'OPEN_TOOL',
+          tool: surface
+        });
+      },
       setData: function(data) { appState.data = data; },
       getState: function() { return appState; }
     };`);
@@ -134,4 +154,31 @@ test('editing a habit retains its tone into the update payload', async () => {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
   assert.equal(runtime.updates.length, 1);
   assert.equal(runtime.updates[0].payload.tone, 'sky');
+});
+
+test('keyboard quick editor prevents viewport touch scrolling without blocking replacement panels', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+
+  let prevented = 0;
+  runtime.hooks.handleSwipeMove({
+    touches: [{ clientX: 10, clientY: 40 }],
+    preventDefault() { prevented += 1; }
+  });
+  assert.equal(prevented, 1);
+
+  runtime.hooks.setQuickSurface('date');
+  runtime.hooks.handleSwipeMove({
+    touches: [{ clientX: 10, clientY: 20 }],
+    preventDefault() { prevented += 1; }
+  });
+  assert.equal(prevented, 1);
+
+  runtime.hooks.closeQuickSession({ keepDraft: false });
+  runtime.hooks.handleSwipeMove({
+    touches: [{ clientX: 10, clientY: 10 }],
+    preventDefault() { prevented += 1; }
+  });
+  assert.equal(prevented, 1);
 });
