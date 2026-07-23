@@ -18,7 +18,10 @@ test('quick editor separates the compact primary panel from one replacement regi
 
 test('state module loads before app and is cached', () => {
   assert.ok(html.indexOf('/tools/time/js/quick-editor-state.js') < html.indexOf('/tools/time/js/app.js'));
-  assert.match(sw, /\/tools\/time\/js\/quick-editor-state\.js\?v=2/);
+  assert.match(sw, /const CACHE_NAME = 'today-youxu-v58'/);
+  assert.match(sw, /\/tools\/time\/css\/style\.css\?v=162/);
+  assert.match(sw, /\/tools\/time\/js\/quick-editor-state\.js\?v=3/);
+  assert.match(sw, /\/tools\/time\/js\/app\.js\?v=165/);
 });
 
 test('editor CSS defines locked, child-panel, fullscreen and reduced-motion states', () => {

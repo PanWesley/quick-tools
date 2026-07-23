@@ -553,16 +553,16 @@ test('app source renders stable notification attributes and owns message targeti
 });
 
 test('service worker cache matches current index assets and notification API is network-only', async () => {
-  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v57['"]/);
+  assert.match(swSource, /const CACHE_NAME = ['"]today-youxu-v58['"]/);
   const releaseAssets = [
-    '/tools/time/css/style.css?v=161',
-    '/tools/time/js/quick-editor-state.js?v=2',
+    '/tools/time/css/style.css?v=162',
+    '/tools/time/js/quick-editor-state.js?v=3',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
     '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=164'
+    '/tools/time/js/app.js?v=165'
   ];
   const releaseAssetPaths = new Set(releaseAssets.map(asset => asset.split('?')[0]));
   const indexedReleaseAssets = [...indexSource.matchAll(/(?:href|src)="([^"]+)"/g)]
