@@ -9,6 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 
 function createElement(id) {
   const attrs = new Map();
+  const listeners = new Map();
   return {
     id,
     tagName: 'DIV',
@@ -28,7 +29,24 @@ function createElement(id) {
     querySelectorAll() { return []; },
     querySelector() { return null; },
     appendChild() {},
-    addEventListener() {},
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    click() {
+      let stopped = false;
+      const event = {
+        target: this,
+        currentTarget: this,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() { stopped = true; }
+      };
+      for (const listener of listeners.get('click') || []) {
+        listener.call(this, event);
+        if (stopped) break;
+      }
+    },
     focus() {
       if (this.ownerDocument) this.ownerDocument.activeElement = this;
       this.focusCount = (this.focusCount || 0) + 1;
@@ -77,6 +95,14 @@ function createRuntime() {
   get('calendar-picker-sheet').hidden = true;
   const quickFullBody = get('quick-full-body');
   const quickFullNodes = new Map();
+  let quickFullHtml = '';
+  Object.defineProperty(quickFullBody, 'innerHTML', {
+    get() { return quickFullHtml; },
+    set(value) {
+      quickFullHtml = String(value);
+      quickFullNodes.clear();
+    }
+  });
   quickFullBody.querySelector = selector => {
     if (![
       '.quick-date-child-content',
@@ -87,6 +113,16 @@ function createRuntime() {
     if (!quickFullNodes.has(selector)) quickFullNodes.set(selector, createElement(selector));
     const element = quickFullNodes.get(selector);
     element.ownerDocument = document;
+    if (selector === '.quick-date-child-content') {
+      element.querySelector = childSelector => {
+        const key = selector + ' ' + childSelector;
+        if (childSelector !== '.quick-date-child-wheels') return null;
+        if (!quickFullNodes.has(key)) quickFullNodes.set(key, createElement(key));
+        const childElement = quickFullNodes.get(key);
+        childElement.ownerDocument = document;
+        return childElement;
+      };
+    }
     return element;
   };
   const updates = [];
@@ -142,6 +178,15 @@ function createRuntime() {
       handleSwipeEnd: handleSwipeEnd,
       openQuickFullPanel: openQuickFullPanel,
       openQuickFullTool: openQuickFullTool,
+      openQuickDateChild: function(type) {
+        appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDateDraft(), type);
+        appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+          type: 'OPEN_DATE_CHILD',
+          child: type
+        });
+        renderDateSurface();
+      },
+      renderDateChild: renderDateChild,
       handleQuickFullBack: handleQuickFullBack,
       handleQuickFullSave: handleQuickFullSave,
       beginQuickDateSession: beginQuickDateSession,
@@ -571,7 +616,7 @@ test('full detail save handler confirms the complete date transaction and restor
   const before = runtime.hooks.readQuickDraft();
 
   runtime.hooks.openQuickFullPanel();
-  runtime.hooks.openQuickFullTool('reminder');
+  runtime.hooks.openQuickFullTool('date');
   runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
     startDate: '2026-07-25',
     endDate: '2026-07-26',
@@ -636,4 +681,107 @@ test('full detail top handlers retain non-date return and save behavior', () => 
   assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
   assert.equal(runtime.elements.get('quick-sheet').hidden, false);
   assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+});
+
+test('full detail save confirms the latest custom reminder child wheel values', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('date');
+  runtime.hooks.openQuickDateChild('reminder');
+
+  const child = runtime.hooks.getState().quickChildDraft;
+  child.reminder = 'custom';
+  child.customReminder = { days: 0, hours: 0, minutes: 5 };
+  runtime.hooks.renderDateChild('reminder');
+  runtime.hooks.getState().quickChildWheels.days.setIndex(1);
+  runtime.hooks.getState().quickChildWheels.hours.setIndex(2);
+  runtime.hooks.getState().quickChildWheels.minutes.setIndex(3);
+
+  runtime.hooks.handleQuickFullSave();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.hooks.getState().quickEditor.dateChild, 'none');
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  const after = runtime.hooks.readQuickDraft();
+  assert.equal(after.reminder, 'custom');
+  assert.equal(JSON.stringify(after.customReminder), JSON.stringify({
+    days: 1,
+    hours: 2,
+    minutes: 3
+  }));
+  assert.equal(runtime.storageWrites.length, 1);
+  const persisted = JSON.parse(runtime.storageWrites[0].value);
+  assert.equal(persisted.reminder, 'custom');
+  assert.equal(JSON.stringify(persisted.customReminder), JSON.stringify({
+    days: 1,
+    hours: 2,
+    minutes: 3
+  }));
+});
+
+test('full detail save confirms the latest time child wheel value', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('date');
+  runtime.hooks.openQuickDateChild('time');
+
+  const child = runtime.hooks.getState().quickChildDraft;
+  child.timeMode = 'range';
+  child.timePhase = 'start';
+  child.startTime = '09:00';
+  child.endTime = '15:00';
+  runtime.hooks.renderDateChild('time');
+  runtime.hooks.getState().quickChildWheels.hours.setIndex(14);
+  runtime.hooks.getState().quickChildWheels.minutes.setIndex(35);
+
+  runtime.hooks.handleQuickFullSave();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.hooks.getState().quickEditor.dateChild, 'none');
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  const after = runtime.hooks.readQuickDraft();
+  assert.deepEqual(
+    [after.timeMode, after.startTime, after.endTime],
+    ['range', '14:35', '15:00']
+  );
+  assert.equal(runtime.storageWrites.length, 1);
+  const persisted = JSON.parse(runtime.storageWrites[0].value);
+  assert.deepEqual(
+    [persisted.timeMode, persisted.startTime, persisted.endTime],
+    ['range', '14:35', '15:00']
+  );
+});
+
+test('full detail save keeps an invalid reminder child open without committing', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('date');
+  runtime.hooks.openQuickDateChild('reminder');
+
+  const child = runtime.hooks.getState().quickChildDraft;
+  child.reminder = 'custom';
+  child.customReminder = { days: 0, hours: 0, minutes: 5 };
+  runtime.hooks.renderDateChild('reminder');
+  runtime.hooks.getState().quickChildWheels.days.setIndex(0);
+  runtime.hooks.getState().quickChildWheels.hours.setIndex(0);
+  runtime.hooks.getState().quickChildWheels.minutes.setIndex(0);
+
+  runtime.hooks.handleQuickFullSave();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'date');
+  assert.equal(runtime.hooks.getState().quickEditor.dateChild, 'reminder');
+  assert.notEqual(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.storageWrites.length, 0);
+  assert.equal(runtime.hooks.readQuickDraft().reminder, 'none');
+  assert.equal(
+    runtime.elements.get('quick-full-body').querySelector('.quick-date-child-error').textContent,
+    '提醒时间不能为0'
+  );
 });

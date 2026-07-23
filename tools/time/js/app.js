@@ -2078,6 +2078,9 @@
 
   function handleQuickFullSave() {
     if (appState.quickEditor.surface === 'date') {
+      if (appState.quickEditor.dateChild !== 'none' && !confirmQuickDateChildFromPanel()) {
+        return false;
+      }
       return confirmQuickDateSession();
     }
     closeQuickFullPanel({ focusTitle: true });
@@ -2429,6 +2432,13 @@
     appState.quickChildWheels = null;
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DATE_CHILD' });
     renderDateSurface();
+  }
+
+  function confirmQuickDateChildFromPanel() {
+    var confirm = quickPanelHost().querySelector('[data-child-confirm]');
+    if (!confirm || typeof confirm.click !== 'function') return false;
+    confirm.click();
+    return appState.quickEditor.dateChild === 'none';
   }
 
   function renderDateChild(type) {
