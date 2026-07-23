@@ -76,6 +76,40 @@
     });
   }
 
+  var SCHEDULE_FIELDS = [
+    'startDate', 'endDate', 'timeMode', 'startTime', 'endTime',
+    'repeat', 'customRepeat', 'reminder', 'customReminder'
+  ];
+
+  function cloneValue(value) {
+    if (value === null || typeof value !== 'object') return value;
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function pickSchedule(draft) {
+    draft = draft || {};
+    return SCHEDULE_FIELDS.reduce(function(result, field) {
+      result[field] = cloneValue(draft[field]);
+      return result;
+    }, {});
+  }
+
+  function createDateSession(draft) {
+    var schedule = pickSchedule(draft);
+    return { original: pickSchedule(schedule), draft: pickSchedule(schedule) };
+  }
+
+  function updateDateSession(session, scheduleDraft) {
+    return {
+      original: pickSchedule(session && session.original),
+      draft: pickSchedule(scheduleDraft)
+    };
+  }
+
+  function applyDateSession(formDraft, session) {
+    return Object.assign({}, formDraft || {}, pickSchedule(session && session.draft));
+  }
+
   function createChildDraft(draft, type) {
     draft = draft || {};
     if (type === 'time') {
@@ -129,5 +163,9 @@
     catch (error) { return null; }
   }
 
-  return { createSessionState, transition, normalizeDraft, validateDraft, validateSchedule, setDraftDate, setPending, defaultEndTime, createChildDraft, applyChildDraft, parseStoredDraft };
+  return {
+    createSessionState, transition, normalizeDraft, validateDraft, validateSchedule,
+    setDraftDate, setPending, defaultEndTime, createChildDraft, applyChildDraft,
+    createDateSession, updateDateSession, applyDateSession, parseStoredDraft
+  };
 });
