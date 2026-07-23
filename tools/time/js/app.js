@@ -1619,7 +1619,7 @@
         document.activeElement.blur();
       }
       beginQuickDateSession();
-      renderQuickSurface();
+      renderQuickSurface(true);
       return;
     }
     if (appState.quickEditor.surface === 'date') appState.quickDateSession = null;
@@ -1633,7 +1633,7 @@
     renderQuickSurface();
   }
 
-  function renderQuickSurface() {
+  function renderQuickSurface(focusDatePhase) {
     if (!els.quickExtraPanel) return;
     var state = appState.quickEditor;
     updateQuickSummary();
@@ -1642,12 +1642,22 @@
       button.classList.toggle('is-open', open);
       button.setAttribute('aria-pressed', String(open));
     });
+    els.quickSheet.dataset.surface = state.surface;
+    els.quickPrimaryPanel.hidden = state.surface === 'date';
     if (state.surface === 'keyboard') {
       els.quickExtraPanel.hidden = true;
       els.quickExtraPanel.innerHTML = '';
       return;
     }
-    if (state.surface === 'date') renderDateSurface();
+    if (state.surface === 'date') {
+      renderDateSurface();
+      if (focusDatePhase && appState.quickEditor.dateChild === 'none') {
+        var activeTab = quickPanelHost().querySelector(
+          '[data-date-phase="' + appState.quickEditor.datePhase + '"]'
+        );
+        if (activeTab && document.activeElement !== activeTab) activeTab.focus();
+      }
+    }
     else if (state.surface === 'priority') renderPrioritySurface();
     else if (state.surface === 'area') renderAreaSurface();
     else if (state.surface === 'tone') renderToneSurface();
@@ -2061,7 +2071,7 @@
         child: tool
       });
     }
-    renderQuickSurface();
+    renderQuickSurface(tool === 'date');
   }
 
   function handleQuickFullBack() {
@@ -2387,7 +2397,12 @@
       : draft.timeMode === 'range'
         ? (draft.startTime || '开始') + '–' + (draft.endTime || '结束')
         : (draft.startTime || '时间点');
-    var html = '<div class="quick-datetime-panel"><div class="quick-date-tabs" role="tablist" aria-label="日期范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-date-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-date-phase="end">结束</button></div><div id="quick-dt-calendar-container"></div><div class="quick-datetime-quick" id="quick-date-presets"></div><div class="quick-date-settings"><button type="button" data-date-child="time"><span>时间</span><strong id="quick-date-time-summary">' + escapeHtml(timeLabel) + '</strong></button><button type="button" data-date-child="reminder"><span>提醒</span><strong id="quick-date-reminder-summary">' + escapeHtml(formatReminderLabel(draft.reminder, draft.customReminder)) + '</strong></button><button type="button" data-date-child="repeat"><span>重复</span><strong id="quick-date-repeat-summary">' + escapeHtml(formatRepeatLabel(draft.repeat, draft.customRepeat)) + '</strong></button></div></div>';
+    var html = '<div class="quick-datetime-panel"><div class="quick-date-tabs" role="tablist" aria-label="日期范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-date-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-date-phase="end">结束</button></div><div id="quick-dt-calendar-container"></div><div class="quick-datetime-quick" id="quick-date-presets"></div><div class="quick-date-settings"><button type="button" data-date-child="time"><span>时间</span><strong id="quick-date-time-summary">' + escapeHtml(timeLabel) + '</strong></button><button type="button" data-date-child="reminder"><span>提醒</span><strong id="quick-date-reminder-summary">' + escapeHtml(formatReminderLabel(draft.reminder, draft.customReminder)) + '</strong></button><button type="button" data-date-child="repeat"><span>重复</span><strong id="quick-date-repeat-summary">' + escapeHtml(formatRepeatLabel(draft.repeat, draft.customRepeat)) + '</strong></button></div>';
+    html += '<p class="quick-date-session-error" aria-live="polite"></p>' +
+      '<div class="quick-date-footer">' +
+        '<button type="button" data-date-cancel="true">取消</button>' +
+        '<button type="button" data-date-confirm="true">确认</button>' +
+      '</div></div>';
     replaceQuickPanel(html);
     dtCalendarState.viewYear = 0;
     renderDatetimeCalendar(document.getElementById('quick-dt-calendar-container'), phase === 'start' ? draft.startDate : draft.endDate);
@@ -2408,6 +2423,10 @@
     });
     quickPanelHost().querySelectorAll('[data-date-phase]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SET_DATE_PHASE', phase: btn.dataset.datePhase }); renderDateParent(); }); });
     quickPanelHost().querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDateDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
+    var cancelButton = quickPanelHost().querySelector('[data-date-cancel]');
+    var confirmButton = quickPanelHost().querySelector('[data-date-confirm]');
+    if (cancelButton) cancelButton.addEventListener('click', cancelQuickDateSession);
+    if (confirmButton) confirmButton.addEventListener('click', confirmQuickDateSession);
     if (focusPending) {
       var pendingButton = quickPanelHost().querySelector('[data-date-preset="pending"]');
       if (pendingButton) pendingButton.focus();
@@ -3587,7 +3606,7 @@
     els.quickDate = $('quick-date');
     els.quickEndDate = $('quick-end-date');
     els.quickSummary = $('quick-summary');
-    els.quickDragHandle = $('quick-drag-handle');
+    els.quickPrimaryPanel = $('quick-primary-panel');
     els.quickDateField = $('quick-date-field');
     els.quickDatePicker = $('quick-date-picker');
     els.quickPriority = $('quick-priority');

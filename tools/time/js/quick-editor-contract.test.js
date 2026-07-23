@@ -9,11 +9,10 @@ const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 
-test('quick editor exposes one replacement region and root-level detail panel', () => {
-  assert.match(html, /id="quick-drag-handle"/);
+test('quick editor separates the compact primary panel from one replacement region', () => {
+  assert.doesNotMatch(html, /quick-drag-handle/);
+  assert.match(html, /id="quick-primary-panel"/);
   assert.match(html, /id="quick-summary"[^>]*aria-live="polite"/);
-  assert.match(html, /id="quick-end-date"/);
-  assert.match(html, /<\/section>\s*<div class="quick-full-panel" id="quick-full-panel"/);
   assert.equal((html.match(/id="quick-extra-panel"/g) || []).length, 1);
 });
 
@@ -34,15 +33,18 @@ test('editor resets the static sheet transform and keeps screen-reader labels ac
   assert.match(css, /\.sr-only\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
 });
 
-test('date parent panel expands to expose its settings in a 390 by 844 viewport', () => {
-  assert.match(css, /\.quick-sheet-v2:has\(\.quick-extra-panel:not\(\[hidden\]\)\)\s*\{[^}]*max-height:\s*calc\(var\(--quick-viewport-height,\s*100vh\)\s*-\s*4px\);/s);
-  assert.match(css, /\.quick-extra-panel\s*\{[^}]*max-height:\s*min\(74vh,\s*calc\(var\(--quick-viewport-height,\s*100vh\)\s*-\s*226px\)\);/s);
+test('keyboard surface is compact and date surface owns the full sheet', () => {
+  assert.match(css, /\.quick-sheet-v2\[data-surface="keyboard"\]\s*\{[^}]*max-height:\s*180px;/s);
+  assert.match(css, /\.quick-sheet-v2\[data-surface="keyboard"\] \.quick-form-v2\s*\{[^}]*padding-bottom:\s*0;/s);
+  assert.match(css, /\.quick-sheet-v2\[data-surface="date"\]\s*\{[^}]*height:\s*calc\(var\(--quick-viewport-height,\s*100vh\)\s*-\s*4px\);/s);
+  assert.match(css, /\.quick-date-footer button\s*\{[^}]*min-height:\s*52px;/s);
   assert.match(css, /\.quick-date-settings button\s*\{[^}]*min-height:\s*52px;/s);
-  assert.match(css, /\.quick-date-child-head button\s*\{[^}]*min-height:\s*44px;/s);
+  assert.match(app, /els\.quickPrimaryPanel\.hidden\s*=\s*state\.surface\s*===\s*'date'/);
+  assert.match(app, /data-date-cancel/);
+  assert.match(app, /data-date-confirm/);
 });
 
-test('date parent preserves its live summary semantically while keeping all settings in the first 390 by 844 viewport', () => {
-  assert.match(css, /\.quick-sheet-v2:has\(\.quick-extra-panel:not\(\[hidden\]\)\) \.quick-summary\s*\{[^}]*position:\s*absolute;[^}]*width:\s*1px;[^}]*height:\s*1px;[^}]*overflow:\s*hidden;/s);
+test('date parent keeps its compact calendar settings in the first 390 by 844 viewport', () => {
   assert.match(css, /\.quick-datetime-calendar\s*\{[^}]*padding:\s*6px 16px 4px;/s);
   assert.match(css, /\.quick-datetime-calendar-header\s*\{[^}]*margin-bottom:\s*0;/s);
   assert.match(css, /\.quick-datetime-weekdays\s*\{[^}]*padding-bottom:\s*0;/s);
@@ -63,7 +65,6 @@ test('quick editor handle is decorative and cannot translate or dismiss the shee
   assert.doesNotMatch(app, /function finishQuickDrag/);
   assert.doesNotMatch(app, /--quick-drag-offset/);
   assert.doesNotMatch(css, /\.quick-sheet-v2\.is-dragging/);
-  assert.match(html, /id="quick-drag-handle"[^>]*aria-hidden="true"/);
 });
 
 test('app isolates edit end dates between task and habit sessions', () => {
@@ -81,7 +82,7 @@ test('pending is confirmed inline before schedule-dependent values are discarded
   assert.match(app, /function hasScheduleDependentValues/);
   assert.match(app, /function renderPendingConfirmation/);
   assert.match(app, /data-pending-confirm/);
-  assert.match(app, /QuickEditor\.setPending\(readQuickDraft\(\)\)/);
+  assert.match(app, /QuickEditor\.setPending\(readQuickDateDraft\(\)\)/);
   assert.doesNotMatch(app, /if \(!item\.value\) \{ setQuickDate\('', 'pending'\); els\.quickEndDate\.value = ''; \}/);
 });
 
@@ -117,8 +118,8 @@ test('calendar navigation and mobile save affordances retain 44px targets', () =
 
 test('date range clamping is announced and all editor controls retain 44px targets', () => {
   assert.match(app, /结束日期不能早于开始日期，已调整为开始日期/);
-  assert.match(css, /\.quick-drag-handle\s*\{[^}]*min-height:\s*44px;/s);
   assert.match(css, /\.quick-tone-swatch\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s);
+  assert.match(css, /\.quick-date-child-head button\s*\{[^}]*min-height:\s*44px;/s);
   assert.match(css, /\.quick-full-back\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
   assert.match(css, /\.quick-full-save\s*\{[^}]*min-height:\s*44px;/s);
 });
@@ -126,7 +127,8 @@ test('date range clamping is announced and all editor controls retain 44px targe
 test('detail exits synchronously to focused keyboard surface', () => {
   assert.match(app, /CLOSE_DETAIL/);
   assert.match(app, /function openQuickFullPanel[\s\S]*els\.quickSheet\.hidden\s*=\s*true/);
-  assert.match(app, /if \(els\.quickFullSave\)[\s\S]{0,300}closeQuickFullPanel\(\{ focusTitle: true \}\)/);
+  assert.match(app, /function handleQuickFullSave[\s\S]{0,400}closeQuickFullPanel\(\{ focusTitle: true \}\)/);
+  assert.match(app, /if \(els\.quickFullSave\)[\s\S]{0,180}addEventListener\('click', handleQuickFullSave\)/);
   assert.doesNotMatch(app, /setTimeout\(function\(\)\s*\{\s*openQuickTool/s);
 });
 
