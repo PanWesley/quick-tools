@@ -29,23 +29,33 @@ function createElement(id) {
     querySelector() { return null; },
     appendChild() {},
     addEventListener() {},
-    focus() {},
-    blur() {},
+    focus() {
+      if (this.ownerDocument) this.ownerDocument.activeElement = this;
+      this.focusCount = (this.focusCount || 0) + 1;
+    },
+    blur() {
+      if (this.ownerDocument && this.ownerDocument.activeElement === this) {
+        this.ownerDocument.activeElement = null;
+      }
+    },
     setSelectionRange() {}
   };
 }
 
 function createRuntime() {
   const elements = new Map();
+  let document;
   const get = id => {
     if (!elements.has(id)) elements.set(id, createElement(id));
-    return elements.get(id);
+    const element = elements.get(id);
+    element.ownerDocument = document;
+    return element;
   };
   const background = createElement('background');
   const quickForm = get('quick-form');
   const send = createElement('quick-send');
   quickForm.querySelector = selector => selector === '.quick-send-btn' ? send : null;
-  const document = {
+  document = {
     hidden: false,
     activeElement: null,
     body: {
@@ -60,6 +70,8 @@ function createRuntime() {
     addEventListener() {},
     createElement: id => createElement(id)
   };
+  get('picker-sheet').hidden = true;
+  get('calendar-picker-sheet').hidden = true;
   const updates = [];
   const db = {
     getAllData: async () => ({ tasks: [], habits: [], habitLogs: [], journals: [], opLogs: [] }),
@@ -102,6 +114,12 @@ function createRuntime() {
       handleSwipeMove: handleSwipeMove,
       handleSwipeEnd: handleSwipeEnd,
       openQuickFullPanel: openQuickFullPanel,
+      beginQuickDateSession: beginQuickDateSession,
+      cancelQuickDateSession: cancelQuickDateSession,
+      confirmQuickDateSession: confirmQuickDateSession,
+      writeQuickDateDraft: writeQuickDateDraft,
+      trapQuickEditorFocus: trapQuickEditorFocus,
+      readQuickDraft: readQuickDraft,
       openCreate: function() {
         openQuickSession('create', {
           startDate: appState.todayKey,
@@ -231,4 +249,70 @@ test('closed editor left swipe opens a list row', () => {
   });
 
   assert.equal(classes.has('list-open'), true);
+});
+
+test('date cancel discards temporary schedule changes and refocuses the title', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const before = runtime.hooks.readQuickDraft();
+
+  runtime.hooks.beginQuickDateSession();
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    repeat: 'daily',
+    reminder: '15'
+  }));
+  runtime.hooks.cancelQuickDateSession();
+
+  const after = runtime.hooks.readQuickDraft();
+  assert.equal(after.startDate, before.startDate);
+  assert.equal(after.repeat, before.repeat);
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.elements.get('quick-title').focusCount > 0, true);
+});
+
+test('date confirmation applies the full temporary schedule and refocuses the title', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const before = runtime.hooks.readQuickDraft();
+
+  runtime.hooks.beginQuickDateSession();
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    timeMode: 'point',
+    startTime: '09:30',
+    repeat: 'daily',
+    reminder: '15'
+  }));
+
+  assert.equal(runtime.hooks.confirmQuickDateSession(), true);
+  const after = runtime.hooks.readQuickDraft();
+  assert.deepEqual(
+    [after.startDate, after.endDate, after.timeMode, after.startTime, after.repeat, after.reminder],
+    ['2026-07-25', '2026-07-26', 'point', '09:30', 'daily', '15']
+  );
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+});
+
+test('escape from the date parent cancels only the date session', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  runtime.hooks.beginQuickDateSession();
+  let prevented = 0;
+
+  runtime.hooks.trapQuickEditorFocus({
+    key: 'Escape',
+    preventDefault() { prevented += 1; }
+  });
+
+  assert.equal(prevented, 1);
+  assert.equal(runtime.hooks.getState().quickEditor.session, 'open');
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
 });

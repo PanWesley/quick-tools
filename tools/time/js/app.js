@@ -53,6 +53,7 @@
     customReminder: null,
     pickerState: null,
     quickEditor: QuickEditor.createSessionState(),
+    quickDateSession: null,
     quickScrollY: 0
   };
 
@@ -1511,6 +1512,58 @@
     return draft;
   }
 
+  function beginQuickDateSession() {
+    if (!appState.quickDateSession) {
+      appState.quickDateSession = QuickEditor.createDateSession(readQuickDraft());
+    }
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+      type: 'OPEN_TOOL',
+      tool: 'date'
+    });
+  }
+
+  function readQuickDateDraft() {
+    if (!appState.quickDateSession) beginQuickDateSession();
+    return Object.assign({}, readQuickDraft(), appState.quickDateSession.draft);
+  }
+
+  function writeQuickDateDraft(draft) {
+    if (!appState.quickDateSession) beginQuickDateSession();
+    appState.quickDateSession = QuickEditor.updateDateSession(appState.quickDateSession, draft);
+  }
+
+  function returnQuickToKeyboard() {
+    appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
+    renderQuickSurface();
+    focusQuickTitle();
+  }
+
+  function cancelQuickDateSession() {
+    appState.quickDateSession = null;
+    appState.quickChildDraft = null;
+    appState.quickChildWheels = null;
+    returnQuickToKeyboard();
+  }
+
+  function confirmQuickDateSession() {
+    if (!appState.quickDateSession) {
+      returnQuickToKeyboard();
+      return false;
+    }
+    var merged = QuickEditor.applyDateSession(readQuickDraft(), appState.quickDateSession);
+    var validity = QuickEditor.validateSchedule(merged);
+    if (!validity.valid) {
+      var error = quickPanelHost().querySelector('.quick-date-session-error');
+      if (error) error.textContent = validity.message;
+      return false;
+    }
+    applyQuickDraft(merged);
+    appState.quickDateSession = null;
+    if (!appState.editingTaskId) persistCreateDraft();
+    returnQuickToKeyboard();
+    return true;
+  }
+
   function persistCreateDraft() {
     if (appState.editingTaskId) return;
     try {
@@ -1550,12 +1603,25 @@
   function setQuickSurface(surface) {
     if (!QuickEditor || !surface) return;
     if (appState.quickEditor.surface === surface && surface !== 'detail') {
-      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
-      renderQuickSurface();
-      focusQuickTitle();
+      if (surface === 'date') {
+        cancelQuickDateSession();
+      } else {
+        returnQuickToKeyboard();
+      }
       return;
     }
-    if (document.activeElement === els.quickTitle || document.activeElement === els.quickNotes) document.activeElement.blur();
+    if (surface === 'date') {
+      if (document.activeElement === els.quickTitle || document.activeElement === els.quickNotes) {
+        document.activeElement.blur();
+      }
+      beginQuickDateSession();
+      renderQuickSurface();
+      return;
+    }
+    if (appState.quickEditor.surface === 'date') appState.quickDateSession = null;
+    if (document.activeElement === els.quickTitle || document.activeElement === els.quickNotes) {
+      document.activeElement.blur();
+    }
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
       type: surface === 'detail' ? 'OPEN_DETAIL' : 'OPEN_TOOL',
       tool: surface
@@ -1676,10 +1742,10 @@
       closeQuickFullPanel({ focusTitle: true });
     } else if (appState.quickEditor.surface === 'date' && appState.quickEditor.dateChild !== 'none') {
       finishDateChild(false);
+    } else if (appState.quickEditor.surface === 'date') {
+      cancelQuickDateSession();
     } else if (appState.quickEditor.surface !== 'keyboard') {
-      appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
-      renderQuickSurface();
-      focusQuickTitle();
+      returnQuickToKeyboard();
     } else {
       closeQuickSession({ keepDraft: true, restoreFocus: true });
     }
@@ -1718,6 +1784,9 @@
   function closeQuickSession(options) {
     var opts = options || {};
     if (!appState.editingTaskId && opts.keepDraft !== false) persistCreateDraft();
+    appState.quickDateSession = null;
+    appState.quickChildDraft = null;
+    appState.quickChildWheels = null;
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE' });
     closeQuickExtra();
     closeQuickFullPanel();
@@ -2047,7 +2116,7 @@
         var tool = btn.dataset.qfJump;
         appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: tool === 'repeat' || tool === 'reminder' ? 'date' : tool });
         if (tool === 'repeat' || tool === 'reminder') {
-          appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), tool);
+          appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDateDraft(), tool);
           appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: tool });
         }
         renderQuickSurface();
@@ -2237,8 +2306,7 @@
   }
 
   function applyPendingDate() {
-    applyQuickDraft(QuickEditor.setPending(readQuickDraft()));
-    handleQuickDraftChange();
+    writeQuickDateDraft(QuickEditor.setPending(readQuickDateDraft()));
     renderDateParent(true);
   }
 
@@ -2252,7 +2320,7 @@
   }
 
   function requestPendingDate() {
-    if (hasScheduleDependentValues(readQuickDraft())) {
+    if (hasScheduleDependentValues(readQuickDateDraft())) {
       appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: 'date' });
       renderPendingConfirmation();
     } else {
@@ -2261,18 +2329,25 @@
   }
 
   function applyQuickDateSelection(dateKey) {
-    var draft = readQuickDraft();
-    var wasClamped = appState.quickEditor.datePhase === 'end' && Boolean(draft.startDate) && dateKey < draft.startDate;
-    applyQuickDraft(QuickEditor.setDraftDate(draft, appState.quickEditor.datePhase, dateKey));
-    handleQuickDraftChange();
+    var draft = readQuickDateDraft();
+    var wasClamped = appState.quickEditor.datePhase === 'end' &&
+      Boolean(draft.startDate) && dateKey < draft.startDate;
+    writeQuickDateDraft(
+      QuickEditor.setDraftDate(draft, appState.quickEditor.datePhase, dateKey)
+    );
     if (wasClamped) showToast('结束日期不能早于开始日期，已调整为开始日期');
     renderDateParent();
   }
 
   function renderDateParent(focusPending) {
-    var draft = readQuickDraft();
+    var draft = readQuickDateDraft();
     var phase = appState.quickEditor.datePhase;
-    var html = '<div class="quick-datetime-panel"><div class="quick-date-tabs" role="tablist" aria-label="日期范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-date-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-date-phase="end">结束</button></div><div id="quick-dt-calendar-container"></div><div class="quick-datetime-quick" id="quick-date-presets"></div><div class="quick-date-settings"><button type="button" data-date-child="time"><span>时间</span><strong id="quick-date-time-summary">' + escapeHtml(getQuickSummary().timeLabel) + '</strong></button><button type="button" data-date-child="reminder"><span>提醒</span><strong id="quick-date-reminder-summary">' + escapeHtml(formatReminderLabel(draft.reminder, draft.customReminder)) + '</strong></button><button type="button" data-date-child="repeat"><span>重复</span><strong id="quick-date-repeat-summary">' + escapeHtml(formatRepeatLabel(draft.repeat, draft.customRepeat)) + '</strong></button></div></div>';
+    var timeLabel = draft.timeMode === 'all-day'
+      ? '全天'
+      : draft.timeMode === 'range'
+        ? (draft.startTime || '开始') + '–' + (draft.endTime || '结束')
+        : (draft.startTime || '时间点');
+    var html = '<div class="quick-datetime-panel"><div class="quick-date-tabs" role="tablist" aria-label="日期范围"><button role="tab" aria-selected="' + String(phase === 'start') + '" data-date-phase="start">开始</button><button role="tab" aria-selected="' + String(phase === 'end') + '" data-date-phase="end">结束</button></div><div id="quick-dt-calendar-container"></div><div class="quick-datetime-quick" id="quick-date-presets"></div><div class="quick-date-settings"><button type="button" data-date-child="time"><span>时间</span><strong id="quick-date-time-summary">' + escapeHtml(timeLabel) + '</strong></button><button type="button" data-date-child="reminder"><span>提醒</span><strong id="quick-date-reminder-summary">' + escapeHtml(formatReminderLabel(draft.reminder, draft.customReminder)) + '</strong></button><button type="button" data-date-child="repeat"><span>重复</span><strong id="quick-date-repeat-summary">' + escapeHtml(formatRepeatLabel(draft.repeat, draft.customRepeat)) + '</strong></button></div></div>';
     replaceQuickPanel(html);
     dtCalendarState.viewYear = 0;
     renderDatetimeCalendar(document.getElementById('quick-dt-calendar-container'), phase === 'start' ? draft.startDate : draft.endDate);
@@ -2292,7 +2367,7 @@
       presetHost.appendChild(btn);
     });
     quickPanelHost().querySelectorAll('[data-date-phase]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SET_DATE_PHASE', phase: btn.dataset.datePhase }); renderDateParent(); }); });
-    quickPanelHost().querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
+    quickPanelHost().querySelectorAll('[data-date-child]').forEach(function(btn) { btn.addEventListener('click', function() { appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDateDraft(), btn.dataset.dateChild); appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: btn.dataset.dateChild }); renderDateSurface(); }); });
     if (focusPending) {
       var pendingButton = quickPanelHost().querySelector('[data-date-preset="pending"]');
       if (pendingButton) pendingButton.focus();
@@ -2300,11 +2375,14 @@
   }
 
   function commitDateChild() {
-    var merged = QuickEditor.applyChildDraft(readQuickDraft(), appState.quickChildDraft);
+    var merged = QuickEditor.applyChildDraft(readQuickDateDraft(), appState.quickChildDraft);
     var validity = QuickEditor.validateSchedule(merged);
-    if (!validity.valid) { var error = quickPanelHost().querySelector('.quick-date-child-error'); if (error) error.textContent = validity.message; return false; }
-    applyQuickDraft(merged);
-    handleQuickDraftChange();
+    if (!validity.valid) {
+      var error = quickPanelHost().querySelector('.quick-date-child-error');
+      if (error) error.textContent = validity.message;
+      return false;
+    }
+    writeQuickDateDraft(merged);
     return true;
   }
 
@@ -2317,7 +2395,7 @@
   }
 
   function renderDateChild(type) {
-    var child = appState.quickChildDraft || QuickEditor.createChildDraft(readQuickDraft(), type);
+    var child = appState.quickChildDraft || QuickEditor.createChildDraft(readQuickDateDraft(), type);
     appState.quickChildDraft = child;
     var labels = { time: '时间', reminder: '提醒', repeat: '重复' };
     replaceQuickPanel('<div class="quick-date-child-panel"><div class="quick-date-child-head"><button type="button" data-child-back="true">返回</button><strong>' + labels[type] + '</strong><button type="button" data-child-confirm="true">确定</button></div><div class="quick-date-child-content"></div><p class="quick-date-child-error" aria-live="polite"></p></div>');
