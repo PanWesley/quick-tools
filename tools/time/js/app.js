@@ -1534,6 +1534,10 @@
 
   function returnQuickToKeyboard() {
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
+    if (isQuickFullPanelOpen()) {
+      closeQuickFullPanel({ focusTitle: true });
+      return;
+    }
     renderQuickSurface();
     focusQuickTitle();
   }
@@ -1736,14 +1740,14 @@
     event.preventDefault();
     if (isPendingConfirmationOpen()) {
       renderDateParent(true);
-    } else if (isQuickFullPanelOpen() && appState.quickEditor.surface !== 'detail') {
-      returnQuickFullToDetailSummary();
-    } else if (isQuickFullPanelOpen()) {
-      closeQuickFullPanel({ focusTitle: true });
     } else if (appState.quickEditor.surface === 'date' && appState.quickEditor.dateChild !== 'none') {
       finishDateChild(false);
     } else if (appState.quickEditor.surface === 'date') {
       cancelQuickDateSession();
+    } else if (isQuickFullPanelOpen() && appState.quickEditor.surface !== 'detail') {
+      returnQuickFullToDetailSummary();
+    } else if (isQuickFullPanelOpen()) {
+      closeQuickFullPanel({ focusTitle: true });
     } else if (appState.quickEditor.surface !== 'keyboard') {
       returnQuickToKeyboard();
     } else {
@@ -2041,6 +2045,25 @@
     }
   }
 
+  function openQuickFullTool(tool) {
+    if (tool === 'date' || tool === 'repeat' || tool === 'reminder') {
+      beginQuickDateSession();
+    } else {
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+        type: 'OPEN_TOOL',
+        tool: tool
+      });
+    }
+    if (tool === 'repeat' || tool === 'reminder') {
+      appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDateDraft(), tool);
+      appState.quickEditor = QuickEditor.transition(appState.quickEditor, {
+        type: 'OPEN_DATE_CHILD',
+        child: tool
+      });
+    }
+    renderQuickSurface();
+  }
+
   function returnQuickFullToDetailSummary() {
     appState.quickChildDraft = null;
     appState.quickChildWheels = null;
@@ -2113,13 +2136,7 @@
 
     els.quickFullBody.querySelectorAll('[data-qf-jump]').forEach(function(btn) {
       btn.addEventListener('click', function() {
-        var tool = btn.dataset.qfJump;
-        appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_TOOL', tool: tool === 'repeat' || tool === 'reminder' ? 'date' : tool });
-        if (tool === 'repeat' || tool === 'reminder') {
-          appState.quickChildDraft = QuickEditor.createChildDraft(readQuickDateDraft(), tool);
-          appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'OPEN_DATE_CHILD', child: tool });
-        }
-        renderQuickSurface();
+        openQuickFullTool(btn.dataset.qfJump);
       });
     });
     var qfTitle = els.quickFullBody.querySelector('#qf-title-input');

@@ -72,6 +72,20 @@ function createRuntime() {
   };
   get('picker-sheet').hidden = true;
   get('calendar-picker-sheet').hidden = true;
+  const quickFullBody = get('quick-full-body');
+  const quickFullNodes = new Map();
+  quickFullBody.querySelector = selector => {
+    if (![
+      '.quick-date-child-content',
+      '.quick-date-child-error',
+      '[data-child-back]',
+      '[data-child-confirm]'
+    ].includes(selector)) return null;
+    if (!quickFullNodes.has(selector)) quickFullNodes.set(selector, createElement(selector));
+    const element = quickFullNodes.get(selector);
+    element.ownerDocument = document;
+    return element;
+  };
   const updates = [];
   const db = {
     getAllData: async () => ({ tasks: [], habits: [], habitLogs: [], journals: [], opLogs: [] }),
@@ -102,6 +116,16 @@ function createRuntime() {
     open() {}
   };
   window.window = window;
+  const storage = new Map();
+  const storageWrites = [];
+  const localStorage = {
+    getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+    setItem(key, value) {
+      storage.set(key, String(value));
+      storageWrites.push({ key, value: String(value) });
+    },
+    removeItem(key) { storage.delete(key); }
+  };
   const instrumented = source
     .replace('      render();\n      updateNotificationUI();', '      updateNotificationUI();')
     .replace("document.addEventListener('DOMContentLoaded', init);", `window.__quickRuntimeHooks = {
@@ -114,6 +138,7 @@ function createRuntime() {
       handleSwipeMove: handleSwipeMove,
       handleSwipeEnd: handleSwipeEnd,
       openQuickFullPanel: openQuickFullPanel,
+      openQuickFullTool: openQuickFullTool,
       beginQuickDateSession: beginQuickDateSession,
       cancelQuickDateSession: cancelQuickDateSession,
       confirmQuickDateSession: confirmQuickDateSession,
@@ -136,12 +161,12 @@ function createRuntime() {
       getState: function() { return appState; }
     };`);
   vm.runInNewContext(instrumented, {
-    window, document, navigator: window.navigator, localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+    window, document, navigator: window.navigator, localStorage,
     console: { warn() {}, error() {} }, setTimeout, clearTimeout, setInterval, clearInterval,
     Date, Promise, Object, Array, String, Number, Boolean, Math, JSON, RegExp, encodeURIComponent, URL, Blob: globalThis.Blob, FileReader: class {}
   }, { filename: 'app.js' });
   window.__quickRuntimeHooks.cacheElements();
-  return { hooks: window.__quickRuntimeHooks, background, elements, updates };
+  return { hooks: window.__quickRuntimeHooks, background, document, elements, storageWrites, updates };
 }
 
 test('task and habit editing lock and restore background interaction', () => {
@@ -256,22 +281,36 @@ test('date cancel discards temporary schedule changes and refocuses the title', 
   runtime.hooks.setData({ tasks: [], habits: [] });
   runtime.hooks.openCreate();
   const before = runtime.hooks.readQuickDraft();
+  const title = runtime.elements.get('quick-title');
+  const focusBefore = title.focusCount;
 
   runtime.hooks.beginQuickDateSession();
   runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
     startDate: '2026-07-25',
     endDate: '2026-07-26',
-    repeat: 'daily',
-    reminder: '15'
+    timeMode: 'range',
+    startTime: '09:30',
+    endTime: '10:45',
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week', skipWeekends: true },
+    reminder: 'custom',
+    customReminder: { days: 1, hours: 2, minutes: 3 }
   }));
+  title.blur();
   runtime.hooks.cancelQuickDateSession();
 
   const after = runtime.hooks.readQuickDraft();
-  assert.equal(after.startDate, before.startDate);
-  assert.equal(after.repeat, before.repeat);
+  assert.deepEqual(
+    [after.startDate, after.endDate, after.timeMode, after.startTime, after.endTime, after.repeat, after.reminder],
+    [before.startDate, before.endDate, before.timeMode, before.startTime, before.endTime, before.repeat, before.reminder]
+  );
+  assert.equal(JSON.stringify(after.customRepeat), JSON.stringify(before.customRepeat));
+  assert.equal(JSON.stringify(after.customReminder), JSON.stringify(before.customReminder));
   assert.equal(runtime.hooks.getState().quickDateSession, null);
   assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
-  assert.equal(runtime.elements.get('quick-title').focusCount > 0, true);
+  assert.equal(title.focusCount, focusBefore + 1);
+  assert.equal(runtime.document.activeElement, title);
+  assert.equal(runtime.storageWrites.length, 0);
 });
 
 test('date confirmation applies the full temporary schedule and refocuses the title', () => {
@@ -279,31 +318,58 @@ test('date confirmation applies the full temporary schedule and refocuses the ti
   runtime.hooks.setData({ tasks: [], habits: [] });
   runtime.hooks.openCreate();
   const before = runtime.hooks.readQuickDraft();
+  const title = runtime.elements.get('quick-title');
+  const focusBefore = title.focusCount;
 
   runtime.hooks.beginQuickDateSession();
   runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
     startDate: '2026-07-25',
     endDate: '2026-07-26',
-    timeMode: 'point',
+    timeMode: 'range',
     startTime: '09:30',
-    repeat: 'daily',
-    reminder: '15'
+    endTime: '10:45',
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week', skipHolidays: true },
+    reminder: 'custom',
+    customReminder: { days: 1, hours: 2, minutes: 3 }
   }));
+  title.blur();
 
   assert.equal(runtime.hooks.confirmQuickDateSession(), true);
   const after = runtime.hooks.readQuickDraft();
   assert.deepEqual(
-    [after.startDate, after.endDate, after.timeMode, after.startTime, after.repeat, after.reminder],
-    ['2026-07-25', '2026-07-26', 'point', '09:30', 'daily', '15']
+    [after.startDate, after.endDate, after.timeMode, after.startTime, after.endTime, after.repeat, after.reminder],
+    ['2026-07-25', '2026-07-26', 'range', '09:30', '10:45', 'custom', 'custom']
   );
+  assert.equal(JSON.stringify(after.customRepeat), JSON.stringify({ interval: 2, unit: 'week', skipHolidays: true }));
+  assert.equal(JSON.stringify(after.customReminder), JSON.stringify({ days: 1, hours: 2, minutes: 3 }));
   assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(title.focusCount, focusBefore + 1);
+  assert.equal(runtime.document.activeElement, title);
+  assert.equal(runtime.storageWrites.length, 1);
+  assert.equal(runtime.storageWrites[0].key, 'today-youxu-quick-draft-v1');
 });
 
 test('escape from the date parent cancels only the date session', () => {
   const runtime = createRuntime();
   runtime.hooks.setData({ tasks: [], habits: [] });
   runtime.hooks.openCreate();
+  const before = runtime.hooks.readQuickDraft();
+  const title = runtime.elements.get('quick-title');
+  const focusBefore = title.focusCount;
   runtime.hooks.beginQuickDateSession();
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    timeMode: 'range',
+    startTime: '09:30',
+    endTime: '10:45',
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week' },
+    reminder: 'custom',
+    customReminder: { days: 1, hours: 2, minutes: 3 }
+  }));
+  title.blur();
   let prevented = 0;
 
   runtime.hooks.trapQuickEditorFocus({
@@ -315,4 +381,130 @@ test('escape from the date parent cancels only the date session', () => {
   assert.equal(runtime.hooks.getState().quickEditor.session, 'open');
   assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
   assert.equal(runtime.hooks.getState().quickDateSession, null);
+  const after = runtime.hooks.readQuickDraft();
+  assert.deepEqual(
+    [after.startDate, after.endDate, after.timeMode, after.startTime, after.endTime, after.repeat, after.reminder],
+    [before.startDate, before.endDate, before.timeMode, before.startTime, before.endTime, before.repeat, before.reminder]
+  );
+  assert.equal(JSON.stringify(after.customRepeat), JSON.stringify(before.customRepeat));
+  assert.equal(JSON.stringify(after.customReminder), JSON.stringify(before.customReminder));
+  assert.equal(title.focusCount, focusBefore + 1);
+  assert.equal(runtime.document.activeElement, title);
+  assert.equal(runtime.storageWrites.length, 0);
+});
+
+test('full detail date cancel closes detail without persisting and focuses the visible title', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const before = runtime.hooks.readQuickDraft();
+  const title = runtime.elements.get('quick-title');
+  const focusBefore = title.focusCount;
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('date');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    endTime: '10:45'
+  }));
+  runtime.hooks.cancelQuickDateSession();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.elements.get('quick-sheet').inert, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.document.activeElement, title);
+  assert.equal(title.focusCount, focusBefore + 1);
+  assert.equal(runtime.storageWrites.length, 0);
+  assert.deepEqual(
+    [runtime.hooks.readQuickDraft().startDate, runtime.hooks.readQuickDraft().endDate],
+    [before.startDate, before.endDate]
+  );
+});
+
+test('full detail date confirmation closes detail, persists once, and focuses the visible title', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const before = runtime.hooks.readQuickDraft();
+  const title = runtime.elements.get('quick-title');
+  const focusBefore = title.focusCount;
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('date');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    timeMode: 'range',
+    startTime: '09:30',
+    endTime: '10:45'
+  }));
+
+  assert.equal(runtime.hooks.confirmQuickDateSession(), true);
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.elements.get('quick-sheet').inert, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.document.activeElement, title);
+  assert.equal(title.focusCount, focusBefore + 1);
+  assert.equal(runtime.storageWrites.length, 1);
+  assert.deepEqual(
+    [
+      runtime.hooks.readQuickDraft().startDate,
+      runtime.hooks.readQuickDraft().endDate,
+      runtime.hooks.readQuickDraft().startTime,
+      runtime.hooks.readQuickDraft().endTime
+    ],
+    ['2026-07-25', '2026-07-26', '09:30', '10:45']
+  );
+});
+
+test('full detail date child Escape returns to date parent before cancelling the transaction', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const before = runtime.hooks.readQuickDraft();
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('repeat');
+  runtime.hooks.writeQuickDateDraft(Object.assign({}, before, {
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week' }
+  }));
+
+  runtime.hooks.trapQuickEditorFocus({ key: 'Escape', preventDefault() {} });
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'date');
+  assert.equal(runtime.hooks.getState().quickEditor.dateChild, 'none');
+  assert.notEqual(runtime.hooks.getState().quickDateSession, null);
+
+  runtime.hooks.trapQuickEditorFocus({ key: 'Escape', preventDefault() {} });
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.hooks.getState().quickDateSession, null);
+  assert.equal(runtime.storageWrites.length, 0);
+  assert.equal(runtime.hooks.readQuickDraft().repeat, before.repeat);
+  assert.equal(JSON.stringify(runtime.hooks.readQuickDraft().customRepeat), JSON.stringify(before.customRepeat));
+});
+
+test('ordinary full detail tool Escape returns to its summary before closing detail', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  const title = runtime.elements.get('quick-title');
+
+  runtime.hooks.openQuickFullPanel();
+  runtime.hooks.openQuickFullTool('priority');
+  runtime.hooks.trapQuickEditorFocus({ key: 'Escape', preventDefault() {} });
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'detail');
+
+  runtime.hooks.trapQuickEditorFocus({ key: 'Escape', preventDefault() {} });
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, false);
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'keyboard');
+  assert.equal(runtime.document.activeElement, title);
 });
