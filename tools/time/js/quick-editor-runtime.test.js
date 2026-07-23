@@ -98,7 +98,10 @@ function createRuntime() {
       openEditHabit: openEditHabit,
       closeQuickSession: closeQuickSession,
       handleQuickSubmit: handleQuickSubmit,
+      handleSwipeStart: handleSwipeStart,
       handleSwipeMove: handleSwipeMove,
+      handleSwipeEnd: handleSwipeEnd,
+      openQuickFullPanel: openQuickFullPanel,
       openCreate: function() {
         openQuickSession('create', {
           startDate: appState.todayKey,
@@ -181,4 +184,51 @@ test('keyboard quick editor prevents viewport touch scrolling without blocking r
     preventDefault() { prevented += 1; }
   });
   assert.equal(prevented, 1);
+});
+
+test('open full-detail panel leaves document touch scrolling available to its internal content', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({ tasks: [], habits: [] });
+  runtime.hooks.openCreate();
+  runtime.hooks.openQuickFullPanel();
+
+  let prevented = 0;
+  runtime.hooks.handleSwipeMove({
+    touches: [{ clientX: 10, clientY: 40 }],
+    preventDefault() { prevented += 1; }
+  });
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.equal(prevented, 0);
+});
+
+test('closed editor left swipe opens a list row', () => {
+  const runtime = createRuntime();
+  const classes = new Set(['list-swipe-row']);
+  const row = {
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); }
+    }
+  };
+  const target = {
+    closest(selector) {
+      return selector === '.list-swipe-row' ? row : null;
+    }
+  };
+
+  runtime.hooks.handleSwipeStart({
+    target,
+    touches: [{ clientX: 120, clientY: 40 }]
+  });
+  runtime.hooks.handleSwipeMove({
+    touches: [{ clientX: 50, clientY: 42 }],
+    preventDefault() {}
+  });
+  runtime.hooks.handleSwipeEnd({
+    changedTouches: [{ clientX: 50, clientY: 42 }]
+  });
+
+  assert.equal(classes.has('list-open'), true);
 });
