@@ -70,6 +70,39 @@
     });
   }
 
+  function createChildDraft(draft, type) {
+    draft = draft || {};
+    if (type === 'time') {
+      var startTime = draft.startTime || '09:00';
+      return {
+        type: 'time', timeMode: draft.timeMode,
+        startTime: startTime,
+        endTime: draft.endTime || defaultEndTime(startTime)
+      };
+    }
+    if (type === 'reminder') {
+      return { type: 'reminder', reminder: draft.reminder, customReminder: draft.customReminder || null };
+    }
+    return { type: 'repeat', repeat: draft.repeat, customRepeat: draft.customRepeat || null };
+  }
+
+  function applyChildDraft(draft, child) {
+    var next = Object.assign({}, draft);
+    if (!child) return next;
+    if (child.type === 'time') {
+      next.timeMode = child.timeMode;
+      next.startTime = child.startTime;
+      next.endTime = child.timeMode === 'range' ? child.endTime : '';
+    } else if (child.type === 'reminder') {
+      next.reminder = child.reminder;
+      next.customReminder = child.customReminder || null;
+    } else if (child.type === 'repeat') {
+      next.repeat = child.repeat;
+      next.customRepeat = child.customRepeat || null;
+    }
+    return next;
+  }
+
   function validateDraft(draft) {
     if (!String(draft.title || '').trim()) return { valid: false, field: 'title', message: '请输入标题' };
     if (draft.startDate && draft.endDate && draft.endDate < draft.startDate) {
@@ -86,5 +119,5 @@
     catch (error) { return null; }
   }
 
-  return { createSessionState, transition, normalizeDraft, validateDraft, setDraftDate, setPending, defaultEndTime, parseStoredDraft };
+  return { createSessionState, transition, normalizeDraft, validateDraft, setDraftDate, setPending, defaultEndTime, createChildDraft, applyChildDraft, parseStoredDraft };
 });

@@ -64,3 +64,17 @@ test('same-day range requires the end time to be later', () => {
 test('stored draft parser rejects malformed JSON without throwing', () => {
   assert.equal(Editor.parseStoredDraft('{broken'), null);
 });
+
+test('time child uses temporary values without mutating the draft', () => {
+  const draft = { timeMode: 'point', startTime: '09:00', endTime: '' };
+  const child = Editor.createChildDraft(draft, 'time');
+  assert.deepEqual(child, { type: 'time', timeMode: 'point', startTime: '09:00', endTime: '10:00' });
+  assert.equal(draft.endTime, '');
+});
+
+test('confirmed child values merge only their scheduling fields', () => {
+  const draft = { title: '开会', reminder: 'none', customReminder: null };
+  const merged = Editor.applyChildDraft(draft, { type: 'reminder', reminder: '15', customReminder: null });
+  assert.equal(merged.title, '开会');
+  assert.equal(merged.reminder, '15');
+});
