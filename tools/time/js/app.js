@@ -1,5 +1,5 @@
 (function() {
-  var APP_VERSION = 'v0.10.1';
+  var APP_VERSION = 'v0.11.0';
   var DateUtils = window.TodayYouxuDateUtils;
   var State = window.TodayYouxuState;
   var Exporter = window.TodayYouxuExport;
@@ -1757,7 +1757,9 @@
     }
     if (event.key !== 'Escape') return;
     event.preventDefault();
-    if (isPendingConfirmationOpen()) {
+    if (els.quickFullMenu && !els.quickFullMenu.hidden) {
+      closeQuickFullMenu({ restoreFocus: true });
+    } else if (isPendingConfirmationOpen()) {
       renderDateParent(true);
     } else if (appState.quickEditor.surface === 'date' && appState.quickEditor.dateChild !== 'none') {
       finishDateChild(false);
@@ -1765,6 +1767,8 @@
       cancelQuickDateSession();
     } else if (isQuickFullPanelOpen() && appState.quickEditor.surface !== 'detail') {
       returnQuickFullToDetailSummary();
+    } else if (isQuickFullPanelOpen() && appState.quickEntryMode === 'item-detail') {
+      closeQuickSession({ keepDraft: false, restoreFocus: true });
     } else if (isQuickFullPanelOpen()) {
       closeQuickFullPanel({ focusTitle: true });
     } else if (appState.quickEditor.surface !== 'keyboard') {
@@ -2144,6 +2148,41 @@
     return handleQuickFullSave();
   }
 
+  function openQuickFullMenu() {
+    if (!els.quickFullMenu || !els.quickFullMore || !appState.editingTaskId) return;
+    els.quickFullMenu.hidden = false;
+    els.quickFullMore.setAttribute('aria-expanded', 'true');
+    var deleteButton = els.quickFullMenu.querySelector('[data-action="quick-full-delete"]');
+    if (deleteButton) deleteButton.focus();
+  }
+
+  function closeQuickFullMenu(options) {
+    if (!els.quickFullMenu || !els.quickFullMore) return;
+    var wasOpen = !els.quickFullMenu.hidden;
+    els.quickFullMenu.hidden = true;
+    els.quickFullMore.setAttribute('aria-expanded', 'false');
+    if (wasOpen && options && options.restoreFocus) els.quickFullMore.focus();
+  }
+
+  function deleteEditingItem() {
+    var type = appState.editingType;
+    var id = appState.editingTaskId;
+    var message = type === 'habit'
+      ? '将删除整个习惯，但会保留历史打卡记录。确定删除吗？'
+      : '删除后可在“已删除”清单恢复。确定删除吗？';
+    closeQuickFullMenu();
+    if (!id || !window.confirm(message)) return Promise.resolve(false);
+    var action = type === 'habit' ? DB.archiveHabit(id) : DB.deleteTask(id);
+    return action.then(function() {
+      closeQuickSession({ keepDraft: false, restoreFocus: true });
+      showToast(type === 'habit' ? '习惯已删除' : '任务已删除');
+      return loadData().then(function() { return true; });
+    }).catch(function(error) {
+      showToast('删除失败：' + error.message);
+      return false;
+    });
+  }
+
   function returnQuickFullToDetailSummary() {
     appState.quickChildDraft = null;
     appState.quickChildWheels = null;
@@ -2154,6 +2193,7 @@
 
   function closeQuickFullPanel(options) {
     if (!els.quickFullPanel || !els.quickSheet) return;
+    closeQuickFullMenu();
     if (isQuickEditorOpen()) {
       appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'CLOSE_DETAIL' });
     }
@@ -2173,6 +2213,13 @@
     var draft = readQuickDraft();
     var s = getQuickSummary();
     var html = '';
+    if (els.quickFullMore) els.quickFullMore.hidden = !appState.editingTaskId;
+    if (els.quickFullTitle && appState.editingTaskId) {
+      els.quickFullTitle.textContent = appState.editingType === 'habit' ? '编辑习惯' : '编辑事项';
+    } else if (els.quickFullTitle) {
+      els.quickFullTitle.textContent = '详细信息';
+    }
+    closeQuickFullMenu();
 
     html += '<div class="quick-full-section"><div class="quick-full-label">标题</div>';
     html += '<input type="text" class="quick-full-input" id="qf-title-input" value="' + escapeHtml(draft.title) + '" placeholder="事项标题"></div>';
@@ -3743,6 +3790,7 @@
     els.quickFullTitle = $('quick-full-title');
     els.quickFullBack = $('quick-full-back');
     els.quickFullMore = $('quick-full-more');
+    els.quickFullMenu = $('quick-full-menu');
     els.pickerBackdrop = $('picker-backdrop');
     els.pickerSheet = $('picker-sheet');
     els.pickerTitle = $('picker-title');
@@ -3909,6 +3957,24 @@
     if (els.quickFullBack) {
       els.quickFullBack.addEventListener('click', handleQuickFullBack);
     }
+    if (els.quickFullMore) {
+      els.quickFullMore.addEventListener('click', function(event) {
+        event.stopPropagation();
+        if (els.quickFullMenu && !els.quickFullMenu.hidden) {
+          closeQuickFullMenu({ restoreFocus: true });
+        } else {
+          openQuickFullMenu();
+        }
+      });
+    }
+    if (els.quickFullMenu) {
+      els.quickFullMenu.addEventListener('click', function(event) {
+        var deleteButton = event.target.closest('[data-action="quick-full-delete"]');
+        if (!deleteButton) return;
+        event.stopPropagation();
+        deleteEditingItem();
+      });
+    }
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);
     if (els.journalEnabledToggle) {
@@ -3975,6 +4041,7 @@
     document.addEventListener('click', handleItemRowActivation);
     document.addEventListener('keydown', handleItemRowActivation);
     document.addEventListener('click', function(event) {
+      if (!event.target.closest('#quick-full-more, #quick-full-menu')) closeQuickFullMenu();
       var taskRow = event.target.closest('.task-row');
       var listRow = event.target.closest('.list-swipe-row');
       if (!event.target.closest('.list-filter-dropdown')) closeListFilterMenu();

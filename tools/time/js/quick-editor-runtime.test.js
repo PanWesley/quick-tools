@@ -63,7 +63,7 @@ function createElement(id) {
   };
 }
 
-function createRuntime() {
+function createRuntime(options = {}) {
   const elements = new Map();
   let document;
   const get = id => {
@@ -126,10 +126,19 @@ function createRuntime() {
     return element;
   };
   const updates = [];
+  const deletions = [];
   const db = {
     getAllData: async () => ({ tasks: [], habits: [], habitLogs: [], journals: [], opLogs: [] }),
     updateTask(id, payload) { updates.push({ id, payload }); return Promise.resolve(); },
-    updateHabit(id, payload) { updates.push({ id, payload }); return Promise.resolve(); }
+    updateHabit(id, payload) { updates.push({ id, payload }); return Promise.resolve(); },
+    deleteTask(id) {
+      deletions.push({ type: 'task', id });
+      return Promise.resolve();
+    },
+    archiveHabit(id) {
+      deletions.push({ type: 'habit', id });
+      return options.archiveRejects ? Promise.reject(new Error('archive failed')) : Promise.resolve();
+    }
   };
   const window = {
     TodayYouxuDateUtils: {
@@ -192,6 +201,7 @@ function createRuntime() {
       handleQuickFullBack: handleQuickFullBack,
       handleQuickFullSave: handleQuickFullSave,
       handleQuickFullComplete: handleQuickFullComplete,
+      deleteEditingItem: deleteEditingItem,
       beginQuickDateSession: beginQuickDateSession,
       cancelQuickDateSession: cancelQuickDateSession,
       confirmQuickDateSession: confirmQuickDateSession,
@@ -219,7 +229,7 @@ function createRuntime() {
     Date, Promise, Object, Array, String, Number, Boolean, Math, JSON, RegExp, encodeURIComponent, URL, Blob: globalThis.Blob, FileReader: class {}
   }, { filename: 'app.js' });
   window.__quickRuntimeHooks.cacheElements();
-  return { hooks: window.__quickRuntimeHooks, background, document, elements, storageWrites, updates };
+  return { hooks: window.__quickRuntimeHooks, background, deletions, document, elements, storageWrites, updates };
 }
 
 test('task and habit editing lock and restore background interaction', () => {
@@ -312,6 +322,40 @@ test('direct detail date cancel returns to the detail summary without opening th
   assert.equal(runtime.hooks.getState().quickEditor.surface, 'detail');
   assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
   assert.equal(runtime.elements.get('quick-sheet').hidden, true);
+});
+
+test('direct detail deletes a task with soft delete and closes on success', async () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('task', 'task-1');
+  await runtime.hooks.deleteEditingItem();
+
+  assert.deepEqual(runtime.deletions, [{ type: 'task', id: 'task-1' }]);
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+});
+
+test('direct detail archives a habit and preserves the open panel on failure', async () => {
+  const runtime = createRuntime({ archiveRejects: true });
+  runtime.hooks.setData({
+    tasks: [],
+    habits: [{ id: 'habit-1', title: '习惯', startDate: '2026-07-12', schedule: 'daily', status: 'active', priority: 'medium', area: 'life' }],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('habit', 'habit-1');
+  await runtime.hooks.deleteEditingItem();
+
+  assert.deepEqual(runtime.deletions, [{ type: 'habit', id: 'habit-1' }]);
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
 });
 
 test('closing a task from the date parent tears down its date transaction before editing another habit', () => {

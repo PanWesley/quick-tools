@@ -27,10 +27,12 @@ test('quick editor separates the compact primary panel from one replacement regi
 
 test('state module loads before app and is cached', () => {
   assert.ok(html.indexOf('/tools/time/js/quick-editor-state.js') < html.indexOf('/tools/time/js/app.js'));
-  assert.match(sw, /const CACHE_NAME = 'today-youxu-v58'/);
-  assert.match(sw, /\/tools\/time\/css\/style\.css\?v=162/);
+  assert.match(sw, /const CACHE_NAME = 'today-youxu-v59'/);
+  assert.match(sw, /\/tools\/time\/css\/style\.css\?v=163/);
   assert.match(sw, /\/tools\/time\/js\/quick-editor-state\.js\?v=3/);
-  assert.match(sw, /\/tools\/time\/js\/app\.js\?v=165/);
+  assert.match(sw, /\/tools\/time\/js\/app-state\.js\?v=137/);
+  assert.match(sw, /\/tools\/time\/js\/db\.js\?v=137/);
+  assert.match(sw, /\/tools\/time\/js\/app\.js\?v=166/);
 });
 
 test('editor CSS defines locked, child-panel, fullscreen and reduced-motion states', () => {
@@ -193,4 +195,18 @@ test('active item rows expose direct-detail activation without stealing control 
   assert.match(app, /function handleItemRowActivation/);
   assert.match(app, /event\.target\.closest\('\[data-action\], button, a, input, textarea, select'\)/);
   assert.match(app, /openItemDetail\(row\.dataset\.itemType,\s*row\.dataset\.itemId,\s*row\)/);
+});
+
+test('full detail exposes deletion only through an accessible overflow menu', () => {
+  assert.match(html, /id="quick-full-more"[^>]*aria-controls="quick-full-menu"/);
+  assert.match(html, /id="quick-full-menu"[^>]*role="menu"[^>]*hidden/);
+  assert.match(html, /data-action="quick-full-delete"/);
+  assert.match(app, /function openQuickFullMenu/);
+  assert.match(app, /function closeQuickFullMenu/);
+  assert.match(app, /function deleteEditingItem/);
+  assert.match(app, /DB\.archiveHabit\(id\)/);
+  assert.match(app, /DB\.deleteTask\(id\)/);
+  assert.match(css, /\.quick-full-menu\s*\{[^}]*position:\s*absolute;/s);
+  assert.match(css, /\.quick-full-delete\s*\{[^}]*min-height:\s*44px;[^}]*color:\s*var\(--danger\);/s);
+  assert.match(app, /els\.quickFullTitle\.textContent\s*=\s*appState\.editingType === 'habit' \? '编辑习惯' : '编辑事项'/);
 });

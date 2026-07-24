@@ -4526,6 +4526,37 @@ textarea {
   background: var(--surface-soft);
 }
 
+.quick-full-menu {
+  position: absolute;
+  top: calc(62px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 2;
+  min-width: 132px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.quick-full-delete {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--danger);
+  text-align: left;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.quick-full-delete:active,
+.quick-full-delete:focus-visible {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
 .quick-full-body {
   flex: 1;
   overflow-y: auto;
