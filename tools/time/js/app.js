@@ -54,7 +54,9 @@
     pickerState: null,
     quickEditor: QuickEditor.createSessionState(),
     quickDateSession: null,
-    quickScrollY: 0
+    quickScrollY: 0,
+    quickEntryMode: 'quick',
+    quickReturnFocus: null
   };
 
   var els = {};
@@ -446,6 +448,14 @@
     });
   }
 
+  function itemRowAttributes(type, id, title, enabled) {
+    if (enabled === false) return '';
+    var label = type === 'habit' ? '编辑习惯：' : '编辑任务：';
+    return ' data-item-type="' + escapeHtml(type) + '"' +
+      ' data-item-id="' + escapeHtml(id) + '"' +
+      ' tabindex="0" role="button" aria-label="' + escapeHtml(label + title) + '"';
+  }
+
   function renderTask(task, options) {
     var opts = options || {};
     var title = State.getTaskDisplayTitle(task);
@@ -467,7 +477,7 @@
 
     var isOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + toneAttrs.className + '"' + toneAttrs.style + ' data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + toneAttrs.className + '"' + toneAttrs.style + itemRowAttributes('task', task.id, title, task.status !== 'deleted') + ' data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -493,7 +503,7 @@
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + toneAttrs.className + '"' + toneAttrs.style + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + toneAttrs.className + '"' + toneAttrs.style + itemRowAttributes('task', task.id, State.getTaskDisplayTitle(task), task.status !== 'deleted') + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -529,7 +539,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions' + toneAttrs.className + '"' + toneAttrs.style + ' data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(dateKey) + '">',
+      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions' + toneAttrs.className + '"' + toneAttrs.style + itemRowAttributes('habit', habit.id, habit.title || '未命名习惯') + ' data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(dateKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -620,7 +630,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions' + toneAttrs.className + '"' + toneAttrs.style + ' data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(appState.todayKey) + '">',
+      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions' + toneAttrs.className + '"' + toneAttrs.style + itemRowAttributes('habit', habit.id, habit.title || '未命名习惯') + ' data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(appState.todayKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -1014,7 +1024,7 @@
     }
 
     return [
-      '<article class="task-row list-task-row' + rowClass + toneAttrs.className + ' has-swipe-actions"' + toneAttrs.style + ' data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
+      '<article class="task-row list-task-row' + rowClass + toneAttrs.className + ' has-swipe-actions"' + toneAttrs.style + itemRowAttributes(item.type, item.data.id, title, !isDeleted) + ' data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -1528,6 +1538,10 @@
   }
 
   function returnQuickToKeyboard() {
+    if (isQuickFullPanelOpen() && appState.quickEntryMode === 'item-detail') {
+      returnQuickFullToDetailSummary();
+      return;
+    }
     appState.quickEditor = QuickEditor.transition(appState.quickEditor, { type: 'SHOW_KEYBOARD' });
     if (isQuickFullPanelOpen()) {
       closeQuickFullPanel({ focusTitle: true });
@@ -1792,6 +1806,7 @@
 
   function closeQuickSession(options) {
     var opts = options || {};
+    var returnFocus = appState.quickReturnFocus;
     if (!appState.editingTaskId && opts.keepDraft !== false) persistCreateDraft();
     appState.quickDateSession = null;
     appState.quickChildDraft = null;
@@ -1808,7 +1823,13 @@
     setQuickEditorBackgroundInert(false);
     appState.editingTaskId = '';
     appState.editingType = '';
-    if (opts.restoreFocus && els.openAdd) els.openAdd.focus();
+    appState.quickEntryMode = 'quick';
+    appState.quickReturnFocus = null;
+    if (opts.restoreFocus && returnFocus && typeof returnFocus.focus === 'function') {
+      returnFocus.focus();
+    } else if (opts.restoreFocus && els.openAdd) {
+      els.openAdd.focus();
+    }
   }
 
   function openSheet() {
@@ -1816,6 +1837,8 @@
     appState.editingType = '';
     appState.customRepeat = null;
     appState.customReminder = null;
+    appState.quickEntryMode = 'quick';
+    appState.quickReturnFocus = null;
     var sheetTitle = $('quick-sheet-title');
     if (sheetTitle) sheetTitle.textContent = '新增事项';
     var defaultDate = appState.todayKey;
@@ -2093,6 +2116,10 @@
       returnQuickFullToDetailSummary();
       return;
     }
+    if (appState.quickEntryMode === 'item-detail') {
+      closeQuickSession({ keepDraft: false, restoreFocus: true });
+      return;
+    }
     closeQuickFullPanel({ focusTitle: true });
   }
 
@@ -2105,6 +2132,16 @@
     }
     closeQuickFullPanel({ focusTitle: true });
     return true;
+  }
+
+  function handleQuickFullComplete() {
+    if (appState.quickEditor.surface !== 'detail') {
+      return handleQuickFullSave();
+    }
+    if (appState.quickEntryMode === 'item-detail') {
+      return handleQuickSubmit({ preventDefault: function() {} });
+    }
+    return handleQuickFullSave();
   }
 
   function returnQuickFullToDetailSummary() {
@@ -2175,6 +2212,10 @@
     html += (s.tone ? '已选颜色' : '默认');
     html += '</div><span class="qv-arrow">›</span></button></div>';
 
+    html += '<div class="quick-full-bottom-actions">';
+    html += '<button type="button" class="quick-full-complete" data-action="quick-full-complete">完成</button>';
+    html += '</div>';
+
     els.quickFullBody.innerHTML = html;
 
     els.quickFullBody.querySelectorAll('[data-qf-jump]').forEach(function(btn) {
@@ -2196,6 +2237,10 @@
         autoResizeTextarea(els.quickNotes);
         handleQuickDraftChange();
       });
+    }
+    var completeButton = els.quickFullBody.querySelector('[data-action="quick-full-complete"]');
+    if (completeButton) {
+      completeButton.addEventListener('click', handleQuickFullComplete);
     }
   }
 
@@ -2574,7 +2619,7 @@
     var draftValidity = QuickEditor.validateDraft(draft);
     if (!draftValidity.valid) {
       showToast(draftValidity.message);
-      return;
+      return Promise.resolve(false);
     }
     var title = draft.title.trim();
 
@@ -2649,7 +2694,7 @@
         : DB.createHabit(createHabitPayload());
     }
 
-    action.then(function() {
+    return action.then(function() {
       if (!wasEditing) clearCreateDraft();
       closeQuickSession({ keepDraft: false, restoreFocus: true });
       showToast(wasEditing ? '事项已更新' : '事项已创建');
@@ -2746,6 +2791,16 @@
     }
   }
 
+  function handleItemRowActivation(event) {
+    var row = event.target.closest('[data-item-type][data-item-id]');
+    if (!row || isQuickEditorOpen()) return;
+    if (event.target.closest('[data-action], button, a, input, textarea, select')) return;
+    if (row.classList.contains('actions-open')) return;
+    if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.type === 'keydown') event.preventDefault();
+    openItemDetail(row.dataset.itemType, row.dataset.itemId, row);
+  }
+
   function openLockedQuickEditSession() {
     appState.quickEditor = QuickEditor.transition(
       QuickEditor.createSessionState(appState.editingType === 'habit' ? 'edit-habit' : 'edit-task'),
@@ -2763,7 +2818,25 @@
     focusQuickTitle();
   }
 
-  function openEditTask(id) {
+  function openDirectItemDetailSession(sourceRow) {
+    appState.quickEntryMode = 'item-detail';
+    appState.quickReturnFocus = sourceRow || null;
+    appState.quickEditor = QuickEditor.transition(
+      QuickEditor.createSessionState(appState.editingType === 'habit' ? 'edit-habit' : 'edit-task'),
+      { type: 'OPEN' }
+    );
+    els.sheetBackdrop.hidden = false;
+    els.quickSheet.hidden = true;
+    els.quickSheet.setAttribute('aria-hidden', 'true');
+    els.quickSheet.inert = true;
+    lockQuickEditorScroll();
+    setQuickEditorBackgroundInert(true);
+    updateQuickViewportHeight();
+    openQuickFullPanel();
+  }
+
+  function openEditTask(id, options) {
+    var opts = options || {};
     var task = appState.data.tasks.find(function(item) { return item.id === id; });
     if (!task) {
       showToast('没有找到这条任务');
@@ -2805,10 +2878,17 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    openLockedQuickEditSession();
+    if (opts.directDetail) {
+      openDirectItemDetailSession(opts.sourceRow);
+    } else {
+      appState.quickEntryMode = 'quick';
+      appState.quickReturnFocus = null;
+      openLockedQuickEditSession();
+    }
   }
 
-  function openEditHabit(id) {
+  function openEditHabit(id, options) {
+    var opts = options || {};
     var habit = appState.data.habits.find(function(item) { return item.id === id; });
     if (!habit) {
       showToast('没有找到这个习惯');
@@ -2871,7 +2951,21 @@
     closeQuickFullPanel();
     updateToolStates();
     autoResizeTextarea(els.quickNotes);
-    openLockedQuickEditSession();
+    if (opts.directDetail) {
+      openDirectItemDetailSession(opts.sourceRow);
+    } else {
+      appState.quickEntryMode = 'quick';
+      appState.quickReturnFocus = null;
+      openLockedQuickEditSession();
+    }
+  }
+
+  function openItemDetail(type, id, sourceRow) {
+    if (type === 'habit') {
+      openEditHabit(id, { directDetail: true, sourceRow: sourceRow });
+    } else {
+      openEditTask(id, { directDetail: true, sourceRow: sourceRow });
+    }
   }
 
   function changeMonth(delta) {
@@ -3648,7 +3742,7 @@
     els.quickFullBody = $('quick-full-body');
     els.quickFullTitle = $('quick-full-title');
     els.quickFullBack = $('quick-full-back');
-    els.quickFullSave = $('quick-full-save');
+    els.quickFullMore = $('quick-full-more');
     els.pickerBackdrop = $('picker-backdrop');
     els.pickerSheet = $('picker-sheet');
     els.pickerTitle = $('picker-title');
@@ -3815,9 +3909,6 @@
     if (els.quickFullBack) {
       els.quickFullBack.addEventListener('click', handleQuickFullBack);
     }
-    if (els.quickFullSave) {
-      els.quickFullSave.addEventListener('click', handleQuickFullSave);
-    }
     els.journalForm.addEventListener('submit', handleJournalSubmit);
     els.journalContent.addEventListener('input', scheduleJournalSave);
     if (els.journalEnabledToggle) {
@@ -3881,6 +3972,8 @@
     if (els.feedbackEmail) els.feedbackEmail.addEventListener('click', copyFeedbackEmail);
     if (els.feedbackMailButton) els.feedbackMailButton.addEventListener('click', openFeedbackMail);
     document.addEventListener('click', handleAction);
+    document.addEventListener('click', handleItemRowActivation);
+    document.addEventListener('keydown', handleItemRowActivation);
     document.addEventListener('click', function(event) {
       var taskRow = event.target.closest('.task-row');
       var listRow = event.target.closest('.list-swipe-row');

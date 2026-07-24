@@ -133,14 +133,16 @@ test('date range clamping is announced and all editor controls retain 44px targe
   assert.match(css, /\.quick-tone-swatch\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s);
   assert.match(css, /\.quick-date-child-head button\s*\{[^}]*min-height:\s*44px;/s);
   assert.match(css, /\.quick-full-back\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
-  assert.match(css, /\.quick-full-save\s*\{[^}]*min-height:\s*44px;/s);
+  assert.match(css, /\.quick-full-more\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
+  assert.match(css, /\.quick-full-complete\s*\{[^}]*min-height:\s*52px;/s);
 });
 
 test('detail exits synchronously to focused keyboard surface', () => {
   assert.match(app, /CLOSE_DETAIL/);
   assert.match(app, /function openQuickFullPanel[\s\S]*els\.quickSheet\.hidden\s*=\s*true/);
   assert.match(app, /function handleQuickFullSave[\s\S]{0,400}closeQuickFullPanel\(\{ focusTitle: true \}\)/);
-  assert.match(app, /if \(els\.quickFullSave\)[\s\S]{0,180}addEventListener\('click', handleQuickFullSave\)/);
+  assert.match(app, /function handleQuickFullComplete[\s\S]{0,400}handleQuickFullSave\(\)/);
+  assert.match(app, /data-action="quick-full-complete"[\s\S]{0,1600}addEventListener\('click', handleQuickFullComplete\)/);
   assert.doesNotMatch(app, /setTimeout\(function\(\)\s*\{\s*openQuickTool/s);
 });
 
@@ -173,4 +175,22 @@ test('habit rows and calendar entries use their saved tone', () => {
   assert.match(app, /calendarEntryTone[\s\S]*entry\.tone/);
   assert.match(css, /\.task-row\.has-item-tone \.task-content/);
   assert.match(css, /\.task-row\.has-item-tone::before/);
+});
+
+test('full detail keeps completion at the bottom of its scroll body', () => {
+  assert.doesNotMatch(html, /id="quick-full-save"/);
+  assert.match(html, /id="quick-full-more"[^>]*aria-label="更多操作"/);
+  assert.match(app, /quick-full-bottom-actions/);
+  assert.match(app, /data-action="quick-full-complete"/);
+  assert.match(css, /\.quick-full-complete\s*\{[^}]*min-height:\s*52px;/s);
+  assert.doesNotMatch(css, /\.quick-full-bottom-actions\s*\{[^}]*position:\s*(?:fixed|sticky)/s);
+});
+
+test('active item rows expose direct-detail activation without stealing control clicks', () => {
+  assert.match(app, /function itemRowAttributes/);
+  assert.match(app, /data-item-type/);
+  assert.match(app, /data-item-id/);
+  assert.match(app, /function handleItemRowActivation/);
+  assert.match(app, /event\.target\.closest\('\[data-action\], button, a, input, textarea, select'\)/);
+  assert.match(app, /openItemDetail\(row\.dataset\.itemType,\s*row\.dataset\.itemId,\s*row\)/);
 });

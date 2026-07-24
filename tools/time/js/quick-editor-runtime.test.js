@@ -128,6 +128,7 @@ function createRuntime() {
   const updates = [];
   const db = {
     getAllData: async () => ({ tasks: [], habits: [], habitLogs: [], journals: [], opLogs: [] }),
+    updateTask(id, payload) { updates.push({ id, payload }); return Promise.resolve(); },
     updateHabit(id, payload) { updates.push({ id, payload }); return Promise.resolve(); }
   };
   const window = {
@@ -171,6 +172,7 @@ function createRuntime() {
       cacheElements: cacheElements,
       openEditTask: openEditTask,
       openEditHabit: openEditHabit,
+      openItemDetail: openItemDetail,
       closeQuickSession: closeQuickSession,
       handleQuickSubmit: handleQuickSubmit,
       handleSwipeStart: handleSwipeStart,
@@ -189,6 +191,7 @@ function createRuntime() {
       renderDateChild: renderDateChild,
       handleQuickFullBack: handleQuickFullBack,
       handleQuickFullSave: handleQuickFullSave,
+      handleQuickFullComplete: handleQuickFullComplete,
       beginQuickDateSession: beginQuickDateSession,
       cancelQuickDateSession: cancelQuickDateSession,
       confirmQuickDateSession: confirmQuickDateSession,
@@ -235,6 +238,80 @@ test('task and habit editing lock and restore background interaction', () => {
   assert.equal(runtime.background.inert, true);
   runtime.hooks.closeQuickSession({ keepDraft: false });
   assert.equal(runtime.background.inert, false);
+});
+
+test('direct task detail skips the keyboard sheet and focuses the full panel', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('task', 'task-1');
+
+  assert.equal(runtime.elements.get('quick-sheet').hidden, true);
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.notEqual(runtime.document.activeElement, runtime.elements.get('quick-title'));
+  assert.equal(runtime.hooks.getState().quickEntryMode, 'item-detail');
+});
+
+test('direct detail back closes the whole editor without reopening the keyboard', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('task', 'task-1');
+  runtime.hooks.handleQuickFullBack();
+
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, true);
+  assert.equal(runtime.background.inert, false);
+});
+
+test('direct detail completion saves and closes the whole editor', async () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('task', 'task-1');
+  await runtime.hooks.handleQuickFullComplete();
+
+  assert.equal(runtime.updates.length, 1);
+  assert.equal(runtime.updates[0].id, 'task-1');
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.background.inert, false);
+});
+
+test('direct detail date cancel returns to the detail summary without opening the keyboard', () => {
+  const runtime = createRuntime();
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('task', 'task-1');
+  runtime.hooks.openQuickFullTool('date');
+  runtime.hooks.cancelQuickDateSession();
+
+  assert.equal(runtime.hooks.getState().quickEditor.surface, 'detail');
+  assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+  assert.equal(runtime.elements.get('quick-sheet').hidden, true);
 });
 
 test('closing a task from the date parent tears down its date transaction before editing another habit', () => {
