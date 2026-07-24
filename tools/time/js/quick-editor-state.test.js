@@ -107,3 +107,63 @@ test('full draft validation still requires a title after schedule validation', (
     valid: false, field: 'title', message: '请输入标题'
   });
 });
+
+test('date session snapshots schedule fields without sharing nested custom values', () => {
+  const form = {
+    title: '开会',
+    startDate: '2026-07-24',
+    endDate: '2026-07-24',
+    timeMode: 'range',
+    startTime: '09:00',
+    endTime: '10:00',
+    repeat: 'custom',
+    customRepeat: { interval: 2, unit: 'week' },
+    reminder: 'custom',
+    customReminder: { days: 0, hours: 1, minutes: 0 }
+  };
+  const session = Editor.createDateSession(form);
+  session.draft.customReminder.hours = 3;
+
+  assert.equal(session.original.customReminder.hours, 1);
+  assert.equal(form.customReminder.hours, 1);
+  assert.equal(session.draft.title, undefined);
+});
+
+test('date session updates only its draft and confirmation merges only schedule fields', () => {
+  const form = {
+    title: '原标题',
+    notes: '原备注',
+    startDate: '2026-07-24',
+    endDate: '2026-07-24',
+    timeMode: 'all-day',
+    startTime: '',
+    endTime: '',
+    repeat: 'none',
+    customRepeat: null,
+    reminder: 'none',
+    customReminder: null
+  };
+  const originalSession = Editor.createDateSession(form);
+  const updatedSession = Editor.updateDateSession(originalSession, {
+    startDate: '2026-07-25',
+    endDate: '2026-07-26',
+    timeMode: 'point',
+    startTime: '09:30',
+    endTime: '',
+    repeat: 'daily',
+    customRepeat: null,
+    reminder: '15',
+    customReminder: null
+  });
+  const committed = Editor.applyDateSession(
+    Object.assign({}, form, { title: '输入期间改过的标题' }),
+    updatedSession
+  );
+
+  assert.equal(originalSession.draft.startDate, '2026-07-24');
+  assert.equal(updatedSession.original.startDate, '2026-07-24');
+  assert.equal(committed.title, '输入期间改过的标题');
+  assert.equal(committed.startDate, '2026-07-25');
+  assert.equal(committed.endDate, '2026-07-26');
+  assert.equal(form.startDate, '2026-07-24');
+});

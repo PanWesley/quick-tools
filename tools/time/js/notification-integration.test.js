@@ -191,21 +191,21 @@ test('loads cache-busted notification dependencies in strict order', () => {
     assert.ok(scriptPosition(names[index]) < scriptPosition(name), names[index] + ' must load before ' + name);
   });
   const releaseAssets = [
-    '/tools/time/css/style.css?v=161',
-    '/tools/time/js/quick-editor-state.js?v=2',
+    '/tools/time/css/style.css?v=162',
+    '/tools/time/js/quick-editor-state.js?v=3',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
     '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=164'
+    '/tools/time/js/app.js?v=165'
   ];
   const releaseAssetPaths = new Set(releaseAssets.map(asset => asset.split('?')[0]));
   const indexedReleaseAssets = [...index.matchAll(/(?:href|src)="([^"]+)"/g)]
     .map(match => match[1])
     .filter(asset => releaseAssetPaths.has(asset.split('?')[0]));
   assert.deepEqual(indexedReleaseAssets.slice().sort(), releaseAssets.slice().sort());
-  assert.match(appSource, /var APP_VERSION = 'v0\.10\.0';/);
+  assert.match(appSource, /var APP_VERSION = 'v0\.10\.1';/);
 });
 
 test('projects encrypted reminder records and preserves the exact sync call', () => {

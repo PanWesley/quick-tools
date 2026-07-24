@@ -3638,33 +3638,17 @@ textarea {
   box-shadow: 0 -8px 32px rgba(40, 30, 20, 0.15);
 }
 
-.quick-sheet-v2:has(.quick-extra-panel:not([hidden])) {
+.quick-sheet-v2[data-surface="keyboard"] {
+  max-height: 180px;
+}
+
+.quick-sheet-v2[data-surface="keyboard"] .quick-form-v2 {
+  padding-bottom: 0;
+}
+
+.quick-sheet-v2[data-surface="date"] {
+  height: calc(var(--quick-viewport-height, 100vh) - 4px);
   max-height: calc(var(--quick-viewport-height, 100vh) - 4px);
-}
-
-.quick-sheet-v2:has(.quick-extra-panel:not([hidden])) .quick-summary {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-}
-
-.quick-drag-handle {
-  min-height: 44px;
-  display: grid;
-  place-items: center;
-  touch-action: none;
-}
-
-.quick-drag-handle span {
-  width: 36px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--border);
 }
 
 .quick-form-v2 {
@@ -3675,14 +3659,28 @@ textarea {
   transition: opacity 200ms ease, transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+.quick-sheet-v2[data-surface="date"] .quick-form-v2 {
+  height: 100%;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 .quick-sheet-v2.is-full .quick-form-v2 {
   opacity: 0;
   transform: translateY(12px);
   pointer-events: none;
 }
 
+.quick-primary-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.quick-primary-panel[hidden] {
+  display: none;
+}
+
 .quick-inputs {
-  padding: 16px 20px 8px;
+  padding: 8px 16px 2px;
 }
 
 .quick-title-row {
@@ -3699,8 +3697,8 @@ textarea {
   color: var(--text-strong);
   font-size: 18px;
   font-weight: var(--weight-medium);
-  line-height: 1.4;
-  padding: 8px 0;
+  line-height: 1.3;
+  padding: 4px 0;
   caret-color: var(--primary);
   -webkit-appearance: none;
   -webkit-tap-highlight-color: transparent;
@@ -3727,11 +3725,12 @@ textarea {
   background: transparent;
   color: var(--text-muted);
   font-size: 16px;
-  line-height: 1.5;
-  padding: 4px 0;
+  line-height: 1.25;
+  padding: 2px 0;
   resize: none;
-  min-height: 22px;
-  max-height: 120px;
+  min-height: 20px;
+  max-height: 24px;
+  overflow: hidden;
   font-family: inherit;
   caret-color: var(--primary);
   -webkit-appearance: none;
@@ -3756,7 +3755,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px 10px;
+  padding: 2px 12px 2px;
 }
 
 .quick-tools {
@@ -3874,11 +3873,22 @@ textarea {
   overscroll-behavior: contain;
 }
 
+.quick-sheet-v2[data-surface="date"] .quick-extra-panel {
+  display: block;
+  flex: 1;
+  max-height: none;
+  overflow-y: auto;
+}
+
 .quick-summary {
-  min-height: 22px;
-  padding: 0 16px 6px;
+  min-height: 18px;
+  padding: 0 16px 4px;
   color: var(--text-muted);
   font-size: 12px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-date-child-panel {
@@ -3935,6 +3945,39 @@ textarea {
   font-weight: var(--weight-medium);
 }
 
+.quick-date-session-error {
+  min-height: 20px;
+  margin: 0;
+  padding: 0 16px 4px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.quick-date-footer {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.quick-date-footer button {
+  min-height: 52px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.quick-date-footer [data-date-confirm] {
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+  border-left: 1px solid var(--border);
+}
+
 .quick-date-child-head {
   min-height: 52px;
   display: grid;
@@ -3973,6 +4016,7 @@ textarea {
 .quick-datetime-panel {
   display: flex;
   flex-direction: column;
+  min-height: 100%;
 }
 
 .quick-datetime-calendar {
@@ -4562,20 +4606,12 @@ textarea {
     border-radius: 20px 20px 0 0;
   }
 
-  .quick-inputs {
-    padding: 14px 16px 6px;
-  }
-
   .quick-title-input {
     font-size: 17px;
   }
 
   .quick-notes-input {
     font-size: 15px;
-  }
-
-  .quick-toolbar {
-    padding: 6px 10px 8px;
   }
 
   .quick-tool-btn {
