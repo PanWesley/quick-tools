@@ -1628,6 +1628,41 @@ textarea {
   }
 }
 
+.task-row.has-item-tone .task-content {
+  background-color: var(--item-tone) !important;
+  background-image: none !important;
+}
+
+.task-row.has-item-tone::before {
+  background: var(--item-tone);
+}
+
+.task-row.is-completed.has-item-tone:not(.habit-row) .task-content {
+  background-color: var(--surface) !important;
+}
+
+.task-row.is-overdue-row.has-item-tone .task-content {
+  background-color: #FCEEF0 !important;
+}
+
+.task-row.is-overdue-row.has-item-tone::before {
+  background: var(--danger);
+}
+
+@supports (background-color: color-mix(in srgb, red 10%, white)) {
+  .task-row.has-item-tone .task-content {
+    background-color: color-mix(in srgb, var(--item-tone) 52%, var(--surface)) !important;
+  }
+
+  .task-row.has-item-tone::before {
+    background: color-mix(in srgb, var(--item-tone) 82%, var(--text-muted));
+  }
+
+  .task-row.is-overdue-row.has-item-tone .task-content {
+    background-color: color-mix(in srgb, var(--danger) 10%, var(--surface)) !important;
+  }
+}
+
 .calendar-more {
   color: var(--text-muted);
   background: transparent;

@@ -449,6 +449,7 @@
   function renderTask(task, options) {
     var opts = options || {};
     var title = State.getTaskDisplayTitle(task);
+    var toneAttrs = toneRowAttributes(task.tone, hashIdToColor(task.id));
     var completeButton = opts.complete === false
       ? '<span></span>'
       : task.status === 'completed'
@@ -466,7 +467,7 @@
 
     var isOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + ' task-tone-' + (task.tone || hashIdToColor(task.id)) + '" data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
+      '<article class="task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + toneAttrs.className + '"' + toneAttrs.style + ' data-swipe-row data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -482,6 +483,7 @@
 
   function renderDateTask(task) {
     var actions = [];
+    var toneAttrs = toneRowAttributes(task.tone, hashIdToColor(task.id));
     if (task.status !== 'completed' && task.status !== 'deleted') {
       actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(task.id) + '">编辑</button>');
       actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(task.id) + '">删除</button>');
@@ -491,7 +493,7 @@
       : '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(task.id) + '" aria-label="完成任务"></button>';
     var isDateOverdue = task.date && task.date < appState.todayKey && task.status !== 'completed' && task.status !== 'deleted';
     return [
-      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + ' task-tone-' + (task.tone || hashIdToColor(task.id)) + '"' + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
+      '<article class="task-row date-task-row' + (task.status === 'completed' ? ' is-completed' : '') + (isDateOverdue ? ' is-overdue-row' : '') + priorityRowClass(task.priority) + (actions.length ? ' has-swipe-actions' : '') + toneAttrs.className + '"' + toneAttrs.style + (actions.length ? ' data-swipe-row' : '') + ' data-notification-type="task" data-notification-id="' + escapeHtml(task.id) + '" data-notification-date="' + escapeHtml(task.date || '') + '">',
       actions.length ? '<div class="task-swipe-actions">' + actions.join('') + '</div>' : '',
       '<div class="task-content">',
       completeButton,
@@ -513,6 +515,7 @@
     var actions = [];
     var checkButton;
     var prio = normalizePriority(habit.priority);
+    var toneAttrs = toneRowAttributes(habit.tone, 'lilac');
     if (done || skipped) {
       actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
       actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '">重置</button>');
@@ -526,7 +529,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit-date" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(dateKey) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(dateKey) + '">',
+      '<article class="task-row date-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions' + toneAttrs.className + '"' + toneAttrs.style + ' data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(dateKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -570,7 +573,7 @@
 
   function calendarEntryTone(entry) {
     if (entry.type === 'task') return entry.tone || hashIdToColor(entry.id);
-    if (entry.type === 'habit') return entry.state === 'done' ? 'mint' : 'lilac';
+    if (entry.type === 'habit') return normalizedTone(entry.tone) || (entry.state === 'done' ? 'mint' : 'lilac');
     return 'rose';
   }
 
@@ -603,6 +606,7 @@
     var actions = [];
     var checkButton;
     var prio = normalizePriority(habit.priority);
+    var toneAttrs = toneRowAttributes(habit.tone, 'lilac');
     if (done || skipped) {
       actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(habit.id) + '">编辑</button>');
       actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(habit.id) + '" data-date="' + escapeHtml(appState.todayKey) + '">重置</button>');
@@ -616,7 +620,7 @@
         ? '<span class="date-icon habit-skip-icon">⊘</span>'
         : '<button class="habit-check small habit-check-' + prio + '" type="button" data-action="check-habit" data-id="' + escapeHtml(habit.id) + '" aria-label="打卡习惯"></button>';
     return [
-      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions" data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(appState.todayKey) + '">',
+      '<article class="task-row today-habit-row habit-row' + (done ? ' is-done' : skipped ? ' is-skipped' : '') + priorityRowClass(habit.priority) + ' has-swipe-actions' + toneAttrs.className + '"' + toneAttrs.style + ' data-swipe-row data-notification-type="habit" data-notification-id="' + escapeHtml(habit.id) + '" data-notification-date="' + escapeHtml(appState.todayKey) + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -651,13 +655,7 @@
   }
 
   function renderToday() {
-    var allTodayTasks = appState.data.tasks.filter(function(task) {
-      return task.status !== 'deleted' && task.date && task.date <= appState.todayKey;
-    }).sort(function(a, b) {
-      if (a.status === 'completed' && b.status !== 'completed') return 1;
-      if (a.status !== 'completed' && b.status === 'completed') return -1;
-      return String(a.date).localeCompare(String(b.date)) || String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
-    });
+    var groups = State.getTodayTaskGroups(appState.data.tasks, appState.todayKey);
     var dueHabits = appState.data.habits.filter(function(habit) {
       return State.habitDueOn(habit, appState.todayKey);
     });
@@ -666,7 +664,11 @@
     });
 
     updateHeaderTitle();
-    els.todayTaskList.innerHTML = allTodayTasks.length ? allTodayTasks.map(renderTask).join('') : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
+    els.todayTaskList.innerHTML = groups.pending.length
+      ? groups.pending.map(renderTask).join('')
+      : renderEmpty('今天没有待办。可以点击 + 记录一件事。');
+    els.todayCompletedSection.hidden = groups.completed.length === 0;
+    els.todayCompletedList.innerHTML = groups.completed.map(renderTask).join('');
     els.todayHabitList.innerHTML = dueHabits.length ? dueHabits.map(renderHabit).join('') : renderEmpty('还没有需要今天打卡的习惯。');
     if (isJournalEnabled()) {
       els.journalContent.value = journal ? journal.content : randomJournalQuote();
@@ -958,8 +960,8 @@
     var checkButton = '';
     var typeTag = '';
     var rowClass = '';
-    var toneClass = '';
     var prio = normalizePriority(priority);
+    var toneAttrs = toneRowAttributes(item.data.tone, isHabit ? 'lilac' : hashIdToColor(item.data.id));
 
     if (isDeleted) {
       actions.push('<button class="swipe-action restore" type="button" data-action="restore-task" data-id="' + escapeHtml(item.data.id) + '">恢复</button>');
@@ -967,20 +969,17 @@
       checkButton = '<span></span>';
       typeTag = '<span class="type-tag task-tag">任务</span>';
       rowClass = 'priority-none';
-      toneClass = ' task-tone-' + (item.data.tone || hashIdToColor(item.data.id));
     } else if (isCompleted) {
       if (isHabit) {
         checkButton = '<span class="date-icon habit-done-icon habit-check-done-' + prio + '">✓</span>';
         actions.push('<button class="swipe-action edit" type="button" data-action="edit-habit" data-id="' + escapeHtml(item.data.id) + '">编辑</button>');
         actions.push('<button class="swipe-action restore" type="button" data-action="reset-habit" data-id="' + escapeHtml(item.data.id) + '" data-date="' + escapeHtml(appState.todayKey) + '">重置</button>');
         typeTag = '<span class="type-tag habit-tag">习惯</span>';
-        toneClass = '';
       } else {
         checkButton = '<button class="task-check small task-check-done" type="button" data-action="uncomplete-task" data-id="' + escapeHtml(item.data.id) + '" aria-label="恢复为待办"><span>✓</span></button>';
         actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">编辑</button>');
         actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(item.data.id) + '">删除</button>');
         typeTag = '<span class="type-tag task-tag">任务</span>';
-        toneClass = ' task-tone-' + (item.data.tone || hashIdToColor(item.data.id));
       }
       rowClass = (isHabit ? '' : '') + priorityRowClass(priority) + (isHabit && isCompleted ? '' : ' is-completed');
     } else if (isHabit) {
@@ -1002,14 +1001,12 @@
       }
       typeTag = '<span class="type-tag habit-tag">习惯</span>';
       rowClass = priorityRowClass(priority) + (hDone ? ' is-done' : hSkipped ? ' is-skipped' : '');
-      toneClass = '';
     } else {
       checkButton = '<button class="task-check small" type="button" data-action="complete-task" data-id="' + escapeHtml(item.data.id) + '" aria-label="完成任务"></button>';
       actions.push('<button class="swipe-action edit" type="button" data-action="edit-task" data-id="' + escapeHtml(item.data.id) + '">编辑</button>');
       actions.push('<button class="swipe-action delete" type="button" data-action="delete-task" data-id="' + escapeHtml(item.data.id) + '">删除</button>');
       typeTag = '<span class="type-tag task-tag">任务</span>';
       rowClass = priorityRowClass(priority);
-      toneClass = ' task-tone-' + (item.data.tone || hashIdToColor(item.data.id));
     }
 
     if (isOverdueItem) {
@@ -1017,7 +1014,7 @@
     }
 
     return [
-      '<article class="task-row list-task-row' + rowClass + toneClass + ' has-swipe-actions" data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
+      '<article class="task-row list-task-row' + rowClass + toneAttrs.className + ' has-swipe-actions"' + toneAttrs.style + ' data-swipe-row data-type="' + item.type + '" data-id="' + escapeHtml(item.data.id) + '" data-notification-type="' + escapeHtml(item.type) + '" data-notification-id="' + escapeHtml(item.data.id) + '" data-notification-date="' + escapeHtml(isHabit ? appState.todayKey : item.data.date || '') + '">',
       '<div class="task-swipe-actions">' + actions.join('') + '</div>',
       '<div class="task-content">',
       checkButton,
@@ -1270,11 +1267,9 @@
   }
 
   function todayHeaderDesc() {
-    var tasks = appState.data.tasks.filter(function(t) {
-      return t.status !== 'deleted' && t.date && t.date <= appState.todayKey;
-    });
-    var active = tasks.filter(function(t) { return t.status !== 'completed'; }).length;
-    var completed = tasks.length - active;
+    var groups = State.getTodayTaskGroups(appState.data.tasks, appState.todayKey);
+    var active = groups.pending.length;
+    var completed = groups.completed.length;
     var habits = appState.data.habits.filter(function(h) {
       return State.habitDueOn(h, appState.todayKey);
     });
@@ -1982,6 +1977,20 @@
     { value: 'fog', color: 'rgb(225,230,235)' },
     { value: 'pearl', color: 'rgb(245,240,235)' }
   ];
+
+  function normalizedTone(value) {
+    var tone = String(value || '');
+    return Object.prototype.hasOwnProperty.call(TONE_CSS_COLORS, tone) ? tone : '';
+  }
+
+  function toneRowAttributes(value, fallbackTone) {
+    var tone = normalizedTone(value) || normalizedTone(fallbackTone) || 'lilac';
+    var color = TONE_CSS_COLORS[tone] || TONE_CSS_COLORS.lilac;
+    return {
+      className: ' has-item-tone task-tone-' + tone,
+      style: ' style="--item-tone:' + color + '"'
+    };
+  }
 
   // 返回日期标签
   function formatDateLabel(dateKey) {
@@ -3565,6 +3574,8 @@
 
   function cacheElements() {
     els.todayTaskList = $('today-task-list');
+    els.todayCompletedSection = $('today-completed-section');
+    els.todayCompletedList = $('today-completed-list');
     els.todayHabitList = $('today-habit-list');
     els.journalForm = $('journal-form');
     els.journalSave = $('journal-save');

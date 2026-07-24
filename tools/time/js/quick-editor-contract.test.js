@@ -157,3 +157,20 @@ test('calendar endpoint times and full-detail focus survive narrow surfaces', ()
   assert.match(css, /\.calendar-strip-title\s*\{[^}]*text-overflow:\s*ellipsis;/s);
   assert.match(app, /function openQuickFullPanel[\s\S]{0,700}els\.quickFullPanel\.hidden\s*=\s*false;[\s\S]{0,300}els\.quickFullBack\.focus\(\)/);
 });
+
+test('today has separate pending and completed task sections', () => {
+  assert.match(html, /id="today-task-list"/);
+  assert.match(html, /id="today-completed-section"[^>]*hidden/);
+  assert.match(html, /id="today-completed-list"/);
+  assert.match(app, /State\.getTodayTaskGroups\(appState\.data\.tasks,\s*appState\.todayKey\)/);
+});
+
+test('habit rows and calendar entries use their saved tone', () => {
+  assert.match(app, /function normalizedTone/);
+  assert.match(app, /renderHabit[\s\S]*toneRowAttributes\(habit\.tone/);
+  assert.match(app, /renderDateHabit[\s\S]*toneRowAttributes\(habit\.tone/);
+  assert.match(app, /renderListItem[\s\S]*toneRowAttributes\(item\.data\.tone/);
+  assert.match(app, /calendarEntryTone[\s\S]*entry\.tone/);
+  assert.match(css, /\.task-row\.has-item-tone \.task-content/);
+  assert.match(css, /\.task-row\.has-item-tone::before/);
+});
