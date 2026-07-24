@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   getTodayTasks,
+  getTodayTaskGroups,
   getInboxTasks,
   getUpcomingTasks,
   getDeletedTasks,
@@ -15,14 +16,17 @@ const {
   getHabitLogForDate
 } = require('./app-state.js');
 
-test('getTodayTasks returns active overdue and today tasks', () => {
-  const tasks = [
-    { id: 'a', title: 'overdue', date: '2026-07-01', status: 'active' },
-    { id: 'b', title: 'today', date: '2026-07-02', status: 'active' },
-    { id: 'c', title: 'future', date: '2026-07-03', status: 'active' },
-    { id: 'd', title: 'done', date: '2026-07-02', status: 'completed' }
-  ];
-  assert.deepEqual(getTodayTasks(tasks, '2026-07-02').map((task) => task.id), ['a', 'b']);
+test('getTodayTaskGroups includes only tasks whose range covers today', () => {
+  const groups = getTodayTaskGroups([
+    { id: 'past', date: '2026-07-01', status: 'active', createdAt: '1' },
+    { id: 'range', date: '2026-07-01', endDate: '2026-07-02', status: 'active', createdAt: '2' },
+    { id: 'today', date: '2026-07-02', status: 'active', createdAt: '3' },
+    { id: 'done', date: '2026-07-02', status: 'completed', createdAt: '4' },
+    { id: 'future', date: '2026-07-03', status: 'active', createdAt: '5' },
+    { id: 'deleted', date: '2026-07-02', status: 'deleted', createdAt: '6' }
+  ], '2026-07-02');
+  assert.deepEqual(groups.pending.map((task) => task.id), ['range', 'today']);
+  assert.deepEqual(groups.completed.map((task) => task.id), ['done']);
 });
 
 test('list selectors split inbox and upcoming tasks', () => {
@@ -128,4 +132,14 @@ test('getCalendarEntries returns compact task habit and journal entries', () => 
     ['habit', '喝水', 'done'],
     ['journal', '每日一句', 'noted']
   ]);
+});
+
+test('calendar habit entries expose the saved tone', () => {
+  const entries = getCalendarEntries({
+    tasks: [],
+    habits: [{ id: 'habit-1', title: '喝水', schedule: 'daily', status: 'active', tone: 'sky' }],
+    habitLogs: [],
+    journals: []
+  }, '2026-07-02');
+  assert.equal(entries[0].tone, 'sky');
 });

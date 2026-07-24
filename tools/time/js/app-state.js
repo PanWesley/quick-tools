@@ -207,6 +207,21 @@
     return 'middle';
   }
 
+  function getTodayTaskGroups(tasks, todayKey) {
+    var groups = { pending: [], completed: [] };
+    (tasks || [])
+      .filter(function(task) {
+        return taskOccursOn(task, todayKey);
+      })
+      .sort(function(a, b) {
+        return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+      })
+      .forEach(function(task) {
+        groups[task.status === 'completed' ? 'completed' : 'pending'].push(task);
+      });
+    return groups;
+  }
+
   function getCalendarMarks(data, dateKeys) {
     var marks = {};
     (dateKeys || []).forEach(function(dateKey) {
@@ -264,7 +279,8 @@
           type: 'habit',
           id: habit.id,
           label: String(habit.title || '').trim() || '未命名习惯',
-          state: log ? log.state : 'pending'
+          state: log ? log.state : 'pending',
+          tone: habit.tone || ''
         });
       });
 
@@ -288,6 +304,7 @@
     areaLabel: areaLabel,
     filterTasksByArea: filterTasksByArea,
     getTodayTasks: getTodayTasks,
+    getTodayTaskGroups: getTodayTaskGroups,
     getInboxTasks: getInboxTasks,
     getUpcomingTasks: getUpcomingTasks,
     getOverdueTasks: getOverdueTasks,
