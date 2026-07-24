@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, 'db.js'), 'utf8');
 
 function createDbHarness() {
-  const stores = { tasks: new Map(), habits: new Map(), opLogs: new Map() };
+  const stores = { tasks: new Map(), habits: new Map(), habitLogs: new Map(), opLogs: new Map() };
   const indexedDB = {
     open() {
       const request = {};
@@ -31,7 +31,9 @@ function createDbHarness() {
           };
         }
       };
-      queueMicrotask(() => transaction.oncomplete());
+      queueMicrotask(() => {
+        if (typeof transaction.oncomplete === 'function') transaction.oncomplete();
+      });
       return transaction;
     }
   };
@@ -49,4 +51,25 @@ test('task and habit creation persist the chosen tone in IndexedDB entities', as
   assert.equal(habit.tone, 'sky');
   assert.equal(stores.tasks.get(task.id).tone, 'mint');
   assert.equal(stores.habits.get(habit.id).tone, 'sky');
+});
+
+test('archiveHabit archives the habit without deleting its logs', async () => {
+  const { DB, stores } = createDbHarness();
+  const habit = await DB.createHabit({ title: '喝水', schedule: 'daily', tone: 'sky' });
+  stores.habitLogs.set('log-1', {
+    id: 'log-1',
+    habitId: habit.id,
+    date: '2026-07-24',
+    state: 'done'
+  });
+
+  await DB.archiveHabit(habit.id);
+
+  assert.equal(stores.habits.get(habit.id).status, 'archived');
+  assert.equal(stores.habitLogs.size, 1);
+  assert.ok(Array.from(stores.opLogs.values()).some(log =>
+    log.entityType === 'habit' &&
+    log.entityId === habit.id &&
+    log.action === 'archive'
+  ));
 });

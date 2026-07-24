@@ -240,6 +240,15 @@
     });
   }
 
+  function archiveHabit(id) {
+    return getOne('habits', id).then(function(habit) {
+      if (!habit) return null;
+      var changes = { status: 'archived' };
+      var next = Object.assign({}, habit, changes, { updatedAt: nowIso() });
+      return writeWithOp('habits', next, 'archive', changes);
+    });
+  }
+
   function getHabitLogByHabitAndDate(habitId, date) {
     return openDatabase().then(function(db) {
       var transaction = db.transaction('habitLogs', 'readonly');
@@ -378,6 +387,7 @@
     purgeTask: purgeTask,
     createHabit: createHabit,
     updateHabit: updateHabit,
+    archiveHabit: archiveHabit,
     upsertHabitLog: upsertHabitLog,
     resetHabitLog: resetHabitLog,
     upsertJournal: upsertJournal,
