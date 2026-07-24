@@ -23,7 +23,9 @@ test('getTodayTaskGroups includes only tasks whose range covers today', () => {
     { id: 'today', date: '2026-07-02', status: 'active', createdAt: '3' },
     { id: 'done', date: '2026-07-02', status: 'completed', createdAt: '4' },
     { id: 'future', date: '2026-07-03', status: 'active', createdAt: '5' },
-    { id: 'deleted', date: '2026-07-02', status: 'deleted', createdAt: '6' }
+    { id: 'deleted', date: '2026-07-02', status: 'deleted', createdAt: '6' },
+    { id: 'invalid-end', date: '2026-07-01', endDate: 'not-a-date', status: 'active', createdAt: '7' },
+    { id: 'invalid-start', date: '2026-02-30', endDate: '2026-07-02', status: 'active', createdAt: '8' }
   ], '2026-07-02');
   assert.deepEqual(groups.pending.map((task) => task.id), ['range', 'today']);
   assert.deepEqual(groups.completed.map((task) => task.id), ['done']);

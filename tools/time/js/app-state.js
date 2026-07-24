@@ -193,14 +193,32 @@
     }) || null;
   }
 
+  function isValidDateKey(value) {
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+    if (!match) return false;
+    var year = Number(match[1]);
+    var month = Number(match[2]);
+    var day = Number(match[3]);
+    var date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day;
+  }
+
+  function taskEndDate(task) {
+    return isValidDateKey(task && task.endDate) && task.endDate >= task.date
+      ? task.endDate
+      : task.date;
+  }
+
   function taskOccursOn(task, dateKey) {
-    if (!task || task.status === 'deleted' || !task.date) return false;
-    var endDate = task.endDate && task.endDate >= task.date ? task.endDate : task.date;
+    if (!task || task.status === 'deleted' || !isValidDateKey(task.date) || !isValidDateKey(dateKey)) return false;
+    var endDate = taskEndDate(task);
     return dateKey >= task.date && dateKey <= endDate;
   }
 
   function taskRangePosition(task, dateKey) {
-    var endDate = task.endDate && task.endDate >= task.date ? task.endDate : task.date;
+    var endDate = taskEndDate(task);
     if (task.date === endDate) return 'single';
     if (dateKey === task.date) return 'start';
     if (dateKey === endDate) return 'end';

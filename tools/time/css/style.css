@@ -1583,6 +1583,10 @@ textarea {
 .calendar-strip.blush { background: rgba(255, 200, 210, 0.45); color: #a8425c; }
 .calendar-strip.sand { background: rgba(240, 220, 190, 0.5); color: #806030; }
 .calendar-strip.primary { background: rgba(255, 138, 42, 0.2); color: var(--primary-strong); }
+.calendar-strip.has-item-tone {
+  background: color-mix(in srgb, var(--item-tone) 34%, var(--surface));
+  color: var(--text);
+}
 
 .task-row.task-tone-peach .task-content { background-color: rgba(255, 212, 185, 0.38) !important; background-image: none !important; }
 .task-row.task-tone-coral .task-content { background-color: rgba(255, 182, 192, 0.32) !important; background-image: none !important; }

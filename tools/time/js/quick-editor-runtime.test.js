@@ -161,7 +161,7 @@ function createRuntime(options = {}) {
     scrollTo() {},
     addEventListener() {},
     matchMedia: () => ({ matches: false, addEventListener() {} }),
-    confirm: () => true,
+    confirm: () => options.confirmDelete !== false,
     open() {}
   };
   window.window = window;
@@ -187,6 +187,7 @@ function createRuntime(options = {}) {
       handleSwipeStart: handleSwipeStart,
       handleSwipeMove: handleSwipeMove,
       handleSwipeEnd: handleSwipeEnd,
+      handleItemRowActivation: handleItemRowActivation,
       openQuickFullPanel: openQuickFullPanel,
       openQuickFullTool: openQuickFullTool,
       openQuickDateChild: function(type) {
@@ -226,6 +227,7 @@ function createRuntime(options = {}) {
   vm.runInNewContext(instrumented, {
     window, document, navigator: window.navigator, localStorage,
     console: { warn() {}, error() {} }, setTimeout, clearTimeout, setInterval, clearInterval,
+    requestAnimationFrame(callback) { callback(); },
     Date, Promise, Object, Array, String, Number, Boolean, Math, JSON, RegExp, encodeURIComponent, URL, Blob: globalThis.Blob, FileReader: class {}
   }, { filename: 'app.js' });
   window.__quickRuntimeHooks.cacheElements();
@@ -305,6 +307,38 @@ test('direct detail completion saves and closes the whole editor', async () => {
   assert.equal(runtime.background.inert, false);
 });
 
+test('direct detail save restores focus to the rerendered item row', async () => {
+  const runtime = createRuntime();
+  const inactiveRow = createElement('inactive-task-row');
+  inactiveRow.dataset = { itemType: 'task', itemId: 'task-1' };
+  inactiveRow.closest = () => null;
+  const rerenderedRow = createElement('rerendered-task-row');
+  rerenderedRow.dataset = { itemType: 'task', itemId: 'task-1' };
+  rerenderedRow.closest = () => null;
+  const sourceScope = runtime.document.getElementById('view-list');
+  sourceScope.querySelectorAll = selector => (
+    selector === '[data-item-type][data-item-id]' ? [rerenderedRow] : []
+  );
+  runtime.document.querySelectorAll = selector => (
+    selector === '[data-item-type][data-item-id]' ? [inactiveRow] : []
+  );
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  const sourceRow = createElement('old-task-row');
+  sourceRow.closest = selector => selector === '.view, #date-detail-modal' ? sourceScope : null;
+  runtime.hooks.openItemDetail('task', 'task-1', sourceRow);
+  await runtime.hooks.handleQuickSubmit({ preventDefault() {} });
+
+  assert.equal(rerenderedRow.focusCount, 1);
+  assert.equal(inactiveRow.focusCount, undefined);
+});
+
 test('direct detail date cancel returns to the detail summary without opening the keyboard', () => {
   const runtime = createRuntime();
   runtime.hooks.setData({
@@ -338,7 +372,8 @@ test('direct detail deletes a task with soft delete and closes on success', asyn
   await runtime.hooks.deleteEditingItem();
 
   assert.deepEqual(runtime.deletions, [{ type: 'task', id: 'task-1' }]);
-  assert.equal(runtime.elements.get('quick-full-panel').hidden, true);
+  assert.equal(runtime.hooks.getState().editingTaskId, '');
+  assert.equal(runtime.hooks.getState().quickEditor.session, 'closed');
 });
 
 test('direct detail archives a habit and preserves the open panel on failure', async () => {
@@ -356,6 +391,24 @@ test('direct detail archives a habit and preserves the open panel on failure', a
 
   assert.deepEqual(runtime.deletions, [{ type: 'habit', id: 'habit-1' }]);
   assert.equal(runtime.elements.get('quick-full-panel').hidden, false);
+});
+
+test('cancelling detail deletion restores focus to the overflow button', async () => {
+  const runtime = createRuntime({ confirmDelete: false });
+  runtime.hooks.setData({
+    tasks: [{ id: 'task-1', title: '任务', date: '2026-07-12', status: 'active', priority: 'medium', area: 'life' }],
+    habits: [],
+    habitLogs: [],
+    journals: [],
+    opLogs: []
+  });
+
+  runtime.hooks.openItemDetail('task', 'task-1');
+  runtime.elements.get('quick-full-menu').hidden = false;
+  await runtime.hooks.deleteEditingItem();
+
+  assert.equal(runtime.deletions.length, 0);
+  assert.equal(runtime.elements.get('quick-full-more').focusCount, 1);
 });
 
 test('closing a task from the date parent tears down its date transaction before editing another habit', () => {
@@ -519,6 +572,42 @@ test('closed editor left swipe opens a list row', () => {
   });
 
   assert.equal(classes.has('list-open'), true);
+});
+
+test('a completed swipe suppresses the synthetic row click', () => {
+  const runtime = createRuntime();
+  const classes = new Set(['list-swipe-row']);
+  const row = {
+    dataset: { itemType: 'task', itemId: 'task-1' },
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); }
+    }
+  };
+  const target = {
+    closest(selector) {
+      if (selector === '.task-row.has-swipe-actions') return null;
+      if (selector === '.list-swipe-row' || selector === '[data-item-type][data-item-id]') return row;
+      return null;
+    }
+  };
+
+  runtime.hooks.handleSwipeStart({
+    target,
+    touches: [{ clientX: 120, clientY: 40 }]
+  });
+  runtime.hooks.handleSwipeEnd({
+    changedTouches: [{ clientX: 50, clientY: 42 }]
+  });
+  runtime.hooks.handleItemRowActivation({
+    type: 'click',
+    target,
+    preventDefault() {}
+  });
+
+  assert.equal(runtime.hooks.getState().editingTaskId, '');
+  assert.equal(runtime.hooks.getState().quickEditor.session, 'closed');
 });
 
 test('date cancel discards temporary schedule changes and refocuses the title', () => {

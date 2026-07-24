@@ -27,12 +27,12 @@ test('quick editor separates the compact primary panel from one replacement regi
 
 test('state module loads before app and is cached', () => {
   assert.ok(html.indexOf('/tools/time/js/quick-editor-state.js') < html.indexOf('/tools/time/js/app.js'));
-  assert.match(sw, /const CACHE_NAME = 'today-youxu-v59'/);
-  assert.match(sw, /\/tools\/time\/css\/style\.css\?v=163/);
+  assert.match(sw, /const CACHE_NAME = 'today-youxu-v63'/);
+  assert.match(sw, /\/tools\/time\/css\/style\.css\?v=164/);
   assert.match(sw, /\/tools\/time\/js\/quick-editor-state\.js\?v=3/);
-  assert.match(sw, /\/tools\/time\/js\/app-state\.js\?v=137/);
+  assert.match(sw, /\/tools\/time\/js\/app-state\.js\?v=138/);
   assert.match(sw, /\/tools\/time\/js\/db\.js\?v=137/);
-  assert.match(sw, /\/tools\/time\/js\/app\.js\?v=166/);
+  assert.match(sw, /\/tools\/time\/js\/app\.js\?v=170/);
 });
 
 test('editor CSS defines locked, child-panel, fullscreen and reduced-motion states', () => {
@@ -175,8 +175,11 @@ test('habit rows and calendar entries use their saved tone', () => {
   assert.match(app, /renderDateHabit[\s\S]*toneRowAttributes\(habit\.tone/);
   assert.match(app, /renderListItem[\s\S]*toneRowAttributes\(item\.data\.tone/);
   assert.match(app, /calendarEntryTone[\s\S]*entry\.tone/);
+  assert.match(app, /function calendarToneAttributes\(entry\)/);
+  assert.match(app, /--item-tone:/);
   assert.match(css, /\.task-row\.has-item-tone \.task-content/);
   assert.match(css, /\.task-row\.has-item-tone::before/);
+  assert.match(css, /\.calendar-strip\.has-item-tone\s*\{[^}]*var\(--item-tone\)/s);
 });
 
 test('full detail keeps completion at the bottom of its scroll body', () => {

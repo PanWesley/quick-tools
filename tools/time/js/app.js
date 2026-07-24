@@ -62,6 +62,7 @@
   var els = {};
   var journalSaveTimer = null;
   var swipeState = null;
+  var suppressItemActivationUntil = 0;
   var notificationBackendStatus = { status: 'disabled' };
   var notificationRegistration = null;
   var notificationSetupState = 'idle';
@@ -367,6 +368,7 @@
     var touch = event.changedTouches && event.changedTouches[0];
     var endX = touch ? touch.clientX : swipeState.currentX;
     var dx = endX - swipeState.startX;
+    if (Math.abs(dx) > 12) suppressItemActivationUntil = Date.now() + 400;
     if (swipeState.isListSwipe) {
       if (dx < -42) {
         openListSwipeRow(swipeState.row);
@@ -582,9 +584,18 @@
   }
 
   function calendarEntryTone(entry) {
-    if (entry.type === 'task') return entry.tone || hashIdToColor(entry.id);
+    if (entry.type === 'task') return normalizedTone(entry.tone) || hashIdToColor(entry.id);
     if (entry.type === 'habit') return normalizedTone(entry.tone) || (entry.state === 'done' ? 'mint' : 'lilac');
     return 'rose';
+  }
+
+  function calendarToneAttributes(entry) {
+    var tone = calendarEntryTone(entry);
+    var color = TONE_CSS_COLORS[tone] || TONE_CSS_COLORS.rose;
+    return {
+      className: ' ' + tone + ' has-item-tone',
+      style: ' style="--item-tone:' + color + '"'
+    };
   }
 
   function calendarPriorityBorder(priority) {
@@ -717,10 +728,11 @@
       var strips = entries.slice(0, maxStrips).map(function(entry) {
         var label = calendarEntryLabel(entry);
         var timeMatch = /^(\d{2}:\d{2})\s+/.exec(label);
-        var classes = 'calendar-strip ' + calendarEntryTone(entry) + calendarEntryStateClass(entry);
-        if (!timeMatch) return '<span class="' + classes + '">' + escapeHtml(truncateLabel(label, 4)) + '</span>';
+        var toneAttrs = calendarToneAttributes(entry);
+        var classes = 'calendar-strip' + toneAttrs.className + calendarEntryStateClass(entry);
+        if (!timeMatch) return '<span class="' + classes + '"' + toneAttrs.style + '>' + escapeHtml(truncateLabel(label, 4)) + '</span>';
         var title = label.slice(timeMatch[0].length);
-        return '<span class="' + classes + ' has-time"><span class="calendar-strip-time">' + escapeHtml(timeMatch[1]) + '</span><span class="calendar-strip-title">' + escapeHtml(truncateLabel(title, 4)) + '</span></span>';
+        return '<span class="' + classes + ' has-time"' + toneAttrs.style + '><span class="calendar-strip-time">' + escapeHtml(timeMatch[1]) + '</span><span class="calendar-strip-title">' + escapeHtml(truncateLabel(title, 4)) + '</span></span>';
       }).join('');
       var overflow = entries.length > maxStrips ? '<span class="calendar-more">+' + (entries.length - maxStrips) + '</span>' : '';
       return [
@@ -1836,6 +1848,43 @@
     }
   }
 
+  function itemFocusScopeId(sourceRow) {
+    if (!sourceRow || typeof sourceRow.closest !== 'function') return '';
+    var scope = sourceRow.closest('.view, #date-detail-modal');
+    return scope && scope.id ? scope.id : '';
+  }
+
+  function focusRenderedItem(type, id, scopeId) {
+    var root = scopeId ? document.getElementById(scopeId) : document;
+    var rows = root ? root.querySelectorAll('[data-item-type][data-item-id]') : [];
+    var fallback = null;
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (row.dataset.itemType !== type || row.dataset.itemId !== id) continue;
+      if (!fallback) fallback = row;
+      if (!row.closest('[hidden], [aria-hidden="true"]')) {
+        row.focus();
+        return true;
+      }
+    }
+    if (fallback) {
+      fallback.focus();
+      return true;
+    }
+    if (els.openAdd) els.openAdd.focus();
+    return false;
+  }
+
+  function focusAfterRender(type, id, scopeId) {
+    return new Promise(function(resolve) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          resolve(focusRenderedItem(type, id, scopeId));
+        });
+      });
+    });
+  }
+
   function openSheet() {
     appState.editingTaskId = '';
     appState.editingType = '';
@@ -2170,13 +2219,15 @@
     var message = type === 'habit'
       ? '将删除整个习惯，但会保留历史打卡记录。确定删除吗？'
       : '删除后可在“已删除”清单恢复。确定删除吗？';
-    closeQuickFullMenu();
+    closeQuickFullMenu({ restoreFocus: true });
     if (!id || !window.confirm(message)) return Promise.resolve(false);
     var action = type === 'habit' ? DB.archiveHabit(id) : DB.deleteTask(id);
     return action.then(function() {
-      closeQuickSession({ keepDraft: false, restoreFocus: true });
+      closeQuickSession({ keepDraft: false, restoreFocus: false });
       showToast(type === 'habit' ? '习惯已删除' : '任务已删除');
-      return loadData().then(function() { return true; });
+      return loadData().then(function() {
+        return focusAfterRender('', '').then(function() { return true; });
+      });
     }).catch(function(error) {
       showToast('删除失败：' + error.message);
       return false;
@@ -2696,6 +2747,13 @@
     }
     var action;
     var wasEditing = Boolean(appState.editingTaskId);
+    var returnTarget = appState.quickEntryMode === 'item-detail' && appState.editingTaskId
+      ? {
+        type: appState.editingType,
+        id: appState.editingTaskId,
+        scopeId: itemFocusScopeId(appState.quickReturnFocus)
+      }
+      : null;
     function createHabitPayload() {
       var habitData = Object.assign({}, payload, {
         schedule: repeat,
@@ -2743,9 +2801,11 @@
 
     return action.then(function() {
       if (!wasEditing) clearCreateDraft();
-      closeQuickSession({ keepDraft: false, restoreFocus: true });
+      closeQuickSession({ keepDraft: false, restoreFocus: !returnTarget });
       showToast(wasEditing ? '事项已更新' : '事项已创建');
-      return loadData();
+      return loadData().then(function() {
+        if (returnTarget) return focusAfterRender(returnTarget.type, returnTarget.id, returnTarget.scopeId);
+      });
     }).catch(function(error) {
       showToast('保存失败：' + error.message);
     });
@@ -2839,6 +2899,10 @@
   }
 
   function handleItemRowActivation(event) {
+    if (event.type === 'click' && Date.now() < suppressItemActivationUntil) {
+      event.preventDefault();
+      return;
+    }
     var row = event.target.closest('[data-item-type][data-item-id]');
     if (!row || isQuickEditorOpen()) return;
     if (event.target.closest('[data-action], button, a, input, textarea, select')) return;

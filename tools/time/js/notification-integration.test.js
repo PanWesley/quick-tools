@@ -191,14 +191,14 @@ test('loads cache-busted notification dependencies in strict order', () => {
     assert.ok(scriptPosition(names[index]) < scriptPosition(name), names[index] + ' must load before ' + name);
   });
   const releaseAssets = [
-    '/tools/time/css/style.css?v=163',
+    '/tools/time/css/style.css?v=164',
     '/tools/time/js/quick-editor-state.js?v=3',
     '/tools/time/js/notification-crypto.js?v=2',
     '/tools/time/js/notification-receipt.js?v=1',
     '/tools/time/js/notification-model.js?v=2',
     '/tools/time/js/notification-sync.js?v=5',
     '/tools/time/js/notification.js?v=7',
-    '/tools/time/js/app.js?v=166'
+    '/tools/time/js/app.js?v=170'
   ];
   const releaseAssetPaths = new Set(releaseAssets.map(asset => asset.split('?')[0]));
   const indexedReleaseAssets = [...index.matchAll(/(?:href|src)="([^"]+)"/g)]
